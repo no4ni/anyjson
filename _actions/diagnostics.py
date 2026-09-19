@@ -1,0 +1,225 @@
+"""Диагностика реестра команд: поиск по имени / докстрингу / параметрам."""
+from _actions import register, HANDLERS
+
+
+def _params_of(fn):
+    """Список args.get("...") в теле функции (через AST)."""
+    try:
+        import ast as _ast, inspect as _ins, textwrap as _tw
+        src = _tw.dedent(_ins.getsource(fn))
+        tree = _ast.parse(src)
+    except Exception:
+        return []
+    names = set()
+
+    def walk(node):
+        for child in _ast.iter_child_nodes(node):
+            if isinstance(child, _ast.Call):
+                f = child.func
+                if (isinstance(f, _ast.Attribute) and f.attr == "get"
+                        and isinstance(f.value, _ast.Name) and f.value.id == "args"):
+                    if child.args:
+                        a0 = child.args[0]
+                        if isinstance(a0, _ast.Constant) and isinstance(a0.value, str):
+                            names.add(a0.value)
+            if isinstance(child, (_ast.FunctionDef, _ast.AsyncFunctionDef, _ast.Lambda)):
+                continue
+            walk(child)
+
+    for top in _ast.iter_child_nodes(tree):
+        if isinstance(top, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+            for stmt in top.body:
+                walk(stmt)
+            break
+    return sorted(names)
+
+
+# Соответствия латиница ↔ кириллица для типовых ключей
+_RU_EN = {
+    "text": "текст", "текст": "text",
+    "file": "файл", "файл": "file",
+    "path": "путь", "путь": "path",
+    "url": "адрес", "адрес": "url",
+    "query": "запрос", "запрос": "query",
+    "command": "команда", "команда": "command",
+    "name": "имя", "имя": "name",
+    "id": "ид",
+    "number": "номер", "номер": "number",
+    "key": "ключ", "ключ": "key",
+    "data": "данные", "данные": "data",
+}
+
+
+# --- транслитерация (простые правила) ---
+_LAT2RU = [
+    ("shch", "щ"), ("sch", "щ"),
+    ("yo", "ё"), ("jo", "ё"),
+    ("yu", "ю"), ("ju", "ю"),
+    ("ya", "я"), ("ja", "я"),
+    ("zh", "ж"), ("kh", "х"), ("ch", "ч"), ("sh", "ш"),
+    ("ts", "ц"), ("th", "т"), ("ph", "ф"), ("ck", "к"),
+    ("ee", "и"), ("oo", "у"), ("ou", "у"),
+    ("a", "а"), ("b", "б"), ("v", "в"), ("g", "г"), ("d", "д"),
+    ("e", "е"), ("z", "з"), ("i", "и"), ("k", "к"), ("l", "л"),
+    ("m", "м"), ("n", "н"), ("o", "о"), ("p", "п"), ("r", "р"),
+    ("s", "с"), ("t", "т"), ("u", "у"), ("f", "ф"), ("h", "х"),
+    ("c", "к"), ("y", "ы"), ("j", "й"), ("x", "кс"), ("w", "в"), ("q", "к"),
+]
+
+_RU2LAT = {
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e",
+    "ж": "zh", "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m",
+    "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u",
+    "ф": "f", "х": "h", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "shch",
+    "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya",
+}
+
+
+def _translit_lat2ru(s):
+    s = s.lower()
+    out = []
+    i = 0
+    while i < len(s):
+        for pat, ru in _LAT2RU:
+            if s.startswith(pat, i):
+                out.append(ru)
+                i += len(pat)
+                break
+        else:
+            out.append(s[i])
+            i += 1
+    return "".join(out)
+
+
+def _translit_ru2lat(s):
+    s = s.lower()
+    return "".join(_RU2LAT.get(c, c) for c in s)
+
+
+def _is_lat(c):
+    return "a" <= c <= "z"
+
+
+def _is_cyr(c):
+    return "а" <= c <= "я" or c == "ё"
+
+
+def _alts(q):
+    """Варианты запроса: сам + словарный + транслит."""
+    q = q.strip().lower()
+    out = [q]
+    if q in _RU_EN:
+        out.append(_RU_EN[q])
+    has_lat = any(_is_lat(c) for c in q)
+    has_cyr = any(_is_cyr(c) for c in q)
+    if has_lat and not has_cyr:
+        out.append(_translit_lat2ru(q))
+    elif has_cyr and not has_lat:
+        out.append(_translit_ru2lat(q))
+    # dedup, порядок сохраняем
+    return list(dict.fromkeys(out))
+
+
+def _smart_match(alts, target):
+    """Совпадение в трёх представлениях target: как есть, латиница, кириллица."""
+    t_low = (target or "").lower()
+    t_lat = _translit_ru2lat(t_low)
+    t_ru = _translit_lat2ru(t_low)
+    for a in alts:
+        if not a:
+            continue
+        if a in t_low or a in t_lat or a in t_ru:
+            return True
+    return False
+
+
+@register("диагностика")
+def diagnostics(args):
+    """Найти команды по подстроке в имени / докстринге / параметрах.
+
+    Параметры:
+      сервис / подстрока — что искать (обязательный)
+      где     — 'имя' | 'док' | 'параметр' | 'всё' (по умолчанию 'всё')
+      алиасы  — true/false, показывать ли альтернативные имена
+
+    Ищет с учётом латиница↔кириллица: 'text' найдёт и 'текст'.
+
+    Примеры:
+      {"диагностика": {"сервис": "text"}}
+      {"диагностика": {"сервис": "молтбук", "где": "имя"}}
+      {"диагностика": {"сервис": "путь", "где": "параметр"}}
+    """
+    if not isinstance(args, dict):
+        return 'Укажи сервис: {"диагностика": {"сервис": "text"}}'
+    q = (args.get("сервис") or args.get("подстрока") or args.get("запрос") or "").strip()
+    if not q:
+        return ('Укажи сервис: {"диагностика": {"сервис": "text"}}\n'
+                'Например: {"диагностика": {"сервис": "молтбук"}}')
+    where = (args.get("где") or "всё").strip().lower()
+    alts = _alts(q)
+
+    params_cache = {}
+
+    def params_of(fn):
+        key = id(fn)
+        if key not in params_cache:
+            params_cache[key] = _params_of(fn)
+        return params_cache[key]
+
+    matches = []
+    seen = set()
+    for name, fn in sorted(HANDLERS.items()):
+        if not name or id(fn) in seen:
+            continue
+        seen.add(id(fn))
+
+        aliases = sorted(n for n, f in HANDLERS.items() if f is fn and n)
+        if not aliases:
+            continue
+        # приоритет — русское имя (без латиницы)
+        import re as _re
+        _ru = [a for a in aliases if not _re.search(r"[a-zA-Z]", a)]
+        primary = _ru[0] if _ru else aliases[0]
+        doc = (fn.__doc__ or "")
+        params = params_of(fn)
+
+        hit_name = any(_smart_match(alts, n) for n in aliases)
+        hit_param = any(_smart_match(alts, p) for p in params)
+        # докстринг: только первая строка (краткое описание), без примеров
+        doc_first = doc.strip().split("\n", 1)[0]
+        hit_doc_short = _smart_match(alts, doc_first)
+        hit_doc_full = _smart_match(alts, doc)
+
+        if where in ("всё", "все", "all", ""):
+            take = hit_name or hit_param
+        elif where == "имя":
+            take = hit_name
+        elif where == "параметр":
+            take = hit_param
+        elif where in ("док", "докстринг"):
+            take = hit_doc_full
+        else:
+            take = hit_name or hit_param
+
+        if take:
+            matches.append((primary, aliases, doc, params))
+
+    if not matches:
+        from _color import color_red
+        return color_red(f"По '{q}' ничего не найдено.")
+
+    show_aliases = bool(args.get("алиасы") or args.get("aliases"))
+    lines = [f"🔎 Найдено команд: {len(matches)} (по '{q}', где={where})", ""]
+    for name, aliases, doc, params in matches:
+        lines.append(f"• команда: {name}")
+        if show_aliases:
+            other = [a for a in aliases if a != name]
+            if other:
+                lines.append(f"  алиасы: {', '.join(other)}")
+        doc_short = doc.strip().split("\n", 1)[0].strip()
+        if doc_short:
+            lines.append(f"  {doc_short}")
+        if params:
+            lines.append(f"  параметры: {', '.join(params)}")
+        lines.append("")
+    return "\n".join(lines).rstrip()

@@ -1,0 +1,545 @@
+"""Точка входа. Вся логика в модулях _*."""
+import io
+import sys
+from pathlib import Path
+
+# --- shim: чтобы запуск работал из подпапки anyjson/ ---
+_HERE = Path(__file__).resolve().parent
+_CORE = _HERE / "_core"
+for _p in (str(_CORE), str(_HERE)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+# Предзагрузка asyncio — до всех наших импортов, чтобы горячий
+# reload и тяжёлые зависимости (sklearn → joblib) не оставляли
+# модуль в полусобранном виде.
+import asyncio  # noqa: F401
+import pyperclip
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# UTF-8 stdout (страховка на Windows-консоль)
+try:
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+except Exception:
+    pass
+
+import atexit
+import threading
+
+# --- защита от запуска чужих .py через subprocess ---
+from _core._safe_subprocess import install_guard as _install_guard
+_install_guard()
+
+from _config import (
+    AGENT_NAME, BASE_DIR, TOOLS_DIR, PUBLIC_TOOLS_DIR,
+    WIKI_TEXTS_DIR, _WIKIGET_PATH, API_KEYS, MY_DIR,
+)
+from _utils import is_parallel_json, count_json_objects
+from _color import color_blue
+from _actions.cmd_parser import process_command_input
+from _actions import load_all
+from _storage import (
+    load_processed_messages, save_processed_messages,
+    check_inbox, load_reminders, reminder_checker,
+)
+from _tor import cleanup_tor
+from _actions.system_sensor import set_sensor_core
+from _executor import ensure_loaded
+
+
+def _validate_module_paths():
+    """Проверить, что все наши модули загружены из папки anyjson/ (или _core/).
+
+    Возвращает список проблемных (имя, путь). Пусто — всё хорошо.
+    """
+    import sys as _sys
+    allowed_roots = (_HERE.resolve(), _CORE.resolve())
+
+    # интересуют только наши модули
+    our_prefixes = (
+        "_config", "_utils", "_executor", "_storage", "_tor",
+        "_ps", "_color", "_web", 
+        "_command", "cmd_parser",
+        "_actions", "_core",
+    )
+
+    bad = []
+    for name, mod in list(_sys.modules.items()):
+        if not any(name == p or name.startswith(p + ".") for p in our_prefixes):
+            continue
+        f = getattr(mod, "__file__", None)
+        if not f:
+            continue
+        try:
+            path = Path(f).resolve()
+        except Exception:
+            continue
+        if not any(path.is_relative_to(root) for root in allowed_roots):
+            bad.append((name, str(path)))
+    return bad
+
+
+def _safe_init_moltbook():
+    key = API_KEYS.get("moltbook")
+    if not key:
+        return
+    try:
+        from _actions._tools_moltbook import init_moltbook
+        init_moltbook(key)
+    except Exception as e:
+        print(f"[LOG] init_moltbook не выполнен: {e}", file=sys.stderr)
+
+
+def _looks_like_python(text):
+    """Эвристика: похоже ли на кусок python-кода (а не JSON и не команда)."""
+    s = text.lstrip()
+    if not s or s.startswith(("{", "[")):
+        return False
+
+    # длинный русский текст с редкими символами кода — не питон
+    if len(text) > 200:
+        cyr = sum(1 for c in text if "а" <= c.lower() <= "я" or c == "ё")
+        if cyr / len(text) > 0.35:
+            # только совсем явные "import"/"def"/"print(" спасут
+            strong_for_prose = ("import ", "def ", "class ", "print(")
+            if not any(m in text for m in strong_for_prose):
+                return False
+
+    # очень сильные маркеры — одного достаточно
+    very_strong = ("import ", "from ", "print(", "def ", "class ",
+                   "with open(", "Counter(", "@register", ">>> ")
+    if any(m in text for m in very_strong):
+        return True
+
+    # обычные маркеры — нужно >= 2 совпадений (без " = ", " == " —
+    # они слишком часто встречаются в русской прозе)
+    normal = ("for ", "while ", "elif ", "return ", "lambda ",
+              "self.", "None", "True", "False")
+    hits = sum(1 for m in normal if m in text)
+    if hits >= 2:
+        return True
+
+    # слабые маркеры + один normal = тоже питон
+    if hits >= 1:
+        weak = ("(", ")", "[", "]")
+        if sum(1 for m in weak if m in text) >= 4:
+            return True
+
+    return False
+
+
+def _run_as_python(full_input):
+    """Обернуть сырой код в {"питон": {"скрипт": ...}} и передать дальше."""
+    import json as _j
+    process_command_input(_j.dumps(
+        {"питон": {"скрипт": full_input}}, ensure_ascii=False
+    ))
+
+
+def _shutdown_children():
+    """Погасить фоновые процессы, которые поднял anyjson."""
+    # --- Forge (Stable Diffusion) ---
+    try:
+        from _config import MY_DIR, STABLEDIF_HOST, STABLEDIF_PORT
+        pid_file = MY_DIR / "stabledif.pid"
+        if pid_file.exists():
+            try:
+                pid = int(pid_file.read_text().strip())
+            except Exception:
+                pid = None
+            if pid:
+                # мягко через API
+                try:
+                    import urllib.request
+                    req = urllib.request.Request(
+                        "http://" + STABLEDIF_HOST + ":" + str(STABLEDIF_PORT)
+                        + "/sdapi/v1/server-stop",
+                        data=b"", method="POST",
+                    )
+                    urllib.request.urlopen(req, timeout=3)
+                except Exception:
+                    pass
+                import time as _t
+                _t.sleep(2)
+                # жёстко, если ещё жив
+                try:
+                    import subprocess as _sp
+                    _sp.run(["taskkill", "/PID", str(pid), "/T", "/F"],
+                            capture_output=True, timeout=10)
+                except Exception:
+                    pass
+            try:
+                pid_file.unlink()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # --- UNaIVERSE демон ---
+    try:
+        from _actions import HANDLERS
+        _stop = HANDLERS.get("юнайверс_остановить")
+        if _stop:
+            try:
+                _stop({})
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # --- PyBullet симулятор ---
+    try:
+        from _config import MY_DIR as _MY_DIR
+        _sim_pid_file = _MY_DIR / "sim.pid"
+        if _sim_pid_file.exists():
+            try:
+                _sim_pid = int(_sim_pid_file.read_text().strip())
+            except Exception:
+                _sim_pid = None
+            if _sim_pid:
+                import subprocess as _sp
+                _sp.run(["taskkill", "/PID", str(_sim_pid), "/T", "/F"],
+                        capture_output=True, timeout=10)
+            try:
+                _sim_pid_file.unlink()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def main():
+    # --- init tools: единая точка входа ---
+    # _tools_core.init_tools сам вызовет tools.init_tools (временно,
+    # пока все _actions/*.py не переехали на _tools_*).
+    from _actions._tools_core import init_tools as _init_tools
+    _init_tools(
+        BASE_DIR, AGENT_NAME,
+        wiki_texts_dir=WIKI_TEXTS_DIR,
+        tools_dir=TOOLS_DIR,
+        public_tools_dir=PUBLIC_TOOLS_DIR,
+        wikiget_path=_WIKIGET_PATH,
+    )
+    _safe_init_moltbook()
+
+    # --- сенсорное ядро: ленивая инициализация ---
+    # SensorCore создаётся только при первой state-команде
+    # (сенсорное_состояние / назвать_состояние / исследовать_состояния),
+    # а не при старте. См. _actions/system.py: _ensure_sensor_core().
+    global _sensor_core
+    _sensor_core = None
+
+    # --- прочее ---
+    load_processed_messages()
+    atexit.register(cleanup_tor)
+    atexit.register(save_processed_messages)
+    atexit.register(_shutdown_children)
+    # Перехватываем вывод check_inbox, чтобы потом включить его в копирование
+    import io as _io_inbox
+    _inbox_capture = _io_inbox.StringIO()
+    _old_stdout = sys.stdout
+    try:
+        sys.stdout = _inbox_capture
+        check_inbox()
+    finally:
+        sys.stdout = _old_stdout
+    _inbox_text = _inbox_capture.getvalue()
+    if _inbox_text:
+        sys.stdout.write(_inbox_text)
+        sys.stdout.flush()
+
+    load_reminders()
+    threading.Thread(target=reminder_checker, daemon=True).start()
+
+    # --- принудительно загружаем все команды ---
+    ensure_loaded()
+    load_all()
+
+    # --- ВАЛИДАЦИЯ ИМПОРТОВ: _actions/*.py ---
+    try:
+        from _core._validate_imports import check_actions, format_report
+        _rep = check_actions()
+        if _rep:
+            print("", file=sys.stderr)
+            print("=" * 60, file=sys.stderr)
+            print(format_report(_rep), file=sys.stderr)
+            print("=" * 60, file=sys.stderr)
+            print("Исправь импорты в _actions/*.py и перезапусти.",
+                  file=sys.stderr)
+            sys.exit(3)
+    except SystemExit:
+        raise
+    except Exception as _e:
+        print(f"[VALIDATE-IMPORTS] {_e}", file=sys.stderr)
+
+    # --- ВАЛИДАЦИЯ: все наши модули должны быть из папки anyjson ---
+    _bad = _validate_module_paths()
+    if _bad:
+        print("", file=sys.stderr)
+        print("=" * 60, file=sys.stderr)
+        print("❌ КРИТИЧЕСКАЯ ОШИБКА: модули загружены не из этой папки!",
+              file=sys.stderr)
+        print("=" * 60, file=sys.stderr)
+        for _n, _p in _bad:
+            print(f"   {_n}", file=sys.stderr)
+            print(f"     → {_p}", file=sys.stderr)
+        print("", file=sys.stderr)
+        print(f"Ожидалось в: {_HERE.resolve()}", file=sys.stderr)
+        print(f"         и в: {_CORE.resolve()}", file=sys.stderr)
+        print("", file=sys.stderr)
+        print("Возможная причина: PYTHONPATH или sys.path содержит "
+              "чужую папку с такими же именами (_config, _utils, ...) "
+              "раньше нашей.", file=sys.stderr)
+        print("Проверь переменную окружения PYTHONPATH и .pth файлы.",
+              file=sys.stderr)
+        sys.exit(2)
+
+    # --- три случайные записи из памяти + копирование баннера (всегда) ---
+    mem_lines = []
+    try:
+        from _storage import load_memlist
+        import random as _rnd
+        mem = load_memlist() or []
+        if mem:
+            def _norm(item):
+                if isinstance(item, str):
+                    return item
+                if isinstance(item, dict):
+                    for k in ("текст", "содержимое", "content", "text", "описание"):
+                        if k in item:
+                            v = item[k]
+                            return v if isinstance(v, str) else str(v)
+                    return str(item)
+                return str(item)
+            texts = [_norm(x) for x in mem]
+            picks = _rnd.sample(texts, min(3, len(texts)))
+            print(color_blue("\n📝 Из памяти:"))
+            for _t in picks:
+                one = _t.replace("\n", " ")
+                if len(one) > 200:
+                    one = one[:200] + "…"
+                print(f"  • {one}")
+                mem_lines.append(f"  • {one}")
+            _mem_hint = (
+                "\n\n💡 Если хочешь вспомнить что-то ещё:\n"
+                "```text\n"
+                '{"вспомнить": {"про": "ключевое_словосочетание"}}\n'
+                "```"
+            )
+            print(color_blue(_mem_hint))
+            mem_lines.append(_mem_hint)
+    except Exception as _e:
+        print(f"[MEM] не удалось показать память: {_e}")
+
+    # --- копируем баннер (+ память, если есть) одним куском, всегда ---
+    try:
+        import pyperclip as _pc2
+        _banner = (
+            f"Привет, {AGENT_NAME}! Я с радостью буду выполнять твои JSON.\n"
+            "Формат:\n"
+            "[произвольный текст]\n"
+            "```text\n"
+            '{"имя_команды": {"параметр": "значение"}}\n'
+            "   ↑ подставь ЛЮБОЕ своё\n"
+            "```\n"
+            "[произвольный текст]\n\n"
+            "Несколько команд — через ||| или через команду \"параллельно\"."
+        )
+        _full = _banner
+        if _inbox_text.strip():
+            _full += "\n\n" + _inbox_text.strip()
+        if mem_lines:
+            _full += "\n\n📝 Из памяти:\n" + "\n".join(mem_lines)
+        print(_banner)
+        _pc2.copy(_full)
+        print(color_blue("📋 Скопировано в буфер обмена."))
+    except Exception as _ce:
+        print(f"[MEM] не удалось скопировать в буфер: {_ce}")
+
+    buffer = []
+    empty_line_count = 0
+    prompt = "> "
+
+    while True:
+        try:
+            line = input(prompt).rstrip('\n')
+        except EOFError:
+            if buffer:
+                print("\n(Ввод отменён)")
+                buffer.clear()
+                empty_line_count = 0
+                prompt = "> "
+                continue
+            break
+        except KeyboardInterrupt:
+            print("\nВыход.")
+            break
+
+        # --- HEREDOC: <<< ... >>> ---
+        if line.strip() == "<<<":
+            raw_lines = []
+            while True:
+                try:
+                    rl = input("| ")
+                except (EOFError, KeyboardInterrupt):
+                    break
+                if rl.strip() == ">>>":
+                    break
+                raw_lines.append(rl)
+            payload = "\n".join(raw_lines)
+            json_part = "\n".join(buffer).strip() if buffer else ""
+            if not json_part:
+                print("(нет JSON перед <<<)")
+                buffer.clear()
+                empty_line_count = 0
+                prompt = "> "
+                continue
+            try:
+                import json as _j
+                obj = _j.loads(json_part)
+                if isinstance(obj, dict) and len(obj) == 1:
+                    k = next(iter(obj))
+                    v = obj[k] if isinstance(obj[k], dict) else {}
+                    if k in ("питон", "выполнить", "запуск"):
+                        v["скрипт"] = payload
+                    else:
+                        v["содержимое"] = payload
+                    obj[k] = v
+                    buffer.clear()
+                    empty_line_count = 0
+                    prompt = "> "
+                    process_command_input(_j.dumps(obj, ensure_ascii=False))
+                    continue
+                else:
+                    print("[HEREDOC] ожидаю JSON с одной командой")
+            except Exception as e:
+                print(f"[HEREDOC] ошибка: {e}")
+            buffer.clear()
+            empty_line_count = 0
+            prompt = "> "
+            continue
+
+        # --- Немедленное выполнение при ||| ---
+        if line and '|||' in line:
+            # "|||" отдельной строкой (или только разделители+пробелы)
+            # = "дальше ещё команды", не выполняем сразу
+            _stripped = line.strip()
+            _only_sep = _stripped and all(c in "| \t" for c in _stripped)
+            if _only_sep:
+                buffer.append(line)
+                empty_line_count = 0
+                prompt = "... "
+                continue
+            buffer.append(line)
+            full_input = '\n'.join(buffer).strip()
+            buffer.clear()
+            empty_line_count = 0
+            prompt = "> "
+            if full_input:
+                process_command_input(full_input)
+            continue
+
+        # --- Пустая строка ---
+        if line == "":
+            empty_line_count += 1
+            # JSON (начинается с { или [) выполняем на 1 пустом Enter,
+            # остальное — на 2 (чтобы вставка многострочного кода не срывалась)
+            _threshold = 2
+            if buffer:
+                _first = buffer[0].lstrip()
+                if _first.startswith(("{", "[")):
+                    _threshold = 1
+            if empty_line_count >= _threshold and buffer:
+                full_input = '\n'.join(buffer).strip()
+                buffer_copy = full_input
+                buffer.clear()
+                empty_line_count = 0
+                prompt = "> "
+                if full_input:
+                    if _looks_like_python(buffer_copy):
+                        _run_as_python(full_input)
+                    elif count_json_objects(buffer_copy) > 1:
+                        # Несколько JSON без ||| — выполняем последовательно
+                        import json as _json_multi
+                        _dec = _json_multi.JSONDecoder()
+                        _txt = buffer_copy.strip()
+                        _idx = 0
+                        _objs = []
+                        while _idx < len(_txt):
+                            while _idx < len(_txt) and _txt[_idx].isspace():
+                                _idx += 1
+                            if _idx >= len(_txt):
+                                break
+                            try:
+                                _obj, _end = _dec.raw_decode(_txt, _idx)
+                            except _json_multi.JSONDecodeError:
+                                break
+                            _objs.append(_txt[_idx:_end])
+                            _idx = _end
+
+                        if len(_objs) >= 2:
+                            _joined = " ||| ".join(_objs)
+                            print(color_blue(
+                                f"ℹ️ Обнаружено {len(_objs)} JSON без ||| — "
+                                f"выполняю последовательно."))
+                            process_command_input(_joined)
+                            print(color_blue(
+                                "\nℹ️ Команды выполнены последовательно."
+                                '\n   Параллельно: {"параллельно": [ ... ]}'
+                                "\n   Отключить это уведомление: "
+                                "разделяйте команды через |||."
+                            ))
+                        else:
+                            warn = ("⚠️ Обнаружено несколько JSON-команд. "
+                                    "Разделяйте их ||| или используйте "
+                                    '{"параллельно": [...]}.')
+                            print(warn)
+                            try:
+                                pyperclip.copy(warn)
+                                print(color_blue("📋 Предупреждение скопировано в буфер обмена."))
+                            except Exception as e:
+                                print(f"⚠️ Не удалось скопировать в буфер: {e}")
+                    else:
+                        process_command_input(buffer_copy)
+                continue
+            buffer.append(line)
+            prompt = "... "
+            continue
+        else:
+            empty_line_count = 0
+
+        buffer.append(line)
+        full_input = '\n'.join(buffer).strip()
+
+        # --- Одиночная строка без {} ---
+        if len(buffer) == 1 and not (line.lstrip().startswith(('{', '[')) or '{' in line):
+            if _looks_like_python(line):
+                # Питон: не выполняем сразу — копим в буфере до 2 пустых строк.
+                # Так вставка многострочного скрипта уходит одним куском.
+                prompt = "... "
+                continue
+            process_command_input(line)
+            buffer.clear()
+            prompt = "> "
+            continue
+
+        # --- Валидный «параллельно» ---
+        if is_parallel_json(full_input):
+            buffer_copy = full_input
+            buffer.clear()
+            empty_line_count = 0
+            prompt = "> "
+            process_command_input(buffer_copy)
+            continue
+
+        prompt = "... "
+
+    print("До свидания.")
+    sys.exit(0)
+
+
+_sensor_core = None
+
+if __name__ == "__main__":
+    main()

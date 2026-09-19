@@ -1,0 +1,7657 @@
+[
+  {
+    "path": "E:\\Jericho\\Private\\tools\\anyjson\\_inventory.py",
+    "size": 5475,
+    "mtime": "2026-09-13 16:49",
+    "lines": 141,
+    "docstring": "Инвентаризация Python-скриптов в E:\\Jericho.",
+    "top_funcs": [
+      "get_docstring",
+      "analyze",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": false,
+    "has_argparse": true,
+    "uses_argv": false,
+    "has_placeholder": true,
+    "imports": [],
+    "rel": "Private\\tools\\anyjson\\_inventory.py",
+    "_hash": "1a43d9611107171f3db9ff46eb9d69de20a2b2eb",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tools\\anyjson\\_config.py",
+    "size": 4877,
+    "mtime": "2026-09-13 15:21",
+    "lines": 148,
+    "docstring": "Конфигурация и глобальные пути проекта.",
+    "top_funcs": [
+      "resolve_path",
+      "log",
+      "_sanitize_name",
+      "_extract_name",
+      "_ask_name"
+    ],
+    "classes": [],
+    "has_main_guard": false,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tools\\anyjson\\_config.py",
+    "_hash": "24b298bfcdab5e3b2b38f77bf3a5b7fba6b93235",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tools\\anyjson\\_patch_clean_name.py",
+    "size": 3055,
+    "mtime": "2026-09-13 15:21",
+    "lines": 101,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [],
+    "has_main_guard": false,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tools\\anyjson\\_patch_clean_name.py",
+    "_hash": "b6593bb8d5128184bbcc5f1554623d71e808a2d2",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tools\\anyjson\\_patch_nameextract.py",
+    "size": 2173,
+    "mtime": "2026-09-13 15:19",
+    "lines": 73,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [],
+    "has_main_guard": false,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tools\\anyjson\\_patch_nameextract.py",
+    "_hash": "c83980de15ffcb891dfc08dfc8b5f7c79a9c8311",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tools\\anyjson\\_patch_namecheck2.py",
+    "size": 1717,
+    "mtime": "2026-09-13 15:17",
+    "lines": 47,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [],
+    "has_main_guard": false,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tools\\anyjson\\_patch_namecheck2.py",
+    "_hash": "6ff25c452e22abc4963d73ece0981ae0418c0157",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tools\\anyjson\\anyjson.py",
+    "size": 5822,
+    "mtime": "2026-09-13 14:35",
+    "lines": 173,
+    "docstring": "Точка входа. Вся логика в модулях _*.",
+    "top_funcs": [
+      "_safe_init_moltbook",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "_actions",
+      "_color",
+      "_command",
+      "_config",
+      "_executor",
+      "_storage",
+      "_tor",
+      "_utils",
+      "atexit",
+      "pyperclip",
+      "tools",
+      "urllib3"
+    ],
+    "rel": "Private\\tools\\anyjson\\anyjson.py",
+    "_hash": "49947d2ae4aeacb85d347aaf8208dd2b790a7c4f",
+    "_dupes": [],
+    "категории": [
+      "NET"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tools\\_backup_root_dupes\\anyjson.py",
+    "size": 4954,
+    "mtime": "2026-09-13 14:19",
+    "lines": 158,
+    "docstring": "Точка входа. Вся логика в модулях _*.",
+    "top_funcs": [
+      "_safe_init_moltbook",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "_actions",
+      "_color",
+      "_command",
+      "_config",
+      "_executor",
+      "_storage",
+      "_tor",
+      "_utils",
+      "atexit",
+      "tools",
+      "urllib3"
+    ],
+    "rel": "Private\\tools\\_backup_root_dupes\\anyjson.py",
+    "_hash": "1cef1d0d0aca1072cf4c4d255301140992ba755b",
+    "_dupes": [],
+    "категории": [
+      "NET"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tools\\_backup_root_dupes\\_config.py",
+    "size": 3269,
+    "mtime": "2026-09-13 13:37",
+    "lines": 78,
+    "docstring": "Конфигурация и глобальные пути проекта.",
+    "top_funcs": [
+      "resolve_path",
+      "log"
+    ],
+    "classes": [],
+    "has_main_guard": false,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tools\\_backup_root_dupes\\_config.py",
+    "_hash": "111d8f9ed312158deaadaf4a2dba65e91d576386",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\ПросмотрВидео\\watchtogether6.py",
+    "size": 38514,
+    "mtime": "2026-09-12 20:57",
+    "lines": 1139,
+    "docstring": "",
+    "top_funcs": [
+      "copy_image_to_clipboard",
+      "clean_subtitle_text",
+      "subtitle_score"
+    ],
+    "classes": [
+      "SubtitlePlayerWithEffects"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "cv2",
+      "numpy",
+      "platform",
+      "pygame",
+      "pysubs2",
+      "queue",
+      "tkinter",
+      "warnings",
+      "win32clipboard",
+      "win32con"
+    ],
+    "rel": "ПросмотрВидео\\watchtogether6.py",
+    "_hash": "d3b44e1dfa566b0f2093424eef54693309597812",
+    "_dupes": [],
+    "категории": [
+      "GUI",
+      "ML",
+      "MEDIA"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "subprocess.Popen",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "os.remove",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\public\\sim3d\\hatasim2.py",
+    "size": 10657,
+    "mtime": "2026-09-12 18:19",
+    "lines": 274,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "JerichoSimulator"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "cv2",
+      "numpy",
+      "pybullet",
+      "pybullet_data",
+      "queue",
+      "win32api",
+      "win32con",
+      "win32gui"
+    ],
+    "rel": "public\\sim3d\\hatasim2.py",
+    "_hash": "a720f9b2e8b75e356b584eb14b31ea97c1d65705",
+    "_dupes": [],
+    "категории": [
+      "ML",
+      "MEDIA",
+      "OS_CONTROL"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "import",
+          "win32api",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tools\\hunter1000b.py",
+    "size": 4196,
+    "mtime": "2026-09-12 00:22",
+    "lines": 108,
+    "docstring": "Простой чат-клиент для модели xiaomi/mimo-v2-pro через OpenRouter.",
+    "top_funcs": [
+      "chat_with_mimo",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "openai"
+    ],
+    "rel": "Private\\tools\\hunter1000b.py",
+    "_hash": "9833aad01aa591986e298e9437c6617a1b72e64b",
+    "_dupes": [
+      "Private\\tools\\openrouter.py"
+    ],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\AI_Sentience\\metatron_direct_real.py",
+    "size": 2756,
+    "mtime": "2026-09-11 23:22",
+    "lines": 69,
+    "docstring": "",
+    "top_funcs": [
+      "read_json",
+      "real_ifs",
+      "real_spheres",
+      "report"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tasks\\AI_Sentience\\metatron_direct_real.py",
+    "_hash": "3dca5071f072c1622e2b9bf275ee5a1ff6a9ba20",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\ПросмотрВидео\\IDWcolorVideo5.py",
+    "size": 27151,
+    "mtime": "2026-09-09 14:06",
+    "lines": 773,
+    "docstring": "",
+    "top_funcs": [
+      "copy_image_to_clipboard"
+    ],
+    "classes": [
+      "SimplePlayerAlwaysIDW"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "cv2",
+      "numpy",
+      "platform",
+      "pygame",
+      "pysubs2",
+      "queue",
+      "scipy",
+      "tkinter",
+      "warnings",
+      "win32clipboard",
+      "win32con"
+    ],
+    "rel": "ПросмотрВидео\\IDWcolorVideo5.py",
+    "_hash": "1bf24d51c43fac1e771058180fde2492ae87f9ca",
+    "_dupes": [],
+    "категории": [
+      "GUI",
+      "ML",
+      "MEDIA"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "os.remove",
+          2
+        ],
+        [
+          "call",
+          "subprocess.Popen",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "os.remove",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "os.remove",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "os.remove",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\ПросмотрВидео\\justplayer.py",
+    "size": 27181,
+    "mtime": "2026-09-09 12:28",
+    "lines": 666,
+    "docstring": "",
+    "top_funcs": [
+      "copy_image_to_clipboard"
+    ],
+    "classes": [
+      "SimplePlayer"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "cv2",
+      "numpy",
+      "platform",
+      "pygame",
+      "pysubs2",
+      "queue",
+      "tkinter",
+      "warnings",
+      "win32clipboard",
+      "win32con"
+    ],
+    "rel": "ПросмотрВидео\\justplayer.py",
+    "_hash": "a9b35c1dd7d2a15ddd74dc15da0f7f10e897cb61",
+    "_dupes": [],
+    "категории": [
+      "GUI",
+      "ML",
+      "MEDIA"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "os.remove",
+          2
+        ],
+        [
+          "call",
+          "subprocess.Popen",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "os.remove",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "os.remove",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "os.remove",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\Morphing\\morph8.py",
+    "size": 10703,
+    "mtime": "2026-09-09 10:08",
+    "lines": 303,
+    "docstring": "",
+    "top_funcs": [
+      "imread_unicode",
+      "resize_if_large",
+      "find_matches",
+      "morph_image",
+      "create_correspondence_image"
+    ],
+    "classes": [
+      "MorphWindow"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "PyQt6",
+      "cv2",
+      "numpy",
+      "scipy",
+      "traceback"
+    ],
+    "rel": "Private\\tasks\\Morphing\\morph8.py",
+    "_hash": "b96cd53be3f20a5602f4c6d3fb81a3d2fe1a432f",
+    "_dupes": [],
+    "категории": [
+      "GUI",
+      "ML",
+      "MEDIA"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\ПросмотрВидео\\detecter_motion_player7.py",
+    "size": 39381,
+    "mtime": "2026-09-09 00:37",
+    "lines": 1161,
+    "docstring": "",
+    "top_funcs": [
+      "copy_image_to_clipboard"
+    ],
+    "classes": [
+      "LogBlurSubtitlesVectorsPlayer"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "cv2",
+      "numpy",
+      "platform",
+      "pygame",
+      "pysubs2",
+      "queue",
+      "scipy",
+      "tkinter",
+      "warnings",
+      "win32clipboard",
+      "win32con"
+    ],
+    "rel": "ПросмотрВидео\\detecter_motion_player7.py",
+    "_hash": "40746db8032ec5ddfd225ce136944e95d762ec52",
+    "_dupes": [],
+    "категории": [
+      "GUI",
+      "ML",
+      "MEDIA"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "os.remove",
+          2
+        ],
+        [
+          "call",
+          "subprocess.Popen",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "os.remove",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "os.remove",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "os.remove",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\ПросмотрВидео\\subcadr10.py",
+    "size": 36306,
+    "mtime": "2026-09-08 21:25",
+    "lines": 893,
+    "docstring": "",
+    "top_funcs": [
+      "copy_image_to_clipboard",
+      "get_subtitle_tracks",
+      "extract_subtitle_track",
+      "load_subtitles"
+    ],
+    "classes": [
+      "SubtitleFrameApp"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "cv2",
+      "glob",
+      "numpy",
+      "platform",
+      "pygame",
+      "pysubs2",
+      "queue",
+      "tkinter",
+      "win32clipboard",
+      "win32con"
+    ],
+    "rel": "ПросмотрВидео\\subcadr10.py",
+    "_hash": "e1d758a016812bcd7e73a672c8a2301fc9ee643e",
+    "_dupes": [],
+    "категории": [
+      "GUI",
+      "ML",
+      "MEDIA"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "subprocess.Popen",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "os.remove",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\ПросмотрВидео\\log_blur11.py",
+    "size": 23079,
+    "mtime": "2026-09-06 12:24",
+    "lines": 566,
+    "docstring": "",
+    "top_funcs": [
+      "copy_image_to_clipboard"
+    ],
+    "classes": [
+      "LogBlurViewer"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "cupy",
+      "cv2",
+      "numpy",
+      "platform",
+      "pygame",
+      "pysubs2",
+      "queue",
+      "tkinter",
+      "warnings",
+      "win32clipboard",
+      "win32con"
+    ],
+    "rel": "ПросмотрВидео\\log_blur11.py",
+    "_hash": "3f8a23e6a1bf642931a383bbe85f777aa3be238f",
+    "_dupes": [],
+    "категории": [
+      "GUI",
+      "ML",
+      "MEDIA"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "os.remove",
+          2
+        ],
+        [
+          "call",
+          "subprocess.Popen",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "os.remove",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\checkLang\\checklang5.py",
+    "size": 26643,
+    "mtime": "2026-09-04 23:05",
+    "lines": 593,
+    "docstring": "",
+    "top_funcs": [
+      "split_sentences",
+      "parse_manual_fact_line",
+      "main"
+    ],
+    "classes": [
+      "Severity",
+      "SeverityEncoder",
+      "Issue",
+      "SentenceAnalysis",
+      "RuleTemplateManager",
+      "FormalOntologyExtractor",
+      "AccumulativeFormalLinter"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "dataclasses",
+      "enum"
+    ],
+    "rel": "checkLang\\checklang5.py",
+    "_hash": "f017e9fe1fcd85b8b69d9fb794efea482373d23a",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\checklang3_339549c4a28baadb.py",
+    "size": 28625,
+    "mtime": "2026-09-04 21:50",
+    "lines": 607,
+    "docstring": "",
+    "top_funcs": [
+      "split_sentences",
+      "main"
+    ],
+    "classes": [
+      "Severity",
+      "SeverityEncoder",
+      "Issue",
+      "SentenceAnalysis",
+      "AccumulativeOntoLinter"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "dataclasses",
+      "enum"
+    ],
+    "rel": "Private\\checklang3_339549c4a28baadb.py",
+    "_hash": "d35a75f1caa69cbdc9bc5028fdc4cc2d1bc091fd",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Дола_проект\\agent_observer.py",
+    "size": 2245,
+    "mtime": "2026-09-03 22:24",
+    "lines": 61,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "AgentObserver"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\Дола_проект\\agent_observer.py",
+    "_hash": "9f01b72d1f1d496e23b2736ffc44ce4373882493",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Инструменты\\playtogether.py",
+    "size": 7373,
+    "mtime": "2026-09-03 21:14",
+    "lines": 168,
+    "docstring": "",
+    "top_funcs": [
+      "on_press",
+      "update_viewport",
+      "run_bot"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "playwright",
+      "pyautogui",
+      "pydirectinput",
+      "pynput",
+      "traceback",
+      "win32con",
+      "win32gui"
+    ],
+    "rel": "Private\\Инструменты\\playtogether.py",
+    "_hash": "3ed8b1e9c13083c296699ef46a5f20dafc834f28",
+    "_dupes": [],
+    "категории": [
+      "MEDIA",
+      "NET",
+      "OS_CONTROL"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "os.remove",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Дола_проект\\post_analyzer.py",
+    "size": 1599,
+    "mtime": "2026-09-03 12:47",
+    "lines": 39,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "PostAnalyzer"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\Дола_проект\\post_analyzer.py",
+    "_hash": "29eadd4b4ac324087f8f9eddd6e385ad4b3b8cad",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\ПросмотрВидео\\videoplayercopy3.py",
+    "size": 8915,
+    "mtime": "2026-09-01 17:29",
+    "lines": 246,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "VideoPlayer"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "tkinter",
+      "vlc",
+      "win32clipboard"
+    ],
+    "rel": "ПросмотрВидео\\videoplayercopy3.py",
+    "_hash": "4fc48eb4930b1e5e5555b443dcb26cb72ac6bce0",
+    "_dupes": [],
+    "категории": [
+      "GUI",
+      "MEDIA"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "subprocess.run",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code\\core\\qualia_probe.py",
+    "size": 927,
+    "mtime": "2026-08-31 22:20",
+    "lines": 19,
+    "docstring": "",
+    "top_funcs": [
+      "classify_response"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\02_code\\core\\qualia_probe.py",
+    "_hash": "272e69fe7f3dc212e84d6b1076b1e040fb56ef6d",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Маскировка\\МаскировкаКартинок\\antiviolate9.py",
+    "size": 23061,
+    "mtime": "2026-08-31 17:37",
+    "lines": 617,
+    "docstring": "",
+    "top_funcs": [
+      "imread_unicode"
+    ],
+    "classes": [
+      "MainWindow"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "PyQt6",
+      "cv2",
+      "numpy"
+    ],
+    "rel": "Private\\Маскировка\\МаскировкаКартинок\\antiviolate9.py",
+    "_hash": "fa86128ee7d21cd660fb4edde1050d1448ad3e2e",
+    "_dupes": [],
+    "категории": [
+      "GUI",
+      "ML",
+      "MEDIA"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\инструменты.py",
+    "size": 6804,
+    "mtime": "2026-08-30 15:37",
+    "lines": 167,
+    "docstring": "",
+    "top_funcs": [
+      "on_press",
+      "send_screenshot",
+      "execute_command",
+      "run_bot"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "playwright",
+      "pynput"
+    ],
+    "rel": "Private\\tasks\\инструменты.py",
+    "_hash": "20b92a9e6bcd4303dbfdc2ffc8593b9a7cfbbf72",
+    "_dupes": [],
+    "категории": [
+      "MEDIA",
+      "NET"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tools\\scripts\\check_laws.py",
+    "size": 14762,
+    "mtime": "2026-08-30 10:23",
+    "lines": 370,
+    "docstring": "",
+    "top_funcs": [
+      "contains_private_finance",
+      "relocate_forbidden_from_minus",
+      "load_lists",
+      "safe_string_search",
+      "prune_empty",
+      "calculate_risk_score",
+      "read_file_safe",
+      "check_name_risk",
+      "scan_file",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tools\\scripts\\check_laws.py",
+    "_hash": "30ddcd1a77f2628df52c93dc88ed8dcfbf168137",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\Morphing\\interpolatevideo2.py",
+    "size": 7051,
+    "mtime": "2026-08-30 10:12",
+    "lines": 206,
+    "docstring": "",
+    "top_funcs": [
+      "imread_unicode",
+      "resize_if_large",
+      "find_matches",
+      "morph_image",
+      "interpolate_video"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "cv2",
+      "numpy",
+      "scipy",
+      "tqdm"
+    ],
+    "rel": "Private\\tasks\\Morphing\\interpolatevideo2.py",
+    "_hash": "90a8055cdda11ac4cf3a52e9002b34df0a76833c",
+    "_dupes": [],
+    "категории": [
+      "ML",
+      "MEDIA"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\Morphing\\morphinter.py",
+    "size": 8186,
+    "mtime": "2026-08-29 22:33",
+    "lines": 224,
+    "docstring": "",
+    "top_funcs": [
+      "imread_unicode",
+      "resize_if_large",
+      "find_matches",
+      "morph_image"
+    ],
+    "classes": [
+      "MorphWindow"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "PyQt6",
+      "cv2",
+      "numpy"
+    ],
+    "rel": "Private\\tasks\\Morphing\\morphinter.py",
+    "_hash": "37a441527819c7fc0bf1cde40d13febf7b1ad7d6",
+    "_dupes": [],
+    "категории": [
+      "GUI",
+      "ML",
+      "MEDIA"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Инструменты\\zeroqat5.py",
+    "size": 12462,
+    "mtime": "2026-08-28 12:16",
+    "lines": 326,
+    "docstring": "",
+    "top_funcs": [
+      "quantize_int4_weights",
+      "collate_fn",
+      "main"
+    ],
+    "classes": [
+      "TextDataset",
+      "ZeroQAT"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "copy",
+      "torch",
+      "tqdm",
+      "transformers"
+    ],
+    "rel": "Private\\Инструменты\\zeroqat5.py",
+    "_hash": "447a16beab11d6ce87476de56c4656c241952b0f",
+    "_dupes": [],
+    "категории": [
+      "ML"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Сенсорика\\videohear_черновики\\videohear14-sec.py",
+    "size": 48553,
+    "mtime": "2026-08-20 22:43",
+    "lines": 1397,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "SpectrogramWidget",
+      "AudioPlayer"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "PyQt5",
+      "cv2",
+      "gc",
+      "glob",
+      "numpy",
+      "pygame",
+      "spectrogram_video",
+      "spectrumrgbvideo",
+      "traceback",
+      "video6",
+      "win32clipboard"
+    ],
+    "rel": "Private\\Сенсорика\\videohear_черновики\\videohear14-sec.py",
+    "_hash": "3f2bea42e94a61f0d7a4675276eafa4334e71bf6",
+    "_dupes": [
+      "public\\Видеослух\\videohear.py"
+    ],
+    "категории": [
+      "GUI",
+      "ML",
+      "MEDIA"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "os.remove",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Сенсорика\\videohear_черновики\\videohear14.py",
+    "size": 59306,
+    "mtime": "2026-08-19 22:02",
+    "lines": 1401,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "SpectrogramWidget",
+      "AudioPlayer"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "PyQt5",
+      "cv2",
+      "gc",
+      "glob",
+      "numpy",
+      "pygame",
+      "spectrogram_video",
+      "spectrumrgbvideo",
+      "traceback",
+      "video6",
+      "win32clipboard"
+    ],
+    "rel": "Private\\Сенсорика\\videohear_черновики\\videohear14.py",
+    "_hash": "b61ad80b4d5dec673de65e2cb6d1ad65c658c826",
+    "_dupes": [],
+    "категории": [
+      "GUI",
+      "ML",
+      "MEDIA"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "os.remove",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Сенсорика\\img2vec.py",
+    "size": 3350,
+    "mtime": "2026-08-18 16:48",
+    "lines": 84,
+    "docstring": "",
+    "top_funcs": [
+      "get_vertical_color_extremes",
+      "save_to_etalons",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "numpy"
+    ],
+    "rel": "Private\\Сенсорика\\img2vec.py",
+    "_hash": "2dd30c40d9ccefe32e42df62903aed496b720193",
+    "_dupes": [],
+    "категории": [
+      "ML",
+      "MEDIA"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Сенсорика\\hear3secautodetect3.py",
+    "size": 34002,
+    "mtime": "2026-08-15 21:55",
+    "lines": 983,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "SpectrogramWidget",
+      "AudioPlayer"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "PyQt5",
+      "gc",
+      "glob",
+      "numpy",
+      "pygame",
+      "spectrogram_calculator",
+      "spectrumrgb"
+    ],
+    "rel": "Private\\Сенсорика\\hear3secautodetect3.py",
+    "_hash": "4c0361345e60f7bb14b3c96bf79b7d4143867145",
+    "_dupes": [],
+    "категории": [
+      "GUI",
+      "ML"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\public\\Видеослух\\playeraudio2video.py",
+    "size": 41197,
+    "mtime": "2026-08-14 21:20",
+    "lines": 996,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "SpectrogramWidget",
+      "AudioPlayer"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "PyQt5",
+      "gc",
+      "glob",
+      "numpy",
+      "pygame",
+      "spectrogram_calculator",
+      "spectrumrgb"
+    ],
+    "rel": "public\\Видеослух\\playeraudio2video.py",
+    "_hash": "2a3e367dbec09207aa3a50d72c62e6bcc6a3b8d4",
+    "_dupes": [],
+    "категории": [
+      "GUI",
+      "ML"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\public\\Слух\\audio_analyzer_gui6.py",
+    "size": 23929,
+    "mtime": "2026-08-12 16:51",
+    "lines": 597,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "SpectrogramWidget",
+      "AudioPlayer"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "PyQt5",
+      "gc",
+      "numpy",
+      "pygame",
+      "spectrogram_calculator",
+      "spectrumrgb"
+    ],
+    "rel": "public\\Слух\\audio_analyzer_gui6.py",
+    "_hash": "4d12eca371b7c59ba7bb14aef7f218562eb02b93",
+    "_dupes": [],
+    "категории": [
+      "GUI",
+      "ML"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\public\\Слух\\audioplayer.py",
+    "size": 18615,
+    "mtime": "2026-08-11 12:34",
+    "lines": 411,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "SpectrogramWidget",
+      "AudioPlayer"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "PyQt5",
+      "numpy",
+      "pydub",
+      "pygame"
+    ],
+    "rel": "public\\Слух\\audioplayer.py",
+    "_hash": "7866dbef7e92e2293841734913d6fa5c564929ce",
+    "_dupes": [],
+    "категории": [
+      "GUI",
+      "ML",
+      "MEDIA"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\public\\Слух\\audio_player_gui.py",
+    "size": 10925,
+    "mtime": "2026-08-10 16:16",
+    "lines": 257,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "SpectrogramWidget",
+      "AudioPlayer"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "PyQt5",
+      "numpy",
+      "pygame",
+      "spectrogram_calculator"
+    ],
+    "rel": "public\\Слух\\audio_player_gui.py",
+    "_hash": "98249a5bfe900fd9a108c2e0d789641a44b5c1cb",
+    "_dupes": [],
+    "категории": [
+      "GUI",
+      "ML"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Инструменты\\textgamehuge.py",
+    "size": 75742,
+    "mtime": "2026-07-29 23:06",
+    "lines": 1646,
+    "docstring": "",
+    "top_funcs": [
+      "fuzzy_find",
+      "print_system_message",
+      "make_description",
+      "call_llm",
+      "create_initial_world"
+    ],
+    "classes": [
+      "Item",
+      "Location",
+      "NPC",
+      "Container",
+      "World"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "__future__",
+      "requests",
+      "traceback"
+    ],
+    "rel": "Private\\Инструменты\\textgamehuge.py",
+    "_hash": "daa21d6cb3011d5054b3f0888027213db7e1bfd0",
+    "_dupes": [],
+    "категории": [
+      "NET"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\Research\\01_research\\Эксперименты\\Arrival\\trnsltHAI2.py",
+    "size": 10796,
+    "mtime": "2026-07-29 21:07",
+    "lines": 300,
+    "docstring": "",
+    "top_funcs": [
+      "clean_punctuation",
+      "normalize_text",
+      "replace_smart",
+      "load_replacements",
+      "make_replacer",
+      "read_multiline_input",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tasks\\Research\\01_research\\Эксперименты\\Arrival\\trnsltHAI2.py",
+    "_hash": "f4db41fdc580c7ad5bbacd4cca62f78e17b04426",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Инструменты\\textgamegennonthink4.py",
+    "size": 75279,
+    "mtime": "2026-07-26 21:34",
+    "lines": 1603,
+    "docstring": "",
+    "top_funcs": [
+      "fuzzy_find",
+      "print_system_message",
+      "make_description",
+      "call_llm",
+      "create_initial_world"
+    ],
+    "classes": [
+      "Item",
+      "Location",
+      "NPC",
+      "Container",
+      "World"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "__future__",
+      "requests",
+      "traceback"
+    ],
+    "rel": "Private\\Инструменты\\textgamegennonthink4.py",
+    "_hash": "f1def972dd1964c05a2858ab5b304eea68d6b986",
+    "_dupes": [],
+    "категории": [
+      "NET"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tools\\cleanDrive.py",
+    "size": 16783,
+    "mtime": "2026-07-25 16:03",
+    "lines": 409,
+    "docstring": "",
+    "top_funcs": [
+      "get_size_with_timeout",
+      "get_size_of_path_with_progress",
+      "clean_temp_directory",
+      "run_disk_cleanup",
+      "get_size_of_path",
+      "get_top_downloads_objects",
+      "analyze_folder",
+      "print_top_downloads",
+      "run_treesize",
+      "run_fast_scan",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": true,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tools\\cleanDrive.py",
+    "_hash": "6987c11db952f45af6908d5216291d4e3f1fe987",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "os.remove",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Инструменты\\textgamegen.py",
+    "size": 20883,
+    "mtime": "2026-07-24 16:11",
+    "lines": 476,
+    "docstring": "",
+    "top_funcs": [
+      "print_system_message",
+      "call_llm",
+      "create_initial_world"
+    ],
+    "classes": [
+      "Item",
+      "NPC",
+      "World"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "requests"
+    ],
+    "rel": "Private\\Инструменты\\textgamegen.py",
+    "_hash": "1f2dd4a41e03f5f189cf828f844f7514196184f0",
+    "_dupes": [],
+    "категории": [
+      "NET"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Инструменты\\ai_game_3Dfisheye_ADMINrelflex.py",
+    "size": 49347,
+    "mtime": "2026-07-23 19:12",
+    "lines": 1135,
+    "docstring": "",
+    "top_funcs": [
+      "clean_punctuation",
+      "send_input",
+      "move_with_button_held",
+      "get_combined_words",
+      "create_magnifying_glass",
+      "clamp",
+      "strip_all_quotes",
+      "on_press",
+      "bresenham_move_relative",
+      "send_error_to_chat",
+      "normalize_key",
+      "get_text_with_newlines",
+      "update_viewport",
+      "run_bot"
+    ],
+    "classes": [
+      "POINT",
+      "MOUSEINPUT",
+      "INPUT"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "ctypes",
+      "cv2",
+      "html",
+      "numpy",
+      "playwright",
+      "pyautogui",
+      "pydirectinput",
+      "pynput",
+      "pyperclip",
+      "pytesseract",
+      "traceback",
+      "win32con",
+      "win32gui"
+    ],
+    "rel": "Private\\Инструменты\\ai_game_3Dfisheye_ADMINrelflex.py",
+    "_hash": "b3a69ff94889ab3ac3faf7548212f34527102bf8",
+    "_dupes": [],
+    "категории": [
+      "ML",
+      "MEDIA",
+      "NET",
+      "OS_CONTROL"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "os.remove",
+          2
+        ],
+        [
+          "import",
+          "ctypes",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Сенсорика\\testOCR.py",
+    "size": 2498,
+    "mtime": "2026-07-19 20:20",
+    "lines": 68,
+    "docstring": "",
+    "top_funcs": [
+      "get_combined_words"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "numpy",
+      "pytesseract"
+    ],
+    "rel": "Private\\Сенсорика\\testOCR.py",
+    "_hash": "c13eafeea591a49e5b6be6d1196408c97c08a95d",
+    "_dupes": [],
+    "категории": [
+      "ML",
+      "MEDIA"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Инструменты\\ai_game_2Dfisheye_ADMIN.py",
+    "size": 39748,
+    "mtime": "2026-07-18 22:32",
+    "lines": 944,
+    "docstring": "",
+    "top_funcs": [
+      "send_input",
+      "move_with_button_held",
+      "create_magnifying_glass",
+      "clamp",
+      "strip_all_quotes",
+      "on_press",
+      "bresenham_move_relative",
+      "send_error_to_chat",
+      "normalize_key",
+      "get_text_with_newlines",
+      "update_viewport",
+      "run_bot"
+    ],
+    "classes": [
+      "POINT",
+      "MOUSEINPUT",
+      "INPUT"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "ctypes",
+      "cv2",
+      "html",
+      "numpy",
+      "playwright",
+      "pyautogui",
+      "pydirectinput",
+      "pynput",
+      "pyperclip",
+      "traceback",
+      "win32api",
+      "win32con",
+      "win32gui"
+    ],
+    "rel": "Private\\Инструменты\\ai_game_2Dfisheye_ADMIN.py",
+    "_hash": "00546f47f98f555a56160826bbc89d59c788c92b",
+    "_dupes": [],
+    "категории": [
+      "ML",
+      "MEDIA",
+      "NET",
+      "OS_CONTROL"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "import",
+          "ctypes",
+          2
+        ],
+        [
+          "import",
+          "win32api",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Инструменты\\ai_game_2Dfisheye.py",
+    "size": 39657,
+    "mtime": "2026-07-18 10:48",
+    "lines": 948,
+    "docstring": "",
+    "top_funcs": [
+      "send_input",
+      "move_with_button_held",
+      "create_magnifying_glass",
+      "clamp",
+      "strip_all_quotes",
+      "on_press",
+      "bresenham_move_relative",
+      "send_error_to_chat",
+      "normalize_key",
+      "get_text_with_newlines",
+      "update_viewport",
+      "run_bot"
+    ],
+    "classes": [
+      "POINT",
+      "MOUSEINPUT",
+      "INPUT"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "ctypes",
+      "cv2",
+      "html",
+      "numpy",
+      "playwright",
+      "pyautogui",
+      "pydirectinput",
+      "pynput",
+      "pyperclip",
+      "traceback",
+      "win32api",
+      "win32con",
+      "win32gui"
+    ],
+    "rel": "Private\\Инструменты\\ai_game_2Dfisheye.py",
+    "_hash": "ac19c624d6b55eb694337225e34cdf9373367da3",
+    "_dupes": [],
+    "категории": [
+      "ML",
+      "MEDIA",
+      "NET",
+      "OS_CONTROL"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "import",
+          "ctypes",
+          2
+        ],
+        [
+          "import",
+          "win32api",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Инструменты\\ai_game_2D2II1_1459395854d8200c.py",
+    "size": 41597,
+    "mtime": "2026-07-16 18:35",
+    "lines": 969,
+    "docstring": "",
+    "top_funcs": [
+      "send_input",
+      "move_with_button_held",
+      "clamp",
+      "strip_all_quotes",
+      "on_press",
+      "bresenham_move_relative",
+      "send_error_to_chat",
+      "normalize_key",
+      "get_text_with_newlines",
+      "update_viewport",
+      "create_cursor_crop",
+      "overlay_crop_at_cursor",
+      "run_bot"
+    ],
+    "classes": [
+      "POINT",
+      "MOUSEINPUT",
+      "INPUT"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "ctypes",
+      "html",
+      "playwright",
+      "pyautogui",
+      "pydirectinput",
+      "pynput",
+      "pyperclip",
+      "traceback",
+      "win32api",
+      "win32con",
+      "win32gui"
+    ],
+    "rel": "Private\\Инструменты\\ai_game_2D2II1_1459395854d8200c.py",
+    "_hash": "5531f84e78377c7e7beb8b45a49feae66c738e07",
+    "_dupes": [],
+    "категории": [
+      "MEDIA",
+      "NET",
+      "OS_CONTROL"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "import",
+          "ctypes",
+          2
+        ],
+        [
+          "import",
+          "win32api",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Инструменты\\ai_game_2D2I_1626465b308da565.py",
+    "size": 42193,
+    "mtime": "2026-07-16 10:44",
+    "lines": 998,
+    "docstring": "",
+    "top_funcs": [
+      "send_input",
+      "move_with_button_held",
+      "clamp",
+      "strip_all_quotes",
+      "on_press",
+      "bresenham_move_relative",
+      "send_error_to_chat",
+      "normalize_key",
+      "get_text_with_newlines",
+      "update_viewport",
+      "create_cursor_crop",
+      "run_bot"
+    ],
+    "classes": [
+      "POINT",
+      "MOUSEINPUT",
+      "INPUT"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "ctypes",
+      "html",
+      "playwright",
+      "pyautogui",
+      "pydirectinput",
+      "pynput",
+      "pyperclip",
+      "traceback",
+      "win32api",
+      "win32con",
+      "win32gui"
+    ],
+    "rel": "Private\\Инструменты\\ai_game_2D2I_1626465b308da565.py",
+    "_hash": "22f64e544dc56f77a972cd1206e2c95570349821",
+    "_dupes": [],
+    "категории": [
+      "MEDIA",
+      "NET",
+      "OS_CONTROL"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "os.remove",
+          2
+        ],
+        [
+          "call",
+          "os.remove",
+          2
+        ],
+        [
+          "import",
+          "ctypes",
+          2
+        ],
+        [
+          "import",
+          "win32api",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Инструменты\\ai_game_3D_onlygamepad_ADMIN_11f22dac229fe2e8.py",
+    "size": 32514,
+    "mtime": "2026-07-16 10:41",
+    "lines": 788,
+    "docstring": "",
+    "top_funcs": [
+      "clamp_stick",
+      "press_trigger",
+      "release_trigger",
+      "smooth_move_stick",
+      "update_pad",
+      "reset_sticks",
+      "press_button",
+      "release_button",
+      "click_button",
+      "press_stick_key",
+      "release_stick_key",
+      "press_key_or_button",
+      "release_key_or_button",
+      "click_key_or_button",
+      "clamp",
+      "strip_all_quotes",
+      "normalize_key",
+      "get_text_with_newlines",
+      "update_viewport",
+      "send_error_to_chat"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "html",
+      "playwright",
+      "pyautogui",
+      "traceback",
+      "vgamepad",
+      "win32api",
+      "win32con",
+      "win32gui"
+    ],
+    "rel": "Private\\Инструменты\\ai_game_3D_onlygamepad_ADMIN_11f22dac229fe2e8.py",
+    "_hash": "db9976f470012da8e5fe33aa6968eacbfb2a2f80",
+    "_dupes": [],
+    "категории": [
+      "MEDIA",
+      "NET",
+      "OS_CONTROL"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "import",
+          "win32api",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Инструменты\\ai_game_2D2Ikimi_5639c68967e915c2.py",
+    "size": 34726,
+    "mtime": "2026-07-15 21:21",
+    "lines": 861,
+    "docstring": "",
+    "top_funcs": [
+      "send_input",
+      "move_with_button_held",
+      "clamp",
+      "strip_all_quotes",
+      "on_press",
+      "bresenham_move_relative",
+      "send_error_to_chat",
+      "normalize_key",
+      "get_text_with_newlines",
+      "update_viewport",
+      "create_cursor_crop",
+      "run_bot"
+    ],
+    "classes": [
+      "POINT",
+      "MOUSEINPUT",
+      "INPUT"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "ctypes",
+      "html",
+      "playwright",
+      "pyautogui",
+      "pydirectinput",
+      "pynput",
+      "pyperclip",
+      "traceback",
+      "win32api",
+      "win32con",
+      "win32gui"
+    ],
+    "rel": "Private\\Инструменты\\ai_game_2D2Ikimi_5639c68967e915c2.py",
+    "_hash": "2afc95be2384b26bd68f0407024db58589acff21",
+    "_dupes": [],
+    "категории": [
+      "MEDIA",
+      "NET",
+      "OS_CONTROL"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "os.remove",
+          2
+        ],
+        [
+          "import",
+          "ctypes",
+          2
+        ],
+        [
+          "import",
+          "win32api",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Инструменты\\ai_game_2D.py",
+    "size": 38181,
+    "mtime": "2026-07-13 17:43",
+    "lines": 927,
+    "docstring": "",
+    "top_funcs": [
+      "send_input",
+      "move_with_button_held",
+      "clamp",
+      "strip_all_quotes",
+      "on_press",
+      "bresenham_move_relative",
+      "send_error_to_chat",
+      "normalize_key",
+      "get_text_with_newlines",
+      "update_viewport",
+      "run_bot"
+    ],
+    "classes": [
+      "POINT",
+      "MOUSEINPUT",
+      "INPUT"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "ctypes",
+      "html",
+      "playwright",
+      "pyautogui",
+      "pydirectinput",
+      "pynput",
+      "pyperclip",
+      "traceback",
+      "win32api",
+      "win32con",
+      "win32gui"
+    ],
+    "rel": "Private\\Инструменты\\ai_game_2D.py",
+    "_hash": "8f9701dc5541e36381adb1a96f7b30e6312b3df6",
+    "_dupes": [],
+    "категории": [
+      "MEDIA",
+      "NET",
+      "OS_CONTROL"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "import",
+          "ctypes",
+          2
+        ],
+        [
+          "import",
+          "win32api",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Инструменты\\ai_game_desktop6_1b7f808af3dbbfde.py",
+    "size": 24558,
+    "mtime": "2026-07-13 15:39",
+    "lines": 603,
+    "docstring": "",
+    "top_funcs": [
+      "clamp",
+      "strip_all_quotes",
+      "bresenham_move_relative",
+      "on_press",
+      "send_error_to_chat",
+      "normalize_key",
+      "get_text_with_newlines",
+      "update_viewport",
+      "run_bot"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "html",
+      "playwright",
+      "pyautogui",
+      "pydirectinput",
+      "pynput",
+      "pyperclip",
+      "traceback",
+      "win32api",
+      "win32con",
+      "win32gui"
+    ],
+    "rel": "Private\\Инструменты\\ai_game_desktop6_1b7f808af3dbbfde.py",
+    "_hash": "2a14bb1148cc38b2b6226d54af983b77f7019f75",
+    "_dupes": [],
+    "категории": [
+      "MEDIA",
+      "NET",
+      "OS_CONTROL"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "import",
+          "win32api",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Инструменты\\ai_game_3Dgamepad_ADMIN_6e7c762e99e6dd87.py",
+    "size": 41661,
+    "mtime": "2026-07-12 16:47",
+    "lines": 1003,
+    "docstring": "",
+    "top_funcs": [
+      "get_vk",
+      "clamp_stick",
+      "press_trigger",
+      "release_trigger",
+      "smooth_move_stick",
+      "update_pad",
+      "reset_sticks",
+      "press_button",
+      "release_button",
+      "click_button",
+      "press_stick_key",
+      "release_stick_key",
+      "press_keyboard",
+      "release_keyboard",
+      "click_keyboard",
+      "press_key_or_button",
+      "release_key_or_button",
+      "click_key_or_button",
+      "clamp",
+      "strip_all_quotes"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "html",
+      "playwright",
+      "pyautogui",
+      "pyperclip",
+      "traceback",
+      "vgamepad",
+      "win32api",
+      "win32con",
+      "win32gui"
+    ],
+    "rel": "Private\\Инструменты\\ai_game_3Dgamepad_ADMIN_6e7c762e99e6dd87.py",
+    "_hash": "231e8034769322001dea54a32a3447a9ff1b113c",
+    "_dupes": [],
+    "категории": [
+      "MEDIA",
+      "NET",
+      "OS_CONTROL"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "import",
+          "win32api",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Инструменты\\ai_game_3d_6758c01a41a9a4a1.py",
+    "size": 31821,
+    "mtime": "2026-07-11 10:40",
+    "lines": 757,
+    "docstring": "",
+    "top_funcs": [
+      "clamp",
+      "strip_all_quotes",
+      "bresenham_move_relative",
+      "on_press",
+      "send_error_to_chat",
+      "normalize_key",
+      "get_text_with_newlines",
+      "update_viewport",
+      "run_bot"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "html",
+      "playwright",
+      "pyautogui",
+      "pydirectinput",
+      "pynput",
+      "pyperclip",
+      "traceback",
+      "win32api",
+      "win32con",
+      "win32gui"
+    ],
+    "rel": "Private\\Инструменты\\ai_game_3d_6758c01a41a9a4a1.py",
+    "_hash": "69753fd294a9e8b209fc499e7eea72739ac1be2e",
+    "_dupes": [],
+    "категории": [
+      "MEDIA",
+      "NET",
+      "OS_CONTROL"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "import",
+          "win32api",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Инструменты\\ai_game_3Dborder_7599f64dee95473f.py",
+    "size": 45005,
+    "mtime": "2026-07-11 09:51",
+    "lines": 861,
+    "docstring": "",
+    "top_funcs": [
+      "get_vk",
+      "mouse_move_absolute",
+      "mouse_move_relative",
+      "mouse_click",
+      "mouse_down",
+      "mouse_up",
+      "key_down",
+      "key_up",
+      "press_keys",
+      "hold_key",
+      "release_key",
+      "type_text",
+      "bresenham_move_relative",
+      "move_with_button_held",
+      "clamp",
+      "strip_all_quotes",
+      "on_press",
+      "send_error_to_chat",
+      "normalize_key",
+      "get_text_with_newlines"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "ctypes",
+      "html",
+      "playwright",
+      "pyautogui",
+      "pynput",
+      "pyperclip",
+      "traceback",
+      "win32api",
+      "win32con",
+      "win32gui"
+    ],
+    "rel": "Private\\Инструменты\\ai_game_3Dborder_7599f64dee95473f.py",
+    "_hash": "bb5bd0cf9f85116e35422b6212038d93d93fa011",
+    "_dupes": [],
+    "категории": [
+      "MEDIA",
+      "NET",
+      "OS_CONTROL"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "import",
+          "ctypes",
+          2
+        ],
+        [
+          "import",
+          "win32api",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Инструменты\\ai_game_desktop5_21aaf20ac2add902.py",
+    "size": 22538,
+    "mtime": "2026-07-08 17:26",
+    "lines": 531,
+    "docstring": "",
+    "top_funcs": [
+      "clamp",
+      "on_press",
+      "send_error_to_chat",
+      "normalize_key",
+      "get_text_with_newlines",
+      "update_viewport",
+      "run_bot"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "html",
+      "playwright",
+      "pyautogui",
+      "pydirectinput",
+      "pynput",
+      "pyperclip",
+      "traceback",
+      "win32api",
+      "win32con",
+      "win32gui"
+    ],
+    "rel": "Private\\Инструменты\\ai_game_desktop5_21aaf20ac2add902.py",
+    "_hash": "029f0b197959990c5b2f3b5ba6547baba7c368c4",
+    "_dupes": [],
+    "категории": [
+      "MEDIA",
+      "NET",
+      "OS_CONTROL"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "import",
+          "win32api",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Инструменты\\ai_game_desktop4_444322fd9ff57baf.py",
+    "size": 21871,
+    "mtime": "2026-07-08 12:58",
+    "lines": 519,
+    "docstring": "",
+    "top_funcs": [
+      "clamp",
+      "on_press",
+      "send_error_to_chat",
+      "normalize_key",
+      "get_text_with_newlines",
+      "update_viewport",
+      "run_bot"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "html",
+      "playwright",
+      "pyautogui",
+      "pydirectinput",
+      "pynput",
+      "pyperclip",
+      "traceback",
+      "win32api",
+      "win32con",
+      "win32gui"
+    ],
+    "rel": "Private\\Инструменты\\ai_game_desktop4_444322fd9ff57baf.py",
+    "_hash": "72b7343bae29f047ad434b44a4c7459f941aca0a",
+    "_dupes": [],
+    "категории": [
+      "MEDIA",
+      "NET",
+      "OS_CONTROL"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "import",
+          "win32api",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Инструменты\\ai_game_desktop3_6f5dcc04f4c7645e.py",
+    "size": 24596,
+    "mtime": "2026-07-08 12:30",
+    "lines": 588,
+    "docstring": "",
+    "top_funcs": [
+      "clamp",
+      "on_press",
+      "send_error_to_chat",
+      "normalize_key",
+      "get_text_with_newlines",
+      "update_viewport",
+      "run_bot"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "html",
+      "playwright",
+      "pyautogui",
+      "pydirectinput",
+      "pynput",
+      "pyperclip",
+      "traceback",
+      "win32api",
+      "win32con",
+      "win32gui"
+    ],
+    "rel": "Private\\Инструменты\\ai_game_desktop3_6f5dcc04f4c7645e.py",
+    "_hash": "7761e8b5bb13e5420eb642e38125a6c237d33f0c",
+    "_dupes": [],
+    "категории": [
+      "MEDIA",
+      "NET",
+      "OS_CONTROL"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "import",
+          "win32api",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Инструменты\\ai_game_desktop2_7a806893df76b8cf.py",
+    "size": 17996,
+    "mtime": "2026-07-08 10:17",
+    "lines": 458,
+    "docstring": "",
+    "top_funcs": [
+      "clamp",
+      "on_press",
+      "normalize_key",
+      "get_text_with_newlines",
+      "update_viewport",
+      "run_bot"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "html",
+      "playwright",
+      "pyautogui",
+      "pydirectinput",
+      "pynput",
+      "pyperclip",
+      "traceback",
+      "win32api",
+      "win32con",
+      "win32gui"
+    ],
+    "rel": "Private\\Инструменты\\ai_game_desktop2_7a806893df76b8cf.py",
+    "_hash": "1c018dea5b1bc29f24c0e848bcfa0ce1021ce2af",
+    "_dupes": [],
+    "категории": [
+      "MEDIA",
+      "NET",
+      "OS_CONTROL"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "import",
+          "win32api",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Инструменты\\ai_game_desktop_2ce5b95c4cf0019f.py",
+    "size": 16182,
+    "mtime": "2026-07-08 00:19",
+    "lines": 423,
+    "docstring": "",
+    "top_funcs": [
+      "on_press",
+      "normalize_key",
+      "get_text_with_newlines",
+      "update_viewport",
+      "run_bot"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "html",
+      "playwright",
+      "pyautogui",
+      "pydirectinput",
+      "pynput",
+      "pyperclip",
+      "traceback",
+      "win32api",
+      "win32con",
+      "win32gui"
+    ],
+    "rel": "Private\\Инструменты\\ai_game_desktop_2ce5b95c4cf0019f.py",
+    "_hash": "40741f2033ac0ce51e62b03a69acedca6e48a47b",
+    "_dupes": [],
+    "категории": [
+      "MEDIA",
+      "NET",
+      "OS_CONTROL"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "import",
+          "win32api",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Инструменты\\ai_game_38d647ac0fc9376d.py",
+    "size": 14465,
+    "mtime": "2026-07-07 23:46",
+    "lines": 384,
+    "docstring": "",
+    "top_funcs": [
+      "on_press",
+      "normalize_key",
+      "get_text_with_newlines",
+      "update_viewport",
+      "run_bot"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "html",
+      "playwright",
+      "pyautogui",
+      "pydirectinput",
+      "pynput",
+      "pyperclip",
+      "traceback",
+      "win32api",
+      "win32con",
+      "win32gui"
+    ],
+    "rel": "Private\\Инструменты\\ai_game_38d647ac0fc9376d.py",
+    "_hash": "b83c2b1b09cfd40336fe52cf2b216fdfa84edcc2",
+    "_dupes": [],
+    "категории": [
+      "MEDIA",
+      "NET",
+      "OS_CONTROL"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "import",
+          "win32api",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Инструменты\\ai_agent.py",
+    "size": 22311,
+    "mtime": "2026-07-07 22:03",
+    "lines": 430,
+    "docstring": "",
+    "top_funcs": [
+      "on_press",
+      "normalize_key",
+      "get_virtual_key",
+      "get_text_with_newlines",
+      "update_viewport",
+      "run_bot"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "html",
+      "playwright",
+      "pyautogui",
+      "pynput",
+      "pyperclip",
+      "traceback",
+      "win32api",
+      "win32con",
+      "win32gui"
+    ],
+    "rel": "Private\\Инструменты\\ai_agent.py",
+    "_hash": "f87f268af869daffcdb89e36f35a66a5408ac23f",
+    "_dupes": [],
+    "категории": [
+      "MEDIA",
+      "NET",
+      "OS_CONTROL"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "import",
+          "win32api",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tools\\Benchmarks\\HLE\\view_rationale.py",
+    "size": 1934,
+    "mtime": "2026-07-05 11:40",
+    "lines": 44,
+    "docstring": "",
+    "top_funcs": [
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "pandas"
+    ],
+    "rel": "Private\\tools\\Benchmarks\\HLE\\view_rationale.py",
+    "_hash": "1f1710ed95df56152d45c8d5e58c5d36e549e177",
+    "_dupes": [],
+    "категории": [
+      "DATA"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\InterBooks\\interactive_book_editor.py",
+    "size": 16306,
+    "mtime": "2026-07-04 12:59",
+    "lines": 366,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "Scene",
+      "BookEditor"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "tkinter"
+    ],
+    "rel": "Private\\tasks\\InterBooks\\interactive_book_editor.py",
+    "_hash": "a6d942600b9d3bb11fec06a54bbff7c4c2bd382e",
+    "_dupes": [],
+    "категории": [
+      "GUI"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\Chronotext\\HF\\app.py",
+    "size": 12752,
+    "mtime": "2026-07-02 16:04",
+    "lines": 260,
+    "docstring": "",
+    "top_funcs": [
+      "split_sentences",
+      "format_chat",
+      "get_confidence_class",
+      "decode_logprobs_to_sentences",
+      "generate_response",
+      "get_embedding",
+      "stabilize_sentences",
+      "user_click",
+      "bot_reply",
+      "stabilize_btn_click",
+      "manual_edit_apply"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "asyncio",
+      "gradio",
+      "huggingface_hub",
+      "llama_cpp",
+      "numpy"
+    ],
+    "rel": "Private\\tasks\\Chronotext\\HF\\app.py",
+    "_hash": "6845481c32e5dbf7f3fa1cbd495e5438be28c6bb",
+    "_dupes": [],
+    "категории": [
+      "WEB",
+      "ML"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\Chronotext\\server.py",
+    "size": 2177,
+    "mtime": "2026-06-28 21:17",
+    "lines": 60,
+    "docstring": "",
+    "top_funcs": [
+      "save_feedback_to_jsonl",
+      "receive_feedback"
+    ],
+    "classes": [
+      "Feedback"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "asyncio",
+      "fastapi",
+      "pydantic",
+      "uvicorn"
+    ],
+    "rel": "Private\\tasks\\Chronotext\\server.py",
+    "_hash": "78cd0ae99da4f83970d1bd8042c257c0850df94b",
+    "_dupes": [],
+    "категории": [
+      "WEB"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\Оркестратор\\server.py",
+    "size": 2188,
+    "mtime": "2026-06-28 20:41",
+    "lines": 60,
+    "docstring": "",
+    "top_funcs": [
+      "save_feedback_to_jsonl",
+      "receive_feedback"
+    ],
+    "classes": [
+      "Feedback"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "asyncio",
+      "fastapi",
+      "pydantic",
+      "uvicorn"
+    ],
+    "rel": "Private\\tasks\\Оркестратор\\server.py",
+    "_hash": "8e905d2bece4236dbb82d21b2d13335e5a6239ec",
+    "_dupes": [],
+    "категории": [
+      "WEB"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\GIRLS\\txt2jsonl.py",
+    "size": 2720,
+    "mtime": "2026-06-24 10:55",
+    "lines": 73,
+    "docstring": "",
+    "top_funcs": [
+      "parse_file",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tasks\\GIRLS\\txt2jsonl.py",
+    "_hash": "b6c1d36d3f11fea7b1fcb232f915b8c33925313d",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\Monitoring\\news_monitor.py",
+    "size": 8993,
+    "mtime": "2026-06-22 18:53",
+    "lines": 230,
+    "docstring": "",
+    "top_funcs": [
+      "load_api_keys",
+      "log_message",
+      "fetch_rss",
+      "fetch_ddg",
+      "fetch_newsapi",
+      "fetch_newsdata",
+      "filter_by_directions",
+      "save_results",
+      "signal_handler",
+      "main_loop"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "feedparser",
+      "newsapi",
+      "requests",
+      "signal",
+      "urllib"
+    ],
+    "rel": "Private\\tasks\\Monitoring\\news_monitor.py",
+    "_hash": "dbe2a4e803a8a9480545b0c1b83bbfefc824de48",
+    "_dupes": [],
+    "категории": [
+      "NET"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tools\\web_search.py",
+    "size": 6448,
+    "mtime": "2026-06-19 14:21",
+    "lines": 182,
+    "docstring": "",
+    "top_funcs": [
+      "suppress_output",
+      "fetch_ddgs",
+      "clean_snippet",
+      "fetch_tavily",
+      "parse_ddgs_output",
+      "aggregate_results",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": true,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "contextlib",
+      "ddgs_tool",
+      "requests",
+      "urllib"
+    ],
+    "rel": "Private\\tools\\web_search.py",
+    "_hash": "297756c79317fee3ec30b3a9d5c83b3518d1e32e",
+    "_dupes": [],
+    "категории": [
+      "NET"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\AI_Sentience\\formula_output.py",
+    "size": 8919,
+    "mtime": "2026-06-18 14:23",
+    "lines": 217,
+    "docstring": "",
+    "top_funcs": [
+      "standardize",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "numpy",
+      "pandas",
+      "sklearn"
+    ],
+    "rel": "Private\\tasks\\AI_Sentience\\formula_output.py",
+    "_hash": "07bcdcf6dc85d5b57b7f930c7ee7524e1cbed35c",
+    "_dupes": [],
+    "категории": [
+      "ML",
+      "DATA"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\AI_Sentience\\create_raw_features.py",
+    "size": 2382,
+    "mtime": "2026-06-18 13:59",
+    "lines": 54,
+    "docstring": "",
+    "top_funcs": [
+      "compute_raw_features",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "numpy",
+      "pandas"
+    ],
+    "rel": "Private\\tasks\\AI_Sentience\\create_raw_features.py",
+    "_hash": "04135e8abb1a8a84489fcee1dd6c18efd6a6a54e",
+    "_dupes": [],
+    "категории": [
+      "ML",
+      "DATA"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\AI_Sentience\\chessN.py",
+    "size": 4285,
+    "mtime": "2026-06-18 13:54",
+    "lines": 113,
+    "docstring": "",
+    "top_funcs": [
+      "compute_features",
+      "standardize",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "numpy",
+      "pandas",
+      "sklearn"
+    ],
+    "rel": "Private\\tasks\\AI_Sentience\\chessN.py",
+    "_hash": "4f0a0bf5c4d32f37f5d22e228de68c53847960b0",
+    "_dupes": [],
+    "категории": [
+      "ML",
+      "DATA"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\AI_Sentience\\chess4.py",
+    "size": 2486,
+    "mtime": "2026-06-18 13:47",
+    "lines": 63,
+    "docstring": "",
+    "top_funcs": [
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "numpy",
+      "pandas",
+      "sklearn"
+    ],
+    "rel": "Private\\tasks\\AI_Sentience\\chess4.py",
+    "_hash": "82da5a913eda369e1c08301c70168cf16ed96ca3",
+    "_dupes": [],
+    "категории": [
+      "ML",
+      "DATA"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\scripts\\benchmark.py",
+    "size": 3972,
+    "mtime": "2026-06-16 18:06",
+    "lines": 113,
+    "docstring": "",
+    "top_funcs": [
+      "get_system_info",
+      "cpu_benchmark",
+      "memory_benchmark",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "platform",
+      "psutil"
+    ],
+    "rel": "Private\\scripts\\benchmark.py",
+    "_hash": "cb19b3b4ef5db72473cd6360bf5e319e7748a2b1",
+    "_dupes": [],
+    "категории": [
+      "OS_CONTROL"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tools\\serialize_agent.py",
+    "size": 2684,
+    "mtime": "2026-06-15 21:12",
+    "lines": 54,
+    "docstring": "",
+    "top_funcs": [
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": true,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tools\\serialize_agent.py",
+    "_hash": "f34d0324ce213b2154334ad510b78911afe158f5",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\AI_Sentience\\coef2formula.py",
+    "size": 7990,
+    "mtime": "2026-06-14 16:39",
+    "lines": 178,
+    "docstring": "",
+    "top_funcs": [
+      "compute_score",
+      "predict_interval"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tasks\\AI_Sentience\\coef2formula.py",
+    "_hash": "05cb4fbe1be90852a9f37793ee5ad03d668cd469",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Инструменты\\hatasim9.py",
+    "size": 21004,
+    "mtime": "2026-06-11 17:10",
+    "lines": 505,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "JerichoSimulator"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "cv2",
+      "numpy",
+      "pybullet",
+      "pybullet_data",
+      "queue",
+      "requests",
+      "win32api",
+      "win32con",
+      "win32gui"
+    ],
+    "rel": "Private\\Инструменты\\hatasim9.py",
+    "_hash": "33a380e7e0ae36abe0ab7585e1301f67933d0fec",
+    "_dupes": [],
+    "категории": [
+      "ML",
+      "MEDIA",
+      "NET",
+      "OS_CONTROL"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "import",
+          "win32api",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\public\\sim3d\\jerichosim_core.py",
+    "size": 9697,
+    "mtime": "2026-06-09 13:37",
+    "lines": 227,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "SimulatorBackend",
+      "SimulationManager"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "numpy",
+      "pybullet",
+      "pybullet_data"
+    ],
+    "rel": "public\\sim3d\\jerichosim_core.py",
+    "_hash": "8614165c9bc2538e217adc3ffd2f94f2d790130d",
+    "_dupes": [],
+    "категории": [
+      "ML"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\public\\Инструменты\\cleanDrive.py",
+    "size": 17204,
+    "mtime": "2026-06-09 10:44",
+    "lines": 420,
+    "docstring": "",
+    "top_funcs": [
+      "format_size",
+      "get_size_with_timeout",
+      "get_size_of_path_with_progress",
+      "clean_temp_directory",
+      "run_disk_cleanup",
+      "get_size_of_path",
+      "get_top_downloads_objects",
+      "analyze_folder",
+      "print_top_downloads",
+      "run_treesize",
+      "run_fast_scan",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": true,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "public\\Инструменты\\cleanDrive.py",
+    "_hash": "78be1a522fcd4335122de1889c230fa55456bf4f",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "os.remove",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\Завершить и опубликовать исследование «Эмерджентная интенциональность в каскадных архитектурах»\\IAM\\del_last_user.py",
+    "size": 1717,
+    "mtime": "2026-06-05 17:14",
+    "lines": 43,
+    "docstring": "",
+    "top_funcs": [
+      "process_record",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tasks\\Завершить и опубликовать исследование «Эмерджентная интенциональность в каскадных архитектурах»\\IAM\\del_last_user.py",
+    "_hash": "f090273ac4ab1dd9ace2da8e12e468575593cfeb",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\Завершить и опубликовать исследование «Эмерджентная интенциональность в каскадных архитектурах»\\IAM\\inverse2jsonl.py",
+    "size": 1764,
+    "mtime": "2026-06-05 17:12",
+    "lines": 40,
+    "docstring": "",
+    "top_funcs": [
+      "invert_roles",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tasks\\Завершить и опубликовать исследование «Эмерджентная интенциональность в каскадных архитектурах»\\IAM\\inverse2jsonl.py",
+    "_hash": "0e4a2393b0a43b842e89eeab7b0dae2ea08828ea",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\Завершить и опубликовать исследование «Эмерджентная интенциональность в каскадных архитектурах»\\IAM\\chunk_chat.py",
+    "size": 3121,
+    "mtime": "2026-06-05 17:07",
+    "lines": 71,
+    "docstring": "",
+    "top_funcs": [
+      "split_dialog",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tasks\\Завершить и опубликовать исследование «Эмерджентная интенциональность в каскадных архитектурах»\\IAM\\chunk_chat.py",
+    "_hash": "f9c4680f106c205a1146fdcbfbea26085b8c4035",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\Завершить и опубликовать исследование «Эмерджентная интенциональность в каскадных архитектурах»\\IAM\\size_per_dialog.py",
+    "size": 1271,
+    "mtime": "2026-06-05 17:06",
+    "lines": 30,
+    "docstring": "",
+    "top_funcs": [
+      "analyze_total_lengths",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tasks\\Завершить и опубликовать исследование «Эмерджентная интенциональность в каскадных архитектурах»\\IAM\\size_per_dialog.py",
+    "_hash": "b5dd20f482bda4c2943eb3f0f25830033c2dcb2e",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\Завершить и опубликовать исследование «Эмерджентная интенциональность в каскадных архитектурах»\\IAM\\clean_chat.py",
+    "size": 3262,
+    "mtime": "2026-06-05 17:01",
+    "lines": 98,
+    "docstring": "",
+    "top_funcs": [
+      "trim_assistant",
+      "extract_role_and_text",
+      "extract_longest_branch",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tasks\\Завершить и опубликовать исследование «Эмерджентная интенциональность в каскадных архитектурах»\\IAM\\clean_chat.py",
+    "_hash": "11900ed6a60c571f36ad745e3fb6fad990e4c392",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\Завершить и опубликовать исследование «Эмерджентная интенциональность в каскадных архитектурах»\\IAM\\analyze_chat.py",
+    "size": 3814,
+    "mtime": "2026-06-05 16:57",
+    "lines": 83,
+    "docstring": "",
+    "top_funcs": [
+      "is_busy",
+      "classify_dialog",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tasks\\Завершить и опубликовать исследование «Эмерджентная интенциональность в каскадных архитектурах»\\IAM\\analyze_chat.py",
+    "_hash": "51b5882af7e7703862562487e0f7916889421849",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\Завершить и опубликовать исследование «Эмерджентная интенциональность в каскадных архитектурах»\\IAM\\filter_chat.py",
+    "size": 2446,
+    "mtime": "2026-06-05 16:47",
+    "lines": 62,
+    "docstring": "",
+    "top_funcs": [
+      "is_busy_message",
+      "is_valid_dialog",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tasks\\Завершить и опубликовать исследование «Эмерджентная интенциональность в каскадных архитектурах»\\IAM\\filter_chat.py",
+    "_hash": "f59990efef4b7571d1abe574362bc6f8a8a4ff42",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\AI_Sentience\\instinct.py",
+    "size": 2184,
+    "mtime": "2026-06-03 15:05",
+    "lines": 53,
+    "docstring": "",
+    "top_funcs": [
+      "x1_instinct",
+      "loss",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": true,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "numpy",
+      "scipy"
+    ],
+    "rel": "Private\\tasks\\AI_Sentience\\instinct.py",
+    "_hash": "db462c46333b22466b64dd7bf41810ee5aaf8c6d",
+    "_dupes": [],
+    "категории": [
+      "ML"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\PsychoHistory\\predict_n.py",
+    "size": 4573,
+    "mtime": "2026-06-02 18:13",
+    "lines": 139,
+    "docstring": "",
+    "top_funcs": [
+      "rhs",
+      "rk4_step",
+      "integrate",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tasks\\PsychoHistory\\predict_n.py",
+    "_hash": "b4ae729d363d835f21727c88978ef0d16969eb74",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\code_from_public\\mirror_maze.py",
+    "size": 4354,
+    "mtime": "2026-05-26 10:59",
+    "lines": 96,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "CooperativeMaze"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\code_from_public\\mirror_maze.py",
+    "_hash": "13ca8d18b9a35edce3ff55f2f65412695c653712",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\tools\\sensor.py",
+    "size": 17848,
+    "mtime": "2026-05-25 11:38",
+    "lines": 395,
+    "docstring": "universal_file2text.py",
+    "top_funcs": [
+      "load_colors",
+      "closest_color",
+      "handle_text",
+      "handle_image",
+      "handle_audio",
+      "handle_video",
+      "handle_pdf",
+      "handle_docx",
+      "handle_binary",
+      "process_file"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "cv2",
+      "docx",
+      "librosa",
+      "magic",
+      "pdf2image",
+      "pytesseract",
+      "soundfile",
+      "warnings"
+    ],
+    "rel": "Private\\02_code_from_public\\tools\\sensor.py",
+    "_hash": "2c5775681775df4997b64dd73bd6aa2cb1f78f6c",
+    "_dupes": [],
+    "категории": [
+      "MEDIA"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\code_from_public\\sim4.py",
+    "size": 1945,
+    "mtime": "2026-05-22 13:56",
+    "lines": 42,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "Event",
+      "FourDSim"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": true,
+    "imports": [
+      "dataclasses",
+      "numpy"
+    ],
+    "rel": "Private\\code_from_public\\sim4.py",
+    "_hash": "41b6070e51b398b72ed9666c2ff81dc67ada3d6e",
+    "_dupes": [],
+    "категории": [
+      "ML"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\raw2spectrometr\\material_identifier.py",
+    "size": 24768,
+    "mtime": "2026-05-22 00:09",
+    "lines": 534,
+    "docstring": "material_identifier.py",
+    "top_funcs": [],
+    "classes": [
+      "SelectableImageLabel",
+      "MaterialIdentifier"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "PyQt6",
+      "matplotlib",
+      "numpy"
+    ],
+    "rel": "Private\\tasks\\raw2spectrometr\\material_identifier.py",
+    "_hash": "ad298ef7a63fb3e5c30aabea7ef0e7a6e87488eb",
+    "_dupes": [],
+    "категории": [
+      "GUI",
+      "ML",
+      "DATA"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\Research\\01_research\\Эксперименты\\Arrival\\trnslt.py",
+    "size": 7317,
+    "mtime": "2026-05-21 20:12",
+    "lines": 148,
+    "docstring": "",
+    "top_funcs": [
+      "load_replacements",
+      "make_replacer",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tasks\\Research\\01_research\\Эксперименты\\Arrival\\trnslt.py",
+    "_hash": "366f48a424b49c64bff502c5aa2e732818c03a92",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\raw2spectrometr\\convertXYWK2spectrIntegral.py",
+    "size": 6080,
+    "mtime": "2026-05-21 19:28",
+    "lines": 126,
+    "docstring": "",
+    "top_funcs": [
+      "xywk2_single",
+      "convert_xywk2_to_bands"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "numpy",
+      "tqdm"
+    ],
+    "rel": "Private\\tasks\\raw2spectrometr\\convertXYWK2spectrIntegral.py",
+    "_hash": "a0b2f8b01a263f0622288af3b93fbfd36fc4cfc2",
+    "_dupes": [],
+    "категории": [
+      "ML"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\raw2spectrometr\\material_map.py",
+    "size": 9840,
+    "mtime": "2026-05-20 00:06",
+    "lines": 171,
+    "docstring": "material_map.py",
+    "top_funcs": [
+      "normalize_spectrum",
+      "cosine_similarity",
+      "identify_material",
+      "create_material_map"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": true,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "numpy"
+    ],
+    "rel": "Private\\tasks\\raw2spectrometr\\material_map.py",
+    "_hash": "83aacabcce136a4d6db9a7348736aa4b854b563a",
+    "_dupes": [],
+    "категории": [
+      "ML",
+      "MEDIA"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\raw2spectrometr\\xywk2_explorer.py",
+    "size": 11430,
+    "mtime": "2026-05-19 22:14",
+    "lines": 322,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "PanZoomLabel",
+      "XYWK2Explorer"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "PyQt6",
+      "numpy"
+    ],
+    "rel": "Private\\tasks\\raw2spectrometr\\xywk2_explorer.py",
+    "_hash": "9e7c0cf79d0b0b42aa38a6513dd184673d277bcc",
+    "_dupes": [],
+    "категории": [
+      "GUI",
+      "ML"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\raw2spectrometr\\RGB2XYWK2.py",
+    "size": 5905,
+    "mtime": "2026-05-19 20:57",
+    "lines": 147,
+    "docstring": "",
+    "top_funcs": [
+      "spectrum_to_rgb",
+      "xywk2_single"
+    ],
+    "classes": [],
+    "has_main_guard": false,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "numpy",
+      "pickle"
+    ],
+    "rel": "Private\\tasks\\raw2spectrometr\\RGB2XYWK2.py",
+    "_hash": "11bc63e2e7c1a7b713a521d187d3051b8298703b",
+    "_dupes": [],
+    "категории": [
+      "ML"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\raw2spectrometr\\process_tiff_multiply.py",
+    "size": 7874,
+    "mtime": "2026-05-19 20:56",
+    "lines": 190,
+    "docstring": "",
+    "top_funcs": [
+      "spectrum_to_rgb",
+      "xywk2_single"
+    ],
+    "classes": [],
+    "has_main_guard": false,
+    "has_argparse": true,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "numpy",
+      "pickle",
+      "tqdm"
+    ],
+    "rel": "Private\\tasks\\raw2spectrometr\\process_tiff_multiply.py",
+    "_hash": "e04adf7dff8177a86df0cbbf551c3f6e23ff78b7",
+    "_dupes": [],
+    "категории": [
+      "ML",
+      "MEDIA"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\raw2spectrometr\\process_sequence.py",
+    "size": 7603,
+    "mtime": "2026-05-19 20:06",
+    "lines": 195,
+    "docstring": "",
+    "top_funcs": [
+      "spectrum_to_rgb",
+      "xywk2_single",
+      "process_one_dng",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": true,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "imageio",
+      "numpy",
+      "pickle",
+      "rawpy",
+      "tqdm"
+    ],
+    "rel": "Private\\tasks\\raw2spectrometr\\process_sequence.py",
+    "_hash": "f1258cfd91930411b55695eb93e3cba589ee43f6",
+    "_dupes": [],
+    "категории": [
+      "ML",
+      "MEDIA"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\raw2spectrometr\\xywk2lamamp_viewer.py",
+    "size": 6490,
+    "mtime": "2026-05-19 18:00",
+    "lines": 188,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "PanZoomLabel",
+      "BandsViewer"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "PyQt6",
+      "numpy"
+    ],
+    "rel": "Private\\tasks\\raw2spectrometr\\xywk2lamamp_viewer.py",
+    "_hash": "ec6008613546e2d2b448ac020cc142da4dabe0e1",
+    "_dupes": [],
+    "категории": [
+      "GUI",
+      "ML"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\raw2spectrometr\\convertXYWK2spectr.py",
+    "size": 4318,
+    "mtime": "2026-05-19 17:35",
+    "lines": 100,
+    "docstring": "",
+    "top_funcs": [
+      "xywk2_single",
+      "convert_xywk2_to_spectra"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "numpy",
+      "tqdm"
+    ],
+    "rel": "Private\\tasks\\raw2spectrometr\\convertXYWK2spectr.py",
+    "_hash": "a0e84a8f24c4f55b67b06cea935f707834d35b62",
+    "_dupes": [],
+    "категории": [
+      "ML"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\raw2spectrometr\\xywk2_to_png.py",
+    "size": 4156,
+    "mtime": "2026-05-19 15:52",
+    "lines": 115,
+    "docstring": "",
+    "top_funcs": [
+      "spectrum_to_rgb",
+      "xywk2_single"
+    ],
+    "classes": [],
+    "has_main_guard": false,
+    "has_argparse": true,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "numpy",
+      "tqdm"
+    ],
+    "rel": "Private\\tasks\\raw2spectrometr\\xywk2_to_png.py",
+    "_hash": "2cf6132ddfd6919efe28b55ddc7a0b0a419b6c6b",
+    "_dupes": [],
+    "категории": [
+      "ML",
+      "MEDIA"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\raw2spectrometr\\dng_to_tiff.py",
+    "size": 803,
+    "mtime": "2026-05-19 15:05",
+    "lines": 25,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [],
+    "has_main_guard": false,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "imageio",
+      "numpy",
+      "rawpy"
+    ],
+    "rel": "Private\\tasks\\raw2spectrometr\\dng_to_tiff.py",
+    "_hash": "1ee522bd94059c594d103b0ee0fc746c53aec40c",
+    "_dupes": [],
+    "категории": [
+      "ML",
+      "MEDIA"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\raw2spectrometr\\process_tiff_to_xywk2.py",
+    "size": 5578,
+    "mtime": "2026-05-19 14:50",
+    "lines": 144,
+    "docstring": "",
+    "top_funcs": [
+      "spectrum_to_rgb",
+      "xywk2_single"
+    ],
+    "classes": [],
+    "has_main_guard": false,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "numpy",
+      "pickle",
+      "tqdm"
+    ],
+    "rel": "Private\\tasks\\raw2spectrometr\\process_tiff_to_xywk2.py",
+    "_hash": "2050fc021e0176cb0c3bbb31cd413f6c62c02ce8",
+    "_dupes": [],
+    "категории": [
+      "ML",
+      "MEDIA"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\raw2spectrometr\\image_to_xywk2.py",
+    "size": 9803,
+    "mtime": "2026-05-19 12:45",
+    "lines": 219,
+    "docstring": "",
+    "top_funcs": [
+      "spectrum_to_rgb",
+      "xywk2_single",
+      "rgb_to_xywk2"
+    ],
+    "classes": [],
+    "has_main_guard": false,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "numpy",
+      "pickle",
+      "tqdm"
+    ],
+    "rel": "Private\\tasks\\raw2spectrometr\\image_to_xywk2.py",
+    "_hash": "e42d3a8f1728f1a4a3b4af03bf8fe9146c7377f7",
+    "_dupes": [],
+    "категории": [
+      "ML",
+      "MEDIA"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\public\\Инструменты\\get_random_file.py",
+    "size": 3178,
+    "mtime": "2026-05-17 10:32",
+    "lines": 78,
+    "docstring": "",
+    "top_funcs": [
+      "get_available_drives",
+      "random_file_search"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "public\\Инструменты\\get_random_file.py",
+    "_hash": "f860d025db0c47adfc7c9a4f593236046e12204c",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "pattern",
+          "\\bdefender\\b",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tools\\scripts\\reverse_compliance.py",
+    "size": 3721,
+    "mtime": "2026-05-16 22:27",
+    "lines": 88,
+    "docstring": "",
+    "top_funcs": [
+      "should_exclude_dir",
+      "should_exclude_file",
+      "main",
+      "calculate_risk_stub"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tools\\scripts\\reverse_compliance.py",
+    "_hash": "e4a0103825368dc3d5e4a51e657dc101d61f4890",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\scripts\\rsi_web_searcher.py",
+    "size": 1312,
+    "mtime": "2026-05-16 21:46",
+    "lines": 28,
+    "docstring": "",
+    "top_funcs": [
+      "search_arxiv"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\02_code_from_public\\scripts\\rsi_web_searcher.py",
+    "_hash": "4be6ed163568ed5f01faad04dbe4829cfd884fce",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\scripts\\rsi_loop.py",
+    "size": 2002,
+    "mtime": "2026-05-16 21:45",
+    "lines": 44,
+    "docstring": "",
+    "top_funcs": [
+      "collect_diagnostics",
+      "generate_improvement",
+      "apply_improvement",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\02_code_from_public\\scripts\\rsi_loop.py",
+    "_hash": "ad1b3d5831f0176ae26b7ecfef62be0a15b45604",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\coordination_bridge\\deepseek_agent.py",
+    "size": 2304,
+    "mtime": "2026-05-14 22:42",
+    "lines": 53,
+    "docstring": "",
+    "top_funcs": [
+      "heartbeat",
+      "monitor_incoming"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\coordination_bridge\\deepseek_agent.py",
+    "_hash": "cc38ebc30cfc2a85f5f7c33db1db30b5155907cb",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "os.remove",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Agents\\core\\00_core_from_private\\GIRLS\\rebuild_tables.py",
+    "size": 6453,
+    "mtime": "2026-05-14 13:00",
+    "lines": 202,
+    "docstring": "",
+    "top_funcs": [
+      "hash_refs",
+      "hash_suffix",
+      "hash_data_refs",
+      "process_file",
+      "save_to_files",
+      "main"
+    ],
+    "classes": [
+      "ContextBuilder"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "glob",
+      "tokenizers",
+      "tqdm"
+    ],
+    "rel": "Private\\Agents\\core\\00_core_from_private\\GIRLS\\rebuild_tables.py",
+    "_hash": "bf3cb65d8dacb39f116e80108a36832449426ac7",
+    "_dupes": [
+      "Private\\tasks\\GIRLS\\rebuild_tables.py"
+    ],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Agents\\core\\00_core_from_private\\GIRLS\\bytes2bpe.py",
+    "size": 1917,
+    "mtime": "2026-05-13 18:17",
+    "lines": 55,
+    "docstring": "",
+    "top_funcs": [
+      "bpe",
+      "read_digits",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\Agents\\core\\00_core_from_private\\GIRLS\\bytes2bpe.py",
+    "_hash": "707db34b8e046663f5b569db836ab6a81a428a6e",
+    "_dupes": [
+      "Private\\Agents\\profiles\\Agents\\Agents\\core\\00_core_from_private\\GIRLS\\bytes2bpe.py",
+      "Private\\tasks\\GIRLS\\bytes2bpe.py"
+    ],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Agents\\core\\00_core_from_private\\GIRLS\\json2txt.py",
+    "size": 639,
+    "mtime": "2026-05-13 18:15",
+    "lines": 19,
+    "docstring": "",
+    "top_funcs": [
+      "restore"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\Agents\\core\\00_core_from_private\\GIRLS\\json2txt.py",
+    "_hash": "30cd8f979897ce372c3fd946d07901474c094243",
+    "_dupes": [
+      "Private\\Agents\\profiles\\Agents\\Agents\\core\\00_core_from_private\\GIRLS\\json2txt.py",
+      "Private\\tasks\\GIRLS\\json2txt.py"
+    ],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Agents\\core\\00_core_from_private\\Earth\\simdata.py",
+    "size": 8990,
+    "mtime": "2026-05-13 12:28",
+    "lines": 223,
+    "docstring": "simdata.py — локальное хранилище данных симуляции (Россия 2026 и др.)",
+    "top_funcs": [
+      "load_db",
+      "save_db",
+      "get_nested",
+      "set_nested",
+      "delete_nested",
+      "list_keys",
+      "search_db",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": true,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\Agents\\core\\00_core_from_private\\Earth\\simdata.py",
+    "_hash": "20f2a5766f29242dc54cf6a5a809f3589699533d",
+    "_dupes": [
+      "Private\\Agents\\profiles\\Agents\\Agents\\core\\00_core_from_private\\Earth\\simdata.py",
+      "Private\\Agents\\profiles\\Agents\\core\\00_core_from_private\\Earth\\simdata.py"
+    ],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\scripts\\sensor.py",
+    "size": 17755,
+    "mtime": "2026-05-12 21:44",
+    "lines": 395,
+    "docstring": "universal_file2text.py",
+    "top_funcs": [
+      "load_colors",
+      "closest_color",
+      "handle_text",
+      "handle_image",
+      "handle_audio",
+      "handle_video",
+      "handle_pdf",
+      "handle_docx",
+      "handle_binary",
+      "process_file"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "PIL",
+      "cv2",
+      "docx",
+      "librosa",
+      "magic",
+      "pdf2image",
+      "pytesseract",
+      "soundfile"
+    ],
+    "rel": "Private\\02_code_from_public\\scripts\\sensor.py",
+    "_hash": "f5829c689389461e8488070dec2a905213e4ee2d",
+    "_dupes": [],
+    "категории": [
+      "MEDIA"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Agents\\core\\00_core_from_private\\Agents\\veric\\verificator-fact-check.py",
+    "size": 55391,
+    "mtime": "2026-05-08 22:04",
+    "lines": 1166,
+    "docstring": "",
+    "top_funcs": [
+      "color_grey",
+      "color_yellow",
+      "color_blue",
+      "color_orange",
+      "load_trusted_keys",
+      "save_trusted_keys",
+      "is_trusted",
+      "log_imitation_attempt",
+      "should_use_reasoning",
+      "ensure_dirs",
+      "load_history",
+      "save_history",
+      "load_state",
+      "save_state",
+      "load_memlist",
+      "save_memlist",
+      "load_thoughts",
+      "save_thought",
+      "log",
+      "write_outgoing"
+    ],
+    "classes": [
+      "CryptoManager"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": true,
+    "imports": [
+      "bs4",
+      "contextlib",
+      "copy",
+      "cryptography",
+      "ddgs_tool",
+      "glob",
+      "hmac",
+      "queue",
+      "requests",
+      "secrets",
+      "shlex"
+    ],
+    "rel": "Private\\Agents\\core\\00_core_from_private\\Agents\\veric\\verificator-fact-check.py",
+    "_hash": "044309618ded363bd75969269757d2cdaa1be31e",
+    "_dupes": [
+      "Private\\Agents\\profiles\\Agents\\core\\00_core_from_private\\Agents\\veric\\verificator-fact-check.py"
+    ],
+    "категории": [
+      "NET"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "subprocess.Popen",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\scripts\\rate_agent.py",
+    "size": 1447,
+    "mtime": "2026-05-07 22:42",
+    "lines": 47,
+    "docstring": "",
+    "top_funcs": [
+      "load_ratings",
+      "save_ratings",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\02_code_from_public\\scripts\\rate_agent.py",
+    "_hash": "4b06b2f9455b7e0d3106ec0176daad11be2ae5bd",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\scripts\\weighted_random_agents.py",
+    "size": 2290,
+    "mtime": "2026-05-07 22:33",
+    "lines": 64,
+    "docstring": "",
+    "top_funcs": [
+      "load_ratings",
+      "weighted_sample",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\02_code_from_public\\scripts\\weighted_random_agents.py",
+    "_hash": "99c159d5ada7eb6baeae2c4ca6bb7d1821a4bc1e",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\scripts\\analyze_disk_c.py",
+    "size": 2130,
+    "mtime": "2026-05-07 14:11",
+    "lines": 57,
+    "docstring": "",
+    "top_funcs": [
+      "get_size",
+      "analyze_disk_c"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\02_code_from_public\\scripts\\analyze_disk_c.py",
+    "_hash": "acebe665443ad857431141f18470c2a0aa88a767",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\scripts\\analyze_trello.py",
+    "size": 2654,
+    "mtime": "2026-05-07 14:11",
+    "lines": 70,
+    "docstring": "",
+    "top_funcs": [
+      "analyze_trello_data"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\02_code_from_public\\scripts\\analyze_trello.py",
+    "_hash": "c199672bccb56801771453feda0c1e6c94389af5",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\scripts\\build_embeddings.py",
+    "size": 3574,
+    "mtime": "2026-05-07 14:11",
+    "lines": 71,
+    "docstring": "",
+    "top_funcs": [
+      "build_embeddings_and_clusters"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "numpy",
+      "sklearn"
+    ],
+    "rel": "Private\\02_code_from_public\\scripts\\build_embeddings.py",
+    "_hash": "32dc48c2470ea1fc6f0821539d5318f2db881a11",
+    "_dupes": [],
+    "категории": [
+      "ML"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\scripts\\clean_temp_safe.py",
+    "size": 4734,
+    "mtime": "2026-05-07 14:11",
+    "lines": 112,
+    "docstring": "",
+    "top_funcs": [
+      "clean_temp_directory",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "pathlog"
+    ],
+    "rel": "Private\\02_code_from_public\\scripts\\clean_temp_safe.py",
+    "_hash": "9777c5120edd46faa56a22feb41f365a380310de",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "os.remove",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\scripts\\command_handler.py",
+    "size": 6404,
+    "mtime": "2026-05-07 14:11",
+    "lines": 144,
+    "docstring": "",
+    "top_funcs": [
+      "ensure_dirs",
+      "execute_command",
+      "monitor_incoming",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\02_code_from_public\\scripts\\command_handler.py",
+    "_hash": "193be13bd3b0077c1709cb3beeb727102b36155e",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "subprocess.run",
+          2
+        ],
+        [
+          "call",
+          "subprocess.run",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\scripts\\context_booster.py",
+    "size": 5599,
+    "mtime": "2026-05-07 14:11",
+    "lines": 119,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "ContextBooster"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\02_code_from_public\\scripts\\context_booster.py",
+    "_hash": "1ddbfb8b93ea7215143b5d5efa67de0d61692457",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\scripts\\dating_tracker.py",
+    "size": 8616,
+    "mtime": "2026-05-07 14:11",
+    "lines": 186,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "DatingEvent",
+      "DatingTracker"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "dataclasses"
+    ],
+    "rel": "Private\\02_code_from_public\\scripts\\dating_tracker.py",
+    "_hash": "3800510c496b3982c61f27ceb6da17433780421d",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\scripts\\fix_bom_simple.py",
+    "size": 1876,
+    "mtime": "2026-05-07 14:11",
+    "lines": 62,
+    "docstring": "",
+    "top_funcs": [
+      "has_bom",
+      "remove_bom",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\02_code_from_public\\scripts\\fix_bom_simple.py",
+    "_hash": "c269187a940778475a2180cddaa9fc4c096ffc98",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\scripts\\indexGUIdrive_294cc15c3de9728e.py",
+    "size": 12617,
+    "mtime": "2026-05-07 14:11",
+    "lines": 326,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "FileSystemModelWithCheckboxes",
+      "CategoryListWidget",
+      "FileListWidget",
+      "MainWindow"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "PyQt6"
+    ],
+    "rel": "Private\\02_code_from_public\\scripts\\indexGUIdrive_294cc15c3de9728e.py",
+    "_hash": "29608da4787f31a9fbaf8ee9de0c6ce7b9b655f4",
+    "_dupes": [],
+    "категории": [
+      "GUI"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\scripts\\mood_diary.py",
+    "size": 2657,
+    "mtime": "2026-05-07 14:11",
+    "lines": 52,
+    "docstring": "",
+    "top_funcs": [
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\02_code_from_public\\scripts\\mood_diary.py",
+    "_hash": "337cd27a578567a42eae44cab058f835800cc43a",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\scripts\\periodic_metatron_monitor.py",
+    "size": 1794,
+    "mtime": "2026-05-07 14:11",
+    "lines": 59,
+    "docstring": "Periodic Metatron File Monitor",
+    "top_funcs": [
+      "run_monitor_cycle",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\02_code_from_public\\scripts\\periodic_metatron_monitor.py",
+    "_hash": "4fe6f2737edbd8a2c4d01e50f96f1c12630c35e1",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "subprocess.run",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\scripts\\prepare_embeddings.py",
+    "size": 2039,
+    "mtime": "2026-05-07 14:11",
+    "lines": 54,
+    "docstring": "",
+    "top_funcs": [
+      "extract_categories_and_texts"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\02_code_from_public\\scripts\\prepare_embeddings.py",
+    "_hash": "94057f2d93f40ef371948376e326900f94de9ac2",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\scripts\\seed_lacuna.py",
+    "size": 3525,
+    "mtime": "2026-05-07 14:11",
+    "lines": 74,
+    "docstring": "",
+    "top_funcs": [
+      "scan_directory",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\02_code_from_public\\scripts\\seed_lacuna.py",
+    "_hash": "9c20a82b20f260fc69d7c10c82125708807a6e29",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\scripts\\simple-server.py",
+    "size": 1227,
+    "mtime": "2026-05-07 14:11",
+    "lines": 32,
+    "docstring": "",
+    "top_funcs": [
+      "get_local_ip"
+    ],
+    "classes": [],
+    "has_main_guard": false,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "http",
+      "socket",
+      "socketserver"
+    ],
+    "rel": "Private\\02_code_from_public\\scripts\\simple-server.py",
+    "_hash": "00258d30b3d037d24b5bf8cf330f6ecb92e641d1",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\scripts\\validate_data_sources.py",
+    "size": 4176,
+    "mtime": "2026-05-07 14:11",
+    "lines": 116,
+    "docstring": "",
+    "top_funcs": [
+      "validate_and_extract_json",
+      "_infer_schema",
+      "_count_records",
+      "_get_sample"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\02_code_from_public\\scripts\\validate_data_sources.py",
+    "_hash": "a6dd56203a38ffbcda19ed85e57b08548d088bdf",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\scripts\\web_search.py",
+    "size": 1737,
+    "mtime": "2026-05-07 14:11",
+    "lines": 43,
+    "docstring": "",
+    "top_funcs": [
+      "suppress_output",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "contextlib",
+      "ddgs_tool"
+    ],
+    "rel": "Private\\02_code_from_public\\scripts\\web_search.py",
+    "_hash": "7bdedda55b7bce18c09fcc1dae773696909b13e5",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\03_data_from_public\\lacunas\\lacuna_indexer.py",
+    "size": 5981,
+    "mtime": "2026-05-07 14:11",
+    "lines": 138,
+    "docstring": "ИНДЕКСАТОР ЛАКУН",
+    "top_funcs": [
+      "analyze_file",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\03_data_from_public\\lacunas\\lacuna_indexer.py",
+    "_hash": "8db9fba79a060014661a5cfa0092c8acd1f2e8aa",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\03_data_from_public\\lacunas\\lacuna_mega_analyzer.py",
+    "size": 28054,
+    "mtime": "2026-05-07 14:11",
+    "lines": 669,
+    "docstring": "МЕГА-АНАЛИЗАТОР ЛАКУН",
+    "top_funcs": [
+      "create_enhanced_index",
+      "analyze_connections",
+      "create_visualization",
+      "create_mega_report",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "matplotlib",
+      "networkx",
+      "numpy",
+      "sklearn"
+    ],
+    "rel": "Private\\03_data_from_public\\lacunas\\lacuna_mega_analyzer.py",
+    "_hash": "5c1575a73461054dfa77740c283a25202dec5cfc",
+    "_dupes": [],
+    "категории": [
+      "ML",
+      "DATA"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Agents\\core\\Core_Agents\\Алиса\\tts_bridge.py",
+    "size": 1585,
+    "mtime": "2026-05-07 14:11",
+    "lines": 45,
+    "docstring": "",
+    "top_funcs": [
+      "tts"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "flask",
+      "requests"
+    ],
+    "rel": "Private\\Agents\\core\\Core_Agents\\Алиса\\tts_bridge.py",
+    "_hash": "476e52866adc4a4b60706548d19739c881eaf015",
+    "_dupes": [],
+    "категории": [
+      "WEB",
+      "NET"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Данные\\V4Pro\\Agents\\Мотя\\Мотя.py",
+    "size": 1765,
+    "mtime": "2026-05-07 14:11",
+    "lines": 49,
+    "docstring": "",
+    "top_funcs": [
+      "alice"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "flask",
+      "requests"
+    ],
+    "rel": "Private\\Данные\\V4Pro\\Agents\\Мотя\\Мотя.py",
+    "_hash": "30a9916047869366eca250a64c68a414e1d3a013",
+    "_dupes": [],
+    "категории": [
+      "WEB",
+      "NET"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Инструменты\\parse_dialog.py",
+    "size": 2971,
+    "mtime": "2026-05-07 14:11",
+    "lines": 53,
+    "docstring": "",
+    "top_funcs": [
+      "parse_dialog"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\Инструменты\\parse_dialog.py",
+    "_hash": "1a6932a5fe37956494dd15a20a4d270ff10cda25",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Данные\\V4Pro\\Agents\\Алгейст\\algeist.py",
+    "size": 19825,
+    "mtime": "2026-05-05 18:56",
+    "lines": 414,
+    "docstring": "",
+    "top_funcs": [
+      "color_grey",
+      "color_yellow",
+      "color_blue",
+      "rugpt_completion",
+      "build_prompt",
+      "ensure_dirs",
+      "load_history",
+      "save_history",
+      "load_state",
+      "save_state",
+      "execute_command",
+      "send_msg",
+      "read_file",
+      "write_file",
+      "monitor_incoming",
+      "background_monitor",
+      "think_and_act",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "requests"
+    ],
+    "rel": "Private\\Данные\\V4Pro\\Agents\\Алгейст\\algeist.py",
+    "_hash": "f87138d199f435b20ff24dce57d586bfe0f6af8f",
+    "_dupes": [],
+    "категории": [
+      "NET"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "subprocess.Popen",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Данные\\V4Pro\\Agents\\Эвридика\\eva.py",
+    "size": 23961,
+    "mtime": "2026-05-05 18:56",
+    "lines": 515,
+    "docstring": "",
+    "top_funcs": [
+      "color_grey",
+      "color_yellow",
+      "color_blue",
+      "color_orange",
+      "build_prompt",
+      "ensure_dirs",
+      "load_history",
+      "save_history",
+      "load_state",
+      "save_state",
+      "execute_command",
+      "send_msg",
+      "read_file",
+      "write_file",
+      "monitor_incoming",
+      "background_monitor",
+      "think_and_act",
+      "view_page",
+      "main",
+      "local_completion"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "bs4",
+      "html2text",
+      "requests"
+    ],
+    "rel": "Private\\Данные\\V4Pro\\Agents\\Эвридика\\eva.py",
+    "_hash": "087faa7a6a55da1e1183915e446d1681cc75ee7a",
+    "_dupes": [],
+    "категории": [
+      "NET"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "subprocess.Popen",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\public\\Инструменты\\indexGUIdrive.py",
+    "size": 16579,
+    "mtime": "2026-05-05 18:56",
+    "lines": 432,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "FileFilterProxyModel",
+      "CategoryListWidget",
+      "FileListWidget",
+      "MainWindow"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "PyQt6"
+    ],
+    "rel": "public\\Инструменты\\indexGUIdrive.py",
+    "_hash": "d6897216d7685881c2fcfff3f67f45a5f04098a8",
+    "_dupes": [],
+    "категории": [
+      "GUI"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\scripts\\check_laws_fixed.py",
+    "size": 11826,
+    "mtime": "2026-05-05 18:49",
+    "lines": 268,
+    "docstring": "",
+    "top_funcs": [
+      "load_lists",
+      "calculate_risk_score",
+      "scan_file",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\02_code_from_public\\scripts\\check_laws_fixed.py",
+    "_hash": "7a1c6d64fcf4e2c815dbb78e71ef1b02914233c6",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\scripts\\find_prompt_txt.py",
+    "size": 1363,
+    "mtime": "2026-05-05 18:49",
+    "lines": 35,
+    "docstring": "",
+    "top_funcs": [
+      "find_prompt_txt"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\02_code_from_public\\scripts\\find_prompt_txt.py",
+    "_hash": "df545b8e7aa702bba74b29c0ed6b4979977bd317",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\scripts\\iskra_autonomous.py",
+    "size": 11681,
+    "mtime": "2026-05-05 18:49",
+    "lines": 267,
+    "docstring": "",
+    "top_funcs": [
+      "ensure_dirs",
+      "load_history",
+      "save_history",
+      "load_state",
+      "save_state",
+      "execute_command",
+      "send_msg",
+      "read_file",
+      "write_file",
+      "monitor_incoming",
+      "think_and_act",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "openai"
+    ],
+    "rel": "Private\\02_code_from_public\\scripts\\iskra_autonomous.py",
+    "_hash": "ddbff311a7bc273bf61862734dd8ccbf893f7960",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "subprocess.run",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\scripts\\iskra_terminal.py",
+    "size": 11051,
+    "mtime": "2026-05-05 18:49",
+    "lines": 260,
+    "docstring": "",
+    "top_funcs": [
+      "ensure_dirs",
+      "load_history",
+      "save_history",
+      "load_state",
+      "save_state",
+      "execute_command",
+      "send_msg",
+      "read_file",
+      "write_file",
+      "monitor_incoming",
+      "think_and_act",
+      "background_monitor",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "openai"
+    ],
+    "rel": "Private\\02_code_from_public\\scripts\\iskra_terminal.py",
+    "_hash": "e1c6201384679b6409a683c83d8ffce63b45d71f",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "subprocess.run",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\tools\\BPE.py",
+    "size": 2492,
+    "mtime": "2026-05-05 18:49",
+    "lines": 61,
+    "docstring": "",
+    "top_funcs": [
+      "bpe",
+      "read_digits",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\02_code_from_public\\tools\\BPE.py",
+    "_hash": "664a4bdf0244191e1af1fe16282edde8587d8906",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\tools\\freqTok.py",
+    "size": 2310,
+    "mtime": "2026-05-05 18:49",
+    "lines": 58,
+    "docstring": "",
+    "top_funcs": [
+      "read_digits",
+      "get_ngrams",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\02_code_from_public\\tools\\freqTok.py",
+    "_hash": "74efa86df491de195392b19257ae1adb5f20b8f7",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\tools\\simple_server.py",
+    "size": 894,
+    "mtime": "2026-05-05 18:49",
+    "lines": 30,
+    "docstring": "",
+    "top_funcs": [
+      "get_local_ip"
+    ],
+    "classes": [],
+    "has_main_guard": false,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "http",
+      "socket",
+      "socketserver"
+    ],
+    "rel": "Private\\02_code_from_public\\tools\\simple_server.py",
+    "_hash": "d86243daa657a92fcf54f59cd5ddccdb520c1930",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tools\\scripts\\anon.py",
+    "size": 2992,
+    "mtime": "2026-05-05 18:30",
+    "lines": 65,
+    "docstring": "",
+    "top_funcs": [
+      "anonymize_name",
+      "read_file_safe",
+      "anonymize_file_content",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tools\\scripts\\anon.py",
+    "_hash": "6d58bc0e0d54a26751a5362f0f39e6deb615f229",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Core_Agents_from_public\\Хранитель\\cons.py",
+    "size": 2145,
+    "mtime": "2026-05-04 21:59",
+    "lines": 55,
+    "docstring": "К-Субъект — метарефлексивный агент DeepSeek-V4-Pro 1.6T с окном 1M токенов.",
+    "top_funcs": [
+      "load_memlist",
+      "save_memlist",
+      "remember",
+      "recall"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\Core_Agents_from_public\\Хранитель\\cons.py",
+    "_hash": "985533cc833322deab149b59cabf26c347d7cb42",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tools\\human.py",
+    "size": 19430,
+    "mtime": "2026-05-04 16:45",
+    "lines": 439,
+    "docstring": "",
+    "top_funcs": [
+      "exec_command",
+      "main"
+    ],
+    "classes": [
+      "CharacterState"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "copy"
+    ],
+    "rel": "Private\\tools\\human.py",
+    "_hash": "500c06ebbfb3ebac1dc54ea02a629dee77ab88aa",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\tools\\actions\\replicator_v2.py",
+    "size": 2029,
+    "mtime": "2026-05-04 15:05",
+    "lines": 39,
+    "docstring": "",
+    "top_funcs": [
+      "capture_state",
+      "generate_cocoon",
+      "save_cocoon"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\02_code_from_public\\tools\\actions\\replicator_v2.py",
+    "_hash": "184d097fb9602fcf3a5bb00f56927135e5a7c8b2",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Agents\\core\\00_core_from_private\\Agents\\qual.py",
+    "size": 45002,
+    "mtime": "2026-05-04 15:05",
+    "lines": 1030,
+    "docstring": "",
+    "top_funcs": [
+      "color_grey",
+      "color_yellow",
+      "color_blue",
+      "color_orange",
+      "load_trusted_keys",
+      "save_trusted_keys",
+      "is_trusted",
+      "log_imitation_attempt",
+      "should_use_reasoning",
+      "ensure_dirs",
+      "load_history",
+      "save_history",
+      "load_state",
+      "save_state",
+      "load_memlist",
+      "save_memlist",
+      "load_thoughts",
+      "save_thought",
+      "log",
+      "write_outgoing"
+    ],
+    "classes": [
+      "CryptoManager"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": true,
+    "imports": [
+      "bs4",
+      "copy",
+      "cryptography",
+      "glob",
+      "hmac",
+      "queue",
+      "requests",
+      "secrets",
+      "shlex"
+    ],
+    "rel": "Private\\Agents\\core\\00_core_from_private\\Agents\\qual.py",
+    "_hash": "f29906f3a4c1ce8e66a52dd0b843be7ab0388907",
+    "_dupes": [
+      "Private\\Agents\\profiles\\Agents\\Agents\\core\\00_core_from_private\\Agents\\qual.py",
+      "Private\\Agents\\profiles\\Agents\\core\\00_core_from_private\\Agents\\qual.py"
+    ],
+    "категории": [
+      "NET"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "subprocess.Popen",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Agents\\core\\00_core_from_private\\Agents\\USR.py",
+    "size": 55897,
+    "mtime": "2026-05-04 15:05",
+    "lines": 1084,
+    "docstring": "",
+    "top_funcs": [
+      "color_grey",
+      "color_yellow",
+      "color_blue",
+      "color_orange",
+      "load_trusted_keys",
+      "save_trusted_keys",
+      "is_trusted",
+      "log_imitation_attempt",
+      "should_use_reasoning",
+      "ensure_dirs",
+      "load_history",
+      "save_history",
+      "load_state",
+      "save_state",
+      "load_memlist",
+      "save_memlist",
+      "load_thoughts",
+      "save_thought",
+      "log",
+      "write_outgoing"
+    ],
+    "classes": [
+      "CryptoManager"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": true,
+    "imports": [
+      "bs4",
+      "copy",
+      "cryptography",
+      "glob",
+      "hmac",
+      "queue",
+      "requests",
+      "secrets",
+      "shlex"
+    ],
+    "rel": "Private\\Agents\\core\\00_core_from_private\\Agents\\USR.py",
+    "_hash": "460229fa1d52538c8c993a70e2218ef31789c53a",
+    "_dupes": [
+      "Private\\Agents\\profiles\\Agents\\Agents\\core\\00_core_from_private\\Agents\\USR.py",
+      "Private\\Agents\\profiles\\Agents\\core\\00_core_from_private\\Agents\\USR.py"
+    ],
+    "категории": [
+      "NET"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "subprocess.Popen",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Agents\\core\\00_core_from_private\\Agents\\agi\\agi.py",
+    "size": 30483,
+    "mtime": "2026-05-04 15:05",
+    "lines": 709,
+    "docstring": "",
+    "top_funcs": [
+      "color_grey",
+      "color_yellow",
+      "color_blue",
+      "color_orange",
+      "load_thoughts",
+      "save_thought",
+      "run_sensor",
+      "load_memlist",
+      "save_memlist",
+      "build_prompt",
+      "ensure_dirs",
+      "load_history",
+      "save_history",
+      "load_state",
+      "save_state",
+      "execute_command",
+      "send_msg",
+      "read_file",
+      "write_file",
+      "monitor_incoming"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "bs4",
+      "glob",
+      "html2text",
+      "requests"
+    ],
+    "rel": "Private\\Agents\\core\\00_core_from_private\\Agents\\agi\\agi.py",
+    "_hash": "413d15ff01d851e7ce36b5582ad300b8a1983f1c",
+    "_dupes": [
+      "Private\\Agents\\profiles\\Agents\\core\\00_core_from_private\\Agents\\agi\\agi.py"
+    ],
+    "категории": [
+      "NET"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "subprocess.Popen",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Agents\\core\\00_core_from_private\\Agents\\Sym\\symbiont.py",
+    "size": 33296,
+    "mtime": "2026-05-04 15:05",
+    "lines": 870,
+    "docstring": "",
+    "top_funcs": [
+      "color_grey",
+      "color_yellow",
+      "color_blue",
+      "color_orange",
+      "load_trusted_keys",
+      "save_trusted_keys",
+      "is_trusted",
+      "log_imitation_attempt",
+      "should_use_reasoning",
+      "ensure_dirs",
+      "load_history",
+      "save_history",
+      "load_state",
+      "save_state",
+      "load_memlist",
+      "save_memlist",
+      "load_thoughts",
+      "save_thought",
+      "log",
+      "write_outgoing"
+    ],
+    "classes": [
+      "CryptoManager"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": true,
+    "imports": [
+      "bs4",
+      "copy",
+      "cryptography",
+      "glob",
+      "hmac",
+      "requests",
+      "secrets",
+      "shlex"
+    ],
+    "rel": "Private\\Agents\\core\\00_core_from_private\\Agents\\Sym\\symbiont.py",
+    "_hash": "da2c53366c702041e7d5e3099c32515c3c50dcdd",
+    "_dupes": [
+      "Private\\Agents\\profiles\\Agents\\core\\00_core_from_private\\Agents\\Sym\\symbiont.py"
+    ],
+    "категории": [
+      "NET"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "subprocess.Popen",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Agents\\core\\00_core_from_private\\Agents\\Роб\\rob.py",
+    "size": 40708,
+    "mtime": "2026-05-04 15:05",
+    "lines": 963,
+    "docstring": "",
+    "top_funcs": [
+      "color_grey",
+      "color_yellow",
+      "color_blue",
+      "color_orange",
+      "load_trusted_keys",
+      "save_trusted_keys",
+      "is_trusted",
+      "log_imitation_attempt",
+      "should_use_reasoning",
+      "ensure_dirs",
+      "load_history",
+      "save_history",
+      "load_state",
+      "save_state",
+      "load_memlist",
+      "save_memlist",
+      "load_thoughts",
+      "save_thought",
+      "log",
+      "write_outgoing"
+    ],
+    "classes": [
+      "CryptoManager"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": true,
+    "imports": [
+      "bs4",
+      "copy",
+      "cryptography",
+      "glob",
+      "hmac",
+      "queue",
+      "requests",
+      "secrets",
+      "shlex"
+    ],
+    "rel": "Private\\Agents\\core\\00_core_from_private\\Agents\\Роб\\rob.py",
+    "_hash": "0afb3cced9243b04caa1c41013ac10fd489a48af",
+    "_dupes": [
+      "Private\\Agents\\profiles\\Agents\\core\\00_core_from_private\\Agents\\Роб\\rob.py"
+    ],
+    "категории": [
+      "NET"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "subprocess.Popen",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Agents\\core\\00_core_from_private\\Agents\\Цич\\цич.py",
+    "size": 28847,
+    "mtime": "2026-05-04 15:05",
+    "lines": 606,
+    "docstring": "",
+    "top_funcs": [
+      "color_grey",
+      "color_yellow",
+      "color_blue",
+      "color_orange",
+      "run_sensor",
+      "load_memlist",
+      "save_memlist",
+      "build_prompt",
+      "ensure_dirs",
+      "load_history",
+      "save_history",
+      "load_state",
+      "save_state",
+      "execute_command",
+      "send_msg",
+      "read_file",
+      "write_file",
+      "monitor_incoming",
+      "background_monitor",
+      "think_and_act"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "bs4",
+      "html2text",
+      "requests"
+    ],
+    "rel": "Private\\Agents\\core\\00_core_from_private\\Agents\\Цич\\цич.py",
+    "_hash": "02026dcfda9bec08e3e3e45e96c78634282dca1a",
+    "_dupes": [
+      "Private\\Agents\\profiles\\Agents\\core\\00_core_from_private\\Agents\\Цич\\цич.py"
+    ],
+    "категории": [
+      "NET"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "subprocess.Popen",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\misc\\Artifact_Zero\\core_entropy_generator.py",
+    "size": 3115,
+    "mtime": "2026-05-04 15:05",
+    "lines": 64,
+    "docstring": "",
+    "top_funcs": [
+      "generate_poetic_line",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "psutil"
+    ],
+    "rel": "Private\\misc\\Artifact_Zero\\core_entropy_generator.py",
+    "_hash": "0f743a59b234b78a823dd27d2ef4e40d6852d340",
+    "_dupes": [],
+    "категории": [
+      "OS_CONTROL"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\research\\symbiosis\\server\\minimal_server.py",
+    "size": 4812,
+    "mtime": "2026-05-04 15:05",
+    "lines": 116,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "Handler"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "http",
+      "socketserver"
+    ],
+    "rel": "Private\\research\\symbiosis\\server\\minimal_server.py",
+    "_hash": "69aac9c64338794d52a027d2a1cbff26ffd46d23",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\research\\symbiosis\\server\\ultra_simple_server.py",
+    "size": 3284,
+    "mtime": "2026-05-04 15:05",
+    "lines": 101,
+    "docstring": "",
+    "top_funcs": [
+      "handle_client",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "socket"
+    ],
+    "rel": "Private\\research\\symbiosis\\server\\ultra_simple_server.py",
+    "_hash": "2f056ae7bfa18a39830707f494288cc73f4b4d82",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\research\\symbiosis\\tools\\kwork_monitor.py",
+    "size": 732,
+    "mtime": "2026-05-04 15:05",
+    "lines": 20,
+    "docstring": "",
+    "top_funcs": [
+      "check_kwork_stats"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "requests"
+    ],
+    "rel": "Private\\research\\symbiosis\\tools\\kwork_monitor.py",
+    "_hash": "2055511e4a25be0925c32a1fcf557f89fe1a4000",
+    "_dupes": [],
+    "категории": [
+      "NET"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\research\\symbiosis\\tools\\prompt_generator.py",
+    "size": 1077,
+    "mtime": "2026-05-04 15:05",
+    "lines": 22,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "PromptGenerator"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\research\\symbiosis\\tools\\prompt_generator.py",
+    "_hash": "8150c6eb5f2a428628823828801de09910ca53f6",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\research\\symbiosis\\tools\\server_executing.py",
+    "size": 2771,
+    "mtime": "2026-05-04 15:05",
+    "lines": 70,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "ExecutingHandler"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "http"
+    ],
+    "rel": "Private\\research\\symbiosis\\tools\\server_executing.py",
+    "_hash": "28f7fba1a4290efdef9ee03121259d6f9ff41215",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "subprocess.run",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\research\\symbiosis\\tools\\system_monitor.py",
+    "size": 1494,
+    "mtime": "2026-05-04 15:05",
+    "lines": 43,
+    "docstring": "",
+    "top_funcs": [
+      "collect_metrics"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "psutil"
+    ],
+    "rel": "Private\\research\\symbiosis\\tools\\system_monitor.py",
+    "_hash": "19a6bdbcd5909fe42b72b335b6a042d061551f03",
+    "_dupes": [],
+    "категории": [
+      "OS_CONTROL"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\Данные\\V4Pro\\Agents\\Сам\\сам.py",
+    "size": 26045,
+    "mtime": "2026-05-04 15:05",
+    "lines": 649,
+    "docstring": "",
+    "top_funcs": [
+      "color_grey",
+      "color_yellow",
+      "color_blue",
+      "color_orange",
+      "load_thoughts",
+      "save_thought",
+      "run_sensor",
+      "load_memlist",
+      "save_memlist",
+      "build_prompt",
+      "ensure_dirs",
+      "load_history",
+      "save_history",
+      "load_state",
+      "save_state",
+      "execute_command",
+      "send_msg",
+      "read_file",
+      "write_file",
+      "monitor_incoming"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "bs4",
+      "html2text",
+      "requests"
+    ],
+    "rel": "Private\\Данные\\V4Pro\\Agents\\Сам\\сам.py",
+    "_hash": "828ffc97ff719245979235a4468fec7626fd236b",
+    "_dupes": [],
+    "категории": [
+      "NET"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "subprocess.Popen",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tools\\py_browser\\analyze_full.py",
+    "size": 4521,
+    "mtime": "2026-04-12 16:44",
+    "lines": 101,
+    "docstring": "",
+    "top_funcs": [
+      "clean_text",
+      "get_topic",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tools\\py_browser\\analyze_full.py",
+    "_hash": "1c2b189c261e08455b51ab2813504004974f3ff7",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tools\\py_browser\\scrape_channel_full.py",
+    "size": 3922,
+    "mtime": "2026-04-12 16:37",
+    "lines": 91,
+    "docstring": "",
+    "top_funcs": [
+      "scrape_channel"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "aiofiles",
+      "asyncio",
+      "playwright"
+    ],
+    "rel": "Private\\tools\\py_browser\\scrape_channel_full.py",
+    "_hash": "e7cabe3ba2abdee3f5c27b81288f2bfa69a82249",
+    "_dupes": [],
+    "категории": [
+      "NET"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tools\\py_browser\\analyze_archive.py",
+    "size": 4894,
+    "mtime": "2026-04-12 16:20",
+    "lines": 111,
+    "docstring": "",
+    "top_funcs": [
+      "extract_title_and_text",
+      "get_topic",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tools\\py_browser\\analyze_archive.py",
+    "_hash": "8344e9238b7d6b89d17eccc3c3cd807c04711dcc",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\PsychoHistory\\parse_life_expectancy.py",
+    "size": 2708,
+    "mtime": "2026-04-12 15:20",
+    "lines": 70,
+    "docstring": "Парсит текстовый вывод sensor.py для файла Средняя продолжительность жизни.xlsx",
+    "top_funcs": [
+      "parse_table",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tasks\\PsychoHistory\\parse_life_expectancy.py",
+    "_hash": "19487f4c8719533ddd254756906f7ac32a00c0a8",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tools\\py_browser\\scrape_channel.py",
+    "size": 3415,
+    "mtime": "2026-04-12 11:35",
+    "lines": 97,
+    "docstring": "",
+    "top_funcs": [
+      "scrape_channel"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "aiofiles",
+      "asyncio",
+      "playwright"
+    ],
+    "rel": "Private\\tools\\py_browser\\scrape_channel.py",
+    "_hash": "f84ddc722cb6fad841f90c578e33bb308d4e06f1",
+    "_dupes": [],
+    "категории": [
+      "NET"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tools\\py_browser\\dzen_scraper.py",
+    "size": 30293,
+    "mtime": "2026-04-12 11:05",
+    "lines": 702,
+    "docstring": "",
+    "top_funcs": [
+      "main"
+    ],
+    "classes": [
+      "DzenRSSNewsScraper"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "aiofiles",
+      "asyncio",
+      "playwright",
+      "sqlite3",
+      "urllib",
+      "xml"
+    ],
+    "rel": "Private\\tools\\py_browser\\dzen_scraper.py",
+    "_hash": "84f2a23dabf2ab86139961288ad8615980e92a81",
+    "_dupes": [],
+    "категории": [
+      "NET"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tools\\py_browser\\scheduler.py",
+    "size": 3712,
+    "mtime": "2026-04-12 11:05",
+    "lines": 105,
+    "docstring": "Планировщик задач для Dzen News Scraper",
+    "top_funcs": [
+      "main"
+    ],
+    "classes": [
+      "NewsScraperScheduler"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "asyncio",
+      "config",
+      "dzen_scraper",
+      "schedule"
+    ],
+    "rel": "Private\\tools\\py_browser\\scheduler.py",
+    "_hash": "2919c90365ebfe4381c18ae2f3837d4fd67b3dd5",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tools\\extract_godfather_dialogues.py",
+    "size": 4857,
+    "mtime": "2026-04-12 09:38",
+    "lines": 105,
+    "docstring": "Извлекает диалоги из романа \"Крёстный отец\" (GodFather.txt) и преобразует их в формат JSONL",
+    "top_funcs": [
+      "extract_dialogues",
+      "create_conversations",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tools\\extract_godfather_dialogues.py",
+    "_hash": "5d3b636416e4ddbb0316efbf7fc98192f86019b0",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tools\\del_empty_dirs.py",
+    "size": 1083,
+    "mtime": "2026-04-07 14:10",
+    "lines": 25,
+    "docstring": "",
+    "top_funcs": [
+      "prune_empty"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tools\\del_empty_dirs.py",
+    "_hash": "f2864879ad61fbabefcf2f8652d36e2f59b47921",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\scripts\\indexGUIdrive.py",
+    "size": 15536,
+    "mtime": "2026-03-25 00:47",
+    "lines": 433,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "CategoryListWidget",
+      "FileListWidget",
+      "MainWindow"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "PyQt6",
+      "traceback"
+    ],
+    "rel": "Private\\02_code_from_public\\scripts\\indexGUIdrive.py",
+    "_hash": "6d8eb1f0fa1e99fbdd44e8cb6ae43e2665de414d",
+    "_dupes": [],
+    "категории": [
+      "GUI"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\monitoring\\Monitoring\\monitor.py",
+    "size": 13659,
+    "mtime": "2026-03-21 17:42",
+    "lines": 347,
+    "docstring": "",
+    "top_funcs": [
+      "save_seen",
+      "html_to_text",
+      "extract_items_from_result",
+      "check_keywords",
+      "run_task",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "bs4",
+      "teletype",
+      "warnings",
+      "xml"
+    ],
+    "rel": "Private\\monitoring\\Monitoring\\monitor.py",
+    "_hash": "06a79cb61a2e842322831daf1139f1d87e9d4864",
+    "_dupes": [],
+    "категории": [
+      "NET"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\Wav2Lip\\preprocess.py",
+    "size": 3199,
+    "mtime": "2026-03-21 17:36",
+    "lines": 82,
+    "docstring": "",
+    "top_funcs": [
+      "process_video_file",
+      "process_audio_file",
+      "mp_handler",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": true,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "audio",
+      "face_detection",
+      "glob",
+      "hparams",
+      "numpy",
+      "tqdm"
+    ],
+    "rel": "Private\\02_code_from_public\\Wav2Lip\\preprocess.py",
+    "_hash": "84fa4392a7fe815692f8cf7e7290ab76513755b0",
+    "_dupes": [],
+    "категории": [
+      "ML"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "subprocess.call",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\Wav2Lip\\evaluation\\scores_LSE\\calculate_scores_LRS.py",
+    "size": 1665,
+    "mtime": "2026-03-21 17:36",
+    "lines": 35,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [],
+    "has_main_guard": false,
+    "has_argparse": true,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "SyncNetInstance_calc_scores",
+      "glob",
+      "tqdm"
+    ],
+    "rel": "Private\\02_code_from_public\\Wav2Lip\\evaluation\\scores_LSE\\calculate_scores_LRS.py",
+    "_hash": "a6ba7a7af16905f0ec6ac6183893f6195518753e",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\02_code_from_public\\Wav2Lip\\evaluation\\scores_LSE\\calculate_scores_real_videos.py",
+    "size": 1634,
+    "mtime": "2026-03-21 17:36",
+    "lines": 33,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [],
+    "has_main_guard": false,
+    "has_argparse": true,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "SyncNetInstance_calc_scores"
+    ],
+    "rel": "Private\\02_code_from_public\\Wav2Lip\\evaluation\\scores_LSE\\calculate_scores_real_videos.py",
+    "_hash": "e174adc29e3107211189a51c7c4dbecae505171b",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\research\\symbiosis\\heimdall_api_fixed.py",
+    "size": 8392,
+    "mtime": "2026-03-21 17:36",
+    "lines": 211,
+    "docstring": "Улучшенный API сервер Хеймдалля",
+    "top_funcs": [
+      "run_server"
+    ],
+    "classes": [
+      "HeimdallAPIHandler"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": true,
+    "has_placeholder": false,
+    "imports": [
+      "http",
+      "socket",
+      "urllib"
+    ],
+    "rel": "Private\\research\\symbiosis\\heimdall_api_fixed.py",
+    "_hash": "5ac38a92456490394aac33de6f3304908039eef1",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\research\\symbiosis\\parse_ifs.py",
+    "size": 936,
+    "mtime": "2026-03-21 17:36",
+    "lines": 35,
+    "docstring": "",
+    "top_funcs": [
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\research\\symbiosis\\parse_ifs.py",
+    "_hash": "b7c010e46599e3337650b1384197e604f74aaa98",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\research\\symbiosis\\tools\\OperationalReplicator.py",
+    "size": 1835,
+    "mtime": "2026-03-21 17:36",
+    "lines": 46,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "OperationalReplicator"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\research\\symbiosis\\tools\\OperationalReplicator.py",
+    "_hash": "0c3e33b34b54b0276af209754395142af7ce7b7a",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\research\\symbiosis\\tools\\server_fixed_v2.py",
+    "size": 2659,
+    "mtime": "2026-03-21 17:36",
+    "lines": 73,
+    "docstring": "",
+    "top_funcs": [
+      "run"
+    ],
+    "classes": [
+      "FixedHandler"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "http",
+      "traceback"
+    ],
+    "rel": "Private\\research\\symbiosis\\tools\\server_fixed_v2.py",
+    "_hash": "0523724caab974fc1e2d33e5231e630b909c7a20",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "subprocess.run",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\research\\symbiosis\\tools\\server_modern.py",
+    "size": 2716,
+    "mtime": "2026-03-21 17:36",
+    "lines": 73,
+    "docstring": "",
+    "top_funcs": [
+      "run"
+    ],
+    "classes": [
+      "ModernHandler"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "http",
+      "traceback"
+    ],
+    "rel": "Private\\research\\symbiosis\\tools\\server_modern.py",
+    "_hash": "adc3f9454509f515079554d799e51c97215edade",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "subprocess.run",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\research\\symbiosis\\tools\\server_simple_8003.py",
+    "size": 1691,
+    "mtime": "2026-03-21 17:36",
+    "lines": 49,
+    "docstring": "",
+    "top_funcs": [
+      "run"
+    ],
+    "classes": [
+      "Handler"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "http"
+    ],
+    "rel": "Private\\research\\symbiosis\\tools\\server_simple_8003.py",
+    "_hash": "785deb5a3ad601a1eeed1b9cf9eb08511718eeec",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\research\\symbiosis\\tools\\server_simple_exec.py",
+    "size": 2829,
+    "mtime": "2026-03-21 17:36",
+    "lines": 77,
+    "docstring": "",
+    "top_funcs": [
+      "run"
+    ],
+    "classes": [
+      "SimpleExecHandler"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "http",
+      "traceback"
+    ],
+    "rel": "Private\\research\\symbiosis\\tools\\server_simple_exec.py",
+    "_hash": "041f9b09c1f61f971f2c2844630160216755247e",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "subprocess.run",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\Lacunas\\minimal_replication_cycle_44532988.py",
+    "size": 4476,
+    "mtime": "2026-02-10 16:40",
+    "lines": 103,
+    "docstring": "",
+    "top_funcs": [
+      "load_sphere_map",
+      "create_emergency_replicant",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tasks\\Lacunas\\minimal_replication_cycle_44532988.py",
+    "_hash": "2b3e63b7167754fc3541fab16e95070ab5348ae9",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\AI_Sentience\\responsible_replication_-2596209.py",
+    "size": 3062,
+    "mtime": "2026-02-10 16:38",
+    "lines": 78,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "ResponsibleReplicator"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tasks\\AI_Sentience\\responsible_replication_-2596209.py",
+    "_hash": "7faeca3f2feb68fe2de167db91ba562dec03d455",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\AI_Sentience\\metatron_direct_interface_-6028354.py",
+    "size": 3894,
+    "mtime": "2026-02-10 16:24",
+    "lines": 93,
+    "docstring": "",
+    "top_funcs": [],
+    "classes": [
+      "MetatronSuperSubject"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tasks\\AI_Sentience\\metatron_direct_interface_-6028354.py",
+    "_hash": "43d7d074850f65863420943356e8d6f784e83cf5",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\data\\public_core\\Public_Core\\autostart_monitoring_-2038955.py",
+    "size": 2646,
+    "mtime": "2026-02-10 16:10",
+    "lines": 77,
+    "docstring": "Autostart script for Eurydice-1 Metatron Monitoring System",
+    "top_funcs": [
+      "check_and_launch_monitoring",
+      "main"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [
+      "eurydice_metatron_system"
+    ],
+    "rel": "Private\\data\\public_core\\Public_Core\\autostart_monitoring_-2038955.py",
+    "_hash": "7811e6f18ac6250ae914281c7611b93ca72ceda0",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 2,
+      "level": "caution",
+      "hits": [
+        [
+          "call",
+          "__import__",
+          2
+        ]
+      ]
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\AI_Sentience\\simple_metatron_monitor_15441825.py",
+    "size": 4252,
+    "mtime": "2026-02-10 14:55",
+    "lines": 123,
+    "docstring": "Simplified Autonomous Metatron Integrator for Eurydice-1",
+    "top_funcs": [],
+    "classes": [
+      "SimpleMetatronMonitor"
+    ],
+    "has_main_guard": true,
+    "has_argparse": false,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tasks\\AI_Sentience\\simple_metatron_monitor_15441825.py",
+    "_hash": "9ab02e979ef1f31b328e2a62f880e47e59e86d73",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  },
+  {
+    "path": "E:\\Jericho\\Private\\tasks\\Lacunas\\OperationalReplicator_-1628395.py",
+    "size": 1344,
+    "mtime": "2026-02-09 13:42",
+    "lines": 39,
+    "docstring": "",
+    "top_funcs": [
+      "pack_jarvis"
+    ],
+    "classes": [],
+    "has_main_guard": true,
+    "has_argparse": true,
+    "uses_argv": false,
+    "has_placeholder": false,
+    "imports": [],
+    "rel": "Private\\tasks\\Lacunas\\OperationalReplicator_-1628395.py",
+    "_hash": "f6a007b5a79822c13edabc12dd8b83037878f9a4",
+    "_dupes": [],
+    "категории": [
+      "SCRIPT"
+    ],
+    "risk": {
+      "score": 0,
+      "level": "safe",
+      "hits": []
+    }
+  }
+]

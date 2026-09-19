@@ -1,0 +1,64 @@
+# ===== СЕКРЕТЫ =====
+side/api_keys.json
+!side/api_keys.example.json
+**/*.pem
+**/*.key
+**/*.crt
+**/.env
+.env
+
+# ===== ПРОФИЛИ АГЕНТОВ =====
+profiles/
+
+# ===== КЕШИ =====
+**/cache/
+**/*cache*/
+**/__pycache__/
+**/.cache/
+*.py[cod]
+*.egg-info/
+
+# ===== ПРОКСИ-КЕШ =====
+proxy/
+
+# ===== СКРАПЕРЫ: выхлоп =====
+side/py_browser/output/
+
+# ===== ВРЕМЕННЫЕ СКРИПТЫ ПАТЧЕЙ =====
+side/_patch*.py
+side/_fix*.py
+side/_recon*.py
+side/_peek*.py
+side/_find*.py
+side/_add*.py
+side/_alias*.py
+side/_buf*.py
+side/_progress*.py
+side/_autostart*.py
+side/_publish*.py
+side/_rm_*.py
+side/_test.svg
+side/_t.txt
+temp/
+tmp/
+*.tmp
+
+# ===== ТЯЖЁЛОЕ =====
+wheels/
+pip_cache/
+data/cache/
+side/external/*/models/
+side/external/*/cache/
+
+# ===== OS / РЕДАКТОРЫ =====
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+*~
+# ===== БЭКАПЫ =====
+*.bak
+*.bak_*
+*.bak.*
+*.orig
