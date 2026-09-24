@@ -30,7 +30,7 @@ _http_cache = {}
 _HTTP_CACHE_TTL = 300  # сек
 
 
-def _http_cache_key(method, url, body):
+def _http_cache_key(method, url, body, proxy_tag=""):
     import hashlib as _hl
     b = ""
     if body is not None:
@@ -39,7 +39,7 @@ def _http_cache_key(method, url, body):
         else:
             b = str(body)
     h = _hl.md5(b.encode("utf-8")).hexdigest()[:12]
-    return f"{method}:{url}:{h}"
+    return f"{method}:{url}:{h}:{proxy_tag}"
 
 
 def _with_progress(func, timeout_sec, label="⏳ запрос"):
@@ -70,23 +70,30 @@ def _with_progress(func, timeout_sec, label="⏳ запрос"):
     start = _t.time()
     bar_w = 20
     last_len = 0
+    timed_out = False
 
-    while not done.wait(0.5):
-        elapsed = _t.time() - start
-        secs = int(elapsed)
-        ratio = min(1.0, elapsed / max(1, timeout_sec))
-        filled = int(bar_w * ratio)
-        if filled >= bar_w:
-            bar = "=" * bar_w
-        else:
-            bar = "=" * filled + ">" + "." * (bar_w - filled - 1)
-        line = f"\r{label}: {secs}/{timeout_sec}с [{bar}]"
-        try:
-            _sys.stderr.write(line)
-            _sys.stderr.flush()
-            last_len = len(line)
-        except Exception:
-            pass
+    try:
+        while not done.wait(0.5):
+            elapsed = _t.time() - start
+            secs = int(elapsed)
+            ratio = min(1.0, elapsed / max(1, timeout_sec))
+            filled = int(bar_w * ratio)
+            if filled >= bar_w:
+                bar = "=" * bar_w
+            else:
+                bar = "=" * filled + ">" + "." * (bar_w - filled - 1)
+            line = f"\r{label}: {secs}/{timeout_sec}с [{bar}]"
+            try:
+                _sys.stderr.write(line)
+                _sys.stderr.flush()
+                last_len = len(line)
+            except Exception:
+                pass
+            if elapsed > timeout_sec:
+                timed_out = True
+                break
+    except KeyboardInterrupt:
+        timed_out = True
 
     if last_len:
         try:
@@ -94,6 +101,9 @@ def _with_progress(func, timeout_sec, label="⏳ запрос"):
             _sys.stderr.flush()
         except Exception:
             pass
+
+    if timed_out:
+        raise TimeoutError(f"превышен таймаут ({timeout_sec} сек)")
 
     if error[0] is not None:
         raise error[0]
@@ -151,7 +161,7 @@ def web_search(args):
       {"веб_поиск": {"запрос": "python asyncio"}}
       {"поиск_информации": {"запрос": "AGI|LLM"}}
     """
-    query_str = args.get("запрос") or args.get("queries") or args.get("query") or ""
+    query_str = args.get("запрос") or ""
     output_format = args.get("формат", "text")
     if not query_str:
         return "Ошибка: не указан запрос (поле 'запрос' или 'queries')"
@@ -167,51 +177,67 @@ def web_search(args):
     aggregated = {}
     import subprocess as _sp
     import sys as _sys_w
-    for q in queries:
-        web_search_script = PUBLIC_TOOLS_DIR / "web_search.py"
-        if not web_search_script.exists():
-            log(f"web_search.py не найден: {web_search_script}")
-            continue
-        # если ключа нет — спросим и сохраним (только из главного потока)
-        tavily_key = ensure_api_key("tavily")
-        _args = [_sys_w.executable, str(web_search_script), q]
+
+    web_search_script = PUBLIC_TOOLS_DIR / "web_search.py"
+    if not web_search_script.exists():
+        log(f"web_search.py не найден: {web_search_script}")
+        raw_result = ""
+    else:
+        # Tavily ходит только через Tor. Если Tor не поднят —
+        # не спрашиваем ключ и не передаём его side-скрипту.
+        tavily_key = None
+        try:
+            import socket as _sock_t
+            _s = _sock_t.socket()
+            _s.settimeout(0.4)
+            _tor_up = _s.connect_ex(("127.0.0.1", 9050)) == 0
+            _s.close()
+        except Exception:
+            _tor_up = False
+        if _tor_up:
+            tavily_key = ensure_api_key("tavily")
+        else:
+            log("Tor не поднят — Tavily пропущен, только DDG")
+
+        # ОДИН вызов со всеми запросами через ||| — side-скрипт сам
+        # гоняет их параллельно (2 воркера), дедуп и ранжирует
+        _args = [_sys_w.executable, str(web_search_script),
+                 "--queries", "|||".join(queries)]
         if tavily_key:
             _args += ["--tavily-key", tavily_key]
         try:
-            # ПРЯМОЙ subprocess — PowerShell схлопывает \n в пробелы,
-            # из-за этого парсер не может разделить результаты
             _r = _sp.run(
                 _args, capture_output=True, text=True,
-                encoding="utf-8", errors="replace", timeout=120,
+                encoding="utf-8", errors="replace", timeout=180,
             )
             raw_result = _r.stdout or ""
             if _r.stderr:
-                log(f"web_search.py stderr '{q}': {_r.stderr[:500]}")
+                log(f"web_search.py stderr: {_r.stderr[:500]}")
         except Exception as e:
-            log(f"Ошибка запуска web_search.py для '{q}': {e}")
-            continue
+            log(f"Ошибка запуска web_search.py: {e}")
+            raw_result = ""
 
-        items = parse_ddgs_output(raw_result)
-        if not items:
+    items = parse_ddgs_output(raw_result) if raw_result else []
+    for item in items:
+        url = item.get("url")
+        if not url:
             continue
-
-        for item in items:
-            url = item.get("url")
-            if not url:
-                continue
-            title = item.get("title", "") or url.split('/')[-1] or "Без названия"
-            snippet = item.get("snippet", "") or "[Описание отсутствует]"
-            score = calculate_relevance(q, title, snippet)
-            if url in aggregated:
-                ex = aggregated[url]
-                ex["relevance_score"] = min(1.0, ex["relevance_score"] + score)
-                if snippet not in ex["snippet"]:
-                    ex["snippet"] += " | " + snippet
-                if len(title) > len(ex["title"]):
-                    ex["title"] = title
-            else:
-                aggregated[url] = {"url": url, "title": title,
-                                   "snippet": snippet, "relevance_score": score}
+        title = item.get("title", "") or url.split('/')[-1] or "Без названия"
+        snippet = item.get("snippet", "") or "[Описание отсутствует]"
+        # если side-скрипт дал rel — используем её, иначе считаем сами
+        score = item.get("relevance")
+        if score is None:
+            score = calculate_relevance(" ".join(queries), title, snippet)
+        if url in aggregated:
+            ex = aggregated[url]
+            ex["relevance_score"] = min(1.0, ex["relevance_score"] + score)
+            if snippet not in ex["snippet"]:
+                ex["snippet"] += " | " + snippet
+            if len(title) > len(ex["title"]):
+                ex["title"] = title
+        else:
+            aggregated[url] = {"url": url, "title": title,
+                               "snippet": snippet, "relevance_score": score}
 
     all_structured = list(aggregated.values())
     all_structured.sort(key=lambda x: x["relevance_score"], reverse=True)
@@ -225,7 +251,8 @@ def web_search(args):
         _search_results_cache[idx] = item
 
     if output_format == "json":
-        return json.dumps({"search_results": all_structured}, ensure_ascii=False, indent=2)
+        _r = json.dumps({"search_results": all_structured}, ensure_ascii=False, indent=2)
+        return _r
     if not all_structured:
         return "По вашему запросу ничего не найдено."
     lines = []
@@ -247,7 +274,7 @@ def http_request(args):
     """HTTP-запрос: GET / POST / PUT / DELETE.
 
     Параметры:
-      url           — адрес (обязательный)
+      адрес         — URL (обязательный), алиас: урл
       метод         — GET (по умолчанию), POST, PUT, DELETE
       заголовки     — свои HTTP-заголовки (объект)
       тело          — тело для POST/PUT (объект для JSON или строка)
@@ -255,7 +282,7 @@ def http_request(args):
       прокси        — прокси-URL (socks5://... или http://...)
       авто_прокси   — true: через Tor (если прокси не задан)
       таймаут       — секунд (по умолчанию 30)
-      verify_ssl    — проверять сертификат (по умолчанию true)
+      проверять_ssl — проверять сертификат (по умолчанию true)
       страница      — номер страницы вывода (по умолчанию 1)
       размер        — символов на страницу (по умолчанию 2000)
       обновить      — true: игнорировать кэш (TTL 5 мин)
@@ -263,18 +290,18 @@ def http_request(args):
     Алиас: веб_запрос.
 
     Примеры:
-      {"запрос": {"url": "https://api.example.com/data"}}
-      {"запрос": {"url": "https://httpbin.org/post", "метод": "POST",
+      {"запрос": {"адрес": "https://api.example.com/data"}}
+      {"запрос": {"адрес": "https://httpbin.org/post", "метод": "POST",
                   "тело": {"ключ": "значение"}}}
-      {"запрос": {"url": "https://cdn.example.com/big.zip",
+      {"запрос": {"адрес": "https://cdn.example.com/big.zip",
                   "сохранить_как": "E:/tmp/big.zip"}}
     """
     method = args.get("метод", "GET").upper()
-    url = args.get("url", "")
+    url = args.get("урл") or args.get("адрес") or ""
     custom_headers = args.get("заголовки", {})
     body = args.get("тело", None)
     save_path = args.get("сохранить_как", None)
-    proxy = args.get("прокси") or args.get("proxy") or args.get("прокси_url")
+    proxy = args.get("прокси") or args.get("прокси_url")
     # прокси может быть строкой "socks5://host:port" или объектом
     if isinstance(proxy, str):
         proxy = {"http": proxy, "https": proxy}
@@ -289,36 +316,48 @@ def http_request(args):
         return "Ошибка: не указан URL"
 
     if auto_proxy and not proxy and ensure_tor():
-        proxy = {"http": "socks5://127.0.0.1:9050", "https": "socks5://127.0.0.1:9050"}
+        proxy = {"http": "socks5h://127.0.0.1:9050", "https": "socks5h://127.0.0.1:9050"}
 
     headers = {**DEFAULT_HEADERS, **custom_headers}
     proxies = proxy if proxy else None
-    verify = args.get("verify_ssl", True)
+    verify = args.get("проверять_ssl", True)
 
+    _t_start = time.time()
     try:
         if save_path:
+            _t_start = time.time()
             Path(save_path).parent.mkdir(parents=True, exist_ok=True)
             kw = dict(headers=headers, proxies=proxies, verify=verify,
                       stream=True, timeout=timeout_sec)
-            if method == "GET":
-                resp = requests.get(url, **kw)
-            elif method == "POST":
-                if isinstance(body, dict):
-                    headers.setdefault("Content-Type", "application/json")
-                    resp = requests.post(url, json=body, **kw)
-                else:
-                    resp = requests.post(url, data=body, **kw)
-            elif method == "PUT":
-                if isinstance(body, dict):
-                    headers.setdefault("Content-Type", "application/json")
-                    resp = requests.put(url, json=body, **kw)
-                else:
-                    resp = requests.put(url, data=body, **kw)
-            elif method == "DELETE":
-                resp = requests.delete(url, **kw)
-            else:
-                return f"Неподдерживаемый метод: {method}"
-            resp.raise_for_status()
+
+            def _do_download_request():
+                if method == "GET":
+                    return requests.get(url, **kw)
+                if method == "POST":
+                    if isinstance(body, dict):
+                        headers.setdefault("Content-Type", "application/json")
+                        return requests.post(url, json=body, **kw)
+                    return requests.post(url, data=body, **kw)
+                if method == "PUT":
+                    if isinstance(body, dict):
+                        headers.setdefault("Content-Type", "application/json")
+                        return requests.put(url, json=body, **kw)
+                    return requests.put(url, data=body, **kw)
+                if method == "DELETE":
+                    return requests.delete(url, **kw)
+                raise ValueError(f"Неподдерживаемый метод: {method}")
+
+            _label = "📥 ожидание ответа" + (" через Tor" if proxies else "")
+            try:
+                resp = _with_progress(_do_download_request, timeout_sec, label=_label)
+            except ValueError as _ve:
+                return str(_ve)
+
+            try:
+                resp.raise_for_status()
+            except Exception as _he:
+                return f"HTTP {resp.status_code}: {_he}"
+
             total = int(resp.headers.get('content-length', 0))
             done = 0
             with open(save_path, 'wb') as f:
@@ -328,16 +367,31 @@ def http_request(args):
                         done += len(chunk)
                         if total > 0:
                             pct = done / total * 100
-                            sys.stdout.write(f"\r{progress_bar(pct)} ({done/(1024*1024):.1f} MB / {total/(1024*1024):.1f} MB)")
-                            sys.stdout.flush()
+                            sys.stdout.write(f"\r📥 {progress_bar(pct)} ({done/(1024*1024):.1f} MB / {total/(1024*1024):.1f} MB)")
+                        else:
+                            sys.stdout.write(f"\r📥 {done/(1024*1024):.1f} MB")
+                        sys.stdout.flush()
             print()
-            return f"Файл сохранён: {save_path} ({os.path.getsize(save_path)} байт)"
+            _elapsed = time.time() - _t_start
+            return (f"Файл сохранён: {save_path} "
+                    f"({os.path.getsize(save_path)} байт) "
+                    f"за {_elapsed:.1f} сек")
 
         # --- кэш: не делать повторный запрос в течение TTL ---
-        cache_key = _http_cache_key(method, url, body)
+        # тег зависит от того, идём через прокси или напрямую
+        if proxies:
+            _p_val = ""
+            if isinstance(proxies, dict):
+                _p_val = proxies.get("https") or proxies.get("http") or ""
+            else:
+                _p_val = str(proxies)
+            _proxy_tag = "proxy:" + _p_val
+        else:
+            _proxy_tag = "direct"
+        cache_key = _http_cache_key(method, url, body, _proxy_tag)
         now = time.time()
         entry = _http_cache.get(cache_key)
-        fresh = bool(args.get("обновить") or args.get("refresh"))
+        fresh = bool(args.get("обновить"))
         if entry and not fresh and (now - entry["ts"]) < _HTTP_CACHE_TTL:
             status_code = entry["status"]
             body_text = entry["body"]
@@ -412,7 +466,8 @@ def http_request(args):
         chunk = body_text[start:end]
 
         cache_mark = " [кэш]" if from_cache else ""
-        result = f"Статус: {status_code}{cache_mark}\n"
+        _elapsed = time.time() - _t_start
+        result = f"Статус: {status_code}{cache_mark}  ⏱ {_elapsed:.1f} сек\n"
         result += (f"Страница {page}/{total_pages} "
                    f"(символов {start+1}-{end} из {total})\n\n")
         result += chunk
@@ -421,75 +476,89 @@ def http_request(args):
         if page > 1:
             result += (f"\n⬅️ Назад: добавь \"страница\": {page-1}")
         return result
+    except TimeoutError:
+        return f"Ошибка: превышен таймаут ({timeout_sec} сек)"
     except requests.exceptions.Timeout:
         _msg = f"Ошибка: превышен таймаут ({timeout_sec} сек)"
-        if proxies:
-            _addr = _proxy_addr_for_hint(proxies)
-            if _addr:
-                _msg += ('\n\n💡 Прокси, возможно, мёртв. Удалить его из хранилища:\n'
-                         '```text\n'
-                         f'{{"удалить_прокси": {{"прокси": "{_addr}"}}}}\n'
-                         '```')
         return _msg
     except Exception as e:
         _msg = f"Ошибка запроса: {e}"
-        if proxies and ("proxy" in str(e).lower()
-                        or "socks" in str(e).lower()
-                        or "connect" in str(e).lower()):
-            _addr = _proxy_addr_for_hint(proxies)
-            if _addr:
-                _msg += ('\n\n💡 Прокси, возможно, мёртв. Удалить его из хранилища:\n'
-                         '```text\n'
-                         f'{{"удалить_прокси": {{"прокси": "{_addr}"}}}}\n'
-                         '```')
         return _msg
 
 
 # ============================================================
 #  веб_страница / страница / open
 # ============================================================
+@register(["тор_запрос", "tor_запрос", "tor_request"])
+def tor_request(args):
+    """HTTP-запрос принудительно через Tor (авто_прокси всегда true).
+
+    Полный аналог «веб_запрос», но без опции ходить напрямую.
+    Параметры — те же, кроме «авто_прокси» (игнорируется).
+
+    Примеры:
+      {"тор_запрос": {"адрес": "http://example.com/"}}
+      {"тор_запрос": {"адрес": "https://api.example.com/data", "таймаут": 120}}
+    """
+    if not isinstance(args, dict):
+        args = {}
+    args = dict(args)
+    args["авто_прокси"] = True
+    try:
+        return http_request(args)
+    except KeyboardInterrupt:
+        return "⏹ Запрос прерван."
+
+
 @register(["страница", "веб_страница"])
 def web_page(args):
     """Загрузить веб-страницу и вернуть её текст.
 
     Параметры:
-      адрес        — URL (обязательный), алиас: url
-      авто_прокси  — true: через Tor
-      verify_ssl   — проверять сертификат (по умолчанию true)
-      сессия       — true: с куками и редиректами (по умолчанию true)
-      редиректы    — следовать редиректам (по умолчанию true)
-      view_source  — true: вернуть HTML без очистки
+      адрес         — URL (обязательный), алиас: урл
+      авто_прокси   — true: через Tor
+      проверять_ssl — проверять сертификат (по умолчанию true)
+      сессия        — true: с куками и редиректами (по умолчанию true)
+      редиректы     — следовать редиректам (по умолчанию true)
+      исходник      — true: вернуть HTML без очистки
+      страница      — номер страницы вывода (по умолчанию 1)
+      размер        — символов на страницу (по умолчанию 2048)
+      обновить      — true: игнорировать кэш
 
     Спец-режимы:
-      open_list — открыть несколько URL/ID из кэша поиска
-      find_list — искать подстроку в ранее открытых страницах
+      открыть_список — открыть несколько URL/ID из кэша поиска
+      найти_в_списке — искать подстроку. Если строка — ищет в ПОСЛЕДНЕЙ
+                       загруженной странице (из кэша). Если список
+                       объектов — по указанным cursor.
+      контекст       — символов вокруг совпадения (по умолч. 100)
+      количество     — сколько совпадений показать (по умолч. 20)
 
     Алиас: веб_страница.
 
     Примеры:
       {"страница": {"адрес": "https://example.com"}}
-      {"страница": {"url": "https://ru.wikipedia.org/wiki/Python"}}
+      {"страница": {"адрес": "https://ru.wikipedia.org/wiki/Python"}}
     """
     from urllib.parse import urlparse, unquote
     from _actions.tools_web import find_canonical
 
-    open_list = args.get("open_list")
-    find_list = args.get("find_list")
-    url = args.get("адрес", "") or args.get("url", "")
+    open_list = args.get("открыть_список")
+    find_list = args.get("найти_в_списке")
+    url = args.get("урл") or args.get("адрес", "")
     auto_proxy = args.get("авто_прокси", False)
-    verify = args.get("verify_ssl", True)
+    verify = args.get("проверять_ssl", True)
     use_session = args.get("сессия", True)
     allow_redirects = args.get("редиректы", True)
-    view_source = args.get("view_source", False)
+    view_source = args.get("исходник", False)
 
     proxies = None
-    _p = args.get("прокси") or args.get("proxy")
+    _p = args.get("прокси")
     if isinstance(_p, str):
         _p = {"http": _p, "https": _p}
     if isinstance(_p, dict):
         proxies = _p
     elif auto_proxy and ensure_tor():
-        proxies = {"http": "socks5://127.0.0.1:9050", "https": "socks5://127.0.0.1:9050"}
+        proxies = {"http": "socks5h://127.0.0.1:9050", "https": "socks5h://127.0.0.1:9050"}
 
     def _fetch(target_url, proxies=None, verify=True):
         clean_html = True
@@ -573,8 +642,8 @@ def web_page(args):
                 source_type = "http"
                 parsed_url = urlparse(url_to_fetch)
                 if parsed_url.netloc == "ru.wikipedia.org":
-                    _proxies = args.get("прокси") or args.get("proxies") or proxies
-                    _verify = args.get("verify_ssl", True)
+                    _proxies = args.get("прокси") or proxies
+                    _verify = args.get("проверять_ssl", True)
                     content, final_url, cookies = _fetch(url_to_fetch, proxies=_proxies, verify=_verify)
                     if content.startswith("Ошибка загрузки") and "403" in content:
                         path_parts = parsed_url.path.split('/')
@@ -594,8 +663,8 @@ def web_page(args):
                             else:
                                 content = f"Ошибка: локальная копия не найдена"
                 else:
-                    _proxies = args.get("прокси") or args.get("proxies") or proxies
-                    _verify = args.get("verify_ssl", True)
+                    _proxies = args.get("прокси") or proxies
+                    _verify = args.get("проверять_ssl", True)
                     content, final_url, cookies = _fetch(url_to_fetch, proxies=_proxies, verify=_verify)
 
                 if content.startswith("Ошибка"):
@@ -630,7 +699,75 @@ def web_page(args):
             })
         return json.dumps({"open_results": results}, ensure_ascii=False, indent=2)
 
-    # --- find_list ---
+    # --- простой поиск: найти_в_списке строкой ---
+    if isinstance(find_list, str):
+        pattern = find_list
+        if not pattern:
+            return "Ошибка: пустой 'найти_в_списке'"
+        if not _open_pages_cache:
+            return "📭 Кэш пуст. Сначала загрузи страницу: {\"веб_страница\": {\"адрес\": \"...\"}}"
+        # берём последнюю загруженную страницу
+        try:
+            last_key = next(reversed(_open_pages_cache))
+        except StopIteration:
+            return "📭 Кэш пуст."
+        page = _open_pages_cache[last_key]
+        content = page.get("content", "")
+        page_url = page.get("url", last_key)
+        try:
+            ctx = int(args.get("контекст") or 100)
+        except (TypeError, ValueError):
+            ctx = 100
+        if ctx < 0:
+            ctx = 0
+        try:
+            limit = int(args.get("количество") or 20)
+        except (TypeError, ValueError):
+            limit = 20
+        if limit <= 0:
+            limit = 20
+
+        matches = []
+        start = 0
+        while True:
+            idx = content.find(pattern, start)
+            if idx < 0:
+                break
+            matches.append(idx)
+            start = idx + 1
+            if len(matches) > 10000:
+                break
+
+        if not matches:
+            return ("🔍 В '" + str(page_url) + "' ничего не найдено по '"
+                    + pattern + "'. Символов в странице: "
+                    + str(len(content)))
+
+        lines = ["📄 " + str(page_url) + " (из кэша)",
+                 "🔍 Найдено: " + str(len(matches)) + " совпадений по '"
+                 + pattern + "'", ""]
+
+        for i, idx in enumerate(matches[:limit], 1):
+            # номер строки
+            line_num = content.count(chr(10), 0, idx) + 1
+            a = max(0, idx - ctx)
+            b = min(len(content), idx + len(pattern) + ctx)
+            frag = content[a:b]
+            frag = frag.replace(chr(10), " ").replace(chr(13), " ")
+            frag = " ".join(frag.split())
+            pre = "..." if a > 0 else ""
+            post = "..." if b < len(content) else ""
+            lines.append("  " + str(i) + ". [строка " + str(line_num)
+                         + "] " + pre + frag + post)
+            lines.append("")
+
+        if len(matches) > limit:
+            lines.append("  … и ещё " + str(len(matches) - limit)
+                         + ". Увеличь 'количество'.")
+
+        return chr(10).join(lines).rstrip()
+
+    # --- find_list (старый формат: список dict с pattern/cursor) ---
     if find_list is not None:
         results = []
         for item in find_list:
@@ -657,17 +794,64 @@ def web_page(args):
                             "matches": matches, "count": len(matches)})
         return json.dumps({"find_results": results}, ensure_ascii=False, indent=2)
 
-    # --- простой режим ---
+    # --- простой режим: постраничный вывод из кэша ---
     if not url:
         return "Ошибка: не указан адрес"
-    content = fetch_page_content(url, use_tor=auto_proxy, clean_html=not view_source)
-    if content.startswith("Ошибка"):
-        return content
-    lines = content.splitlines()
-    _open_pages_cache[url] = {
-        "url": url, "content": content, "lines": lines,
-        "fetched_at": time.time(), "cookies": {}, "source": "http",
-    }
-    if not content.strip():
-        return fetch_page_content(url, use_tor=auto_proxy, clean_html=False)
-    return content[:2048]
+
+    try:
+        _size = int(args.get("размер") or args.get("лимит") or 2048)
+    except (TypeError, ValueError):
+        _size = 2048
+    if _size <= 0:
+        _size = 2048
+    try:
+        _page = int(args.get("страница") or 1)
+    except (TypeError, ValueError):
+        _page = 1
+    if _page < 1:
+        _page = 1
+
+    _from_cache = False
+    if url in _open_pages_cache and not args.get("обновить"):
+        content = _open_pages_cache[url]["content"]
+        _from_cache = True
+    else:
+        content = fetch_page_content(url, use_tor=auto_proxy,
+                                     clean_html=not view_source)
+        if content.startswith("Ошибка"):
+            return content
+        if not content.strip() and not view_source:
+            content = fetch_page_content(url, use_tor=auto_proxy,
+                                         clean_html=False)
+        _lines = content.splitlines()
+        _open_pages_cache[url] = {
+            "url": url, "content": content, "lines": _lines,
+            "fetched_at": time.time(), "cookies": {}, "source": "http",
+        }
+
+    total = len(content)
+    if total == 0:
+        return "📄 Страница пустая (0 байт)"
+    total_pages = max(1, (total + _size - 1) // _size)
+    if _page > total_pages:
+        _page = total_pages
+    start = (_page - 1) * _size
+    end = min(start + _size, total)
+    chunk = content[start:end]
+
+    _cache_mark = " [кэш]" if _from_cache else ""
+    header = ("📄 " + url + _cache_mark + "\n"
+              + "Страница " + str(_page) + "/" + str(total_pages)
+              + " (символов " + str(start + 1) + "-" + str(end)
+              + " из " + str(total) + ")\n"
+              + "-" * 50 + "\n")
+    footer = ""
+    if _page < total_pages:
+        footer += ("\n\n▶ Дальше: добавь \"страница\": "
+                   + str(_page + 1))
+    if _page > 1:
+        footer += ("\n\n◀ Назад: добавь \"страница\": "
+                   + str(_page - 1))
+    if _from_cache and total_pages == 1:
+        footer += "\n\n💡 Кэш. Обновить: \"обновить\": true"
+    return header + chunk + footer

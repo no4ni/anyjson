@@ -73,18 +73,110 @@ def _should_hint_english(path):
 
 
 def _is_mostly_english(text: str) -> bool:
-    """True, если буквы в тексте — преимущественно латиница."""
+    """True, если файл реально английский (кириллицы почти нет).
+
+    Смешанные файлы (русские комменты + английские термины/код)
+    НЕ считаются английскими, hint не показываем.
+    """
     if not text:
         return False
     cyr = len(_CYR_RE.findall(text))
     lat = len(_LAT_RE.findall(text))
     total = cyr + lat
-    if total < 20:          # слишком короткий, не гадаем
+    if total < 50:          # слишком короткий, не гадаем
         return False
-    return cyr == 0 or (lat / total) > 0.9
+    if cyr >= 5:            # есть заметная кириллица — это не английский
+        return False
+    return (lat / total) > 0.98
 
 
-@register(["читать", "прочитать", "прочитай"])
+# ------------------------------------------------------------
+#  бинарные расширения: содержимое не читается как текст
+# ------------------------------------------------------------
+_BINARY_EXT = {
+    # документы (не plain text)
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+    ".odt", ".ods", ".odp", ".rtf", ".epub",
+    # изображения (svg — текстовый XML, поэтому его тут нет)
+    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff",
+    ".tif", ".ico", ".heic", ".heif", ".raw",
+    # архивы
+    ".zip", ".7z", ".rar", ".tar", ".gz", ".bz2", ".xz",
+    ".tgz", ".tbz2",
+    # исполняемые / скомпилированные
+    ".exe", ".dll", ".so", ".dylib", ".bin", ".pyc", ".pyo",
+    ".o", ".a", ".class", ".jar", ".msi", ".com",
+    # медиа
+    ".mp3", ".mp4", ".avi", ".mov", ".mkv", ".wav", ".flac",
+    ".ogg", ".webm", ".m4a", ".wma", ".wmv", ".flv",
+    # базы данных
+    ".db", ".sqlite", ".sqlite3", ".mdb", ".accdb",
+    # образы дисков, пакеты
+    ".iso", ".img", ".dmg", ".apk", ".deb", ".rpm",
+}
+
+
+def _looks_binary(path, sample_size=8192):
+    """Эвристика: похож ли файл на бинарный. Возвращает (is_binary, reason)."""
+    ext = os.path.splitext(str(path))[1].lower()
+    if ext in _BINARY_EXT:
+        return True, "расширение " + ext
+    try:
+        with open(path, "rb") as f:
+            head = f.read(sample_size)
+    except Exception:
+        return False, ""
+    if not head:
+        return False, ""
+    if chr(0).encode("latin-1") in head:
+        return True, "нулевые байты в начале"
+    printable = 0
+    for b in head:
+        if b in (0x09, 0x0A, 0x0D) or 0x20 <= b <= 0x7E or b >= 0x80:
+            printable += 1
+    if printable / len(head) < 0.85:
+        return True, "много непечатных символов"
+    return False, ""
+
+
+def _binary_redirect_msg(path, size=None):
+    """Сообщение-редирект для бинарного файла."""
+    _win = str(path).replace("/", chr(92))
+    head = "📦 " + str(path)
+    if size is not None:
+        if size > 1024 * 1024:
+            head += " — " + format(size / (1024 * 1024), ".2f") + " МБ (" + str(size) + " байт)"
+        elif size > 1024:
+            head += " — " + format(size / 1024, ".2f") + " КБ (" + str(size) + " байт)"
+        else:
+            head += " — " + str(size) + " байт"
+    ext = os.path.splitext(str(path))[1].lower()
+    ext_label = ext if ext else "без расширения"
+    j1 = '{"прочитать_полностью": {"путь": "' + _win + '"}}'
+    lines = [
+        head,
+        "   Это бинарный файл (" + ext_label + ") — как текст не читается.",
+        "",
+        "Открыть в контекст целиком:",
+        "```text",
+        j1,
+        "```",
+    ]
+    _img_ext = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp",
+                ".tiff", ".tif", ".ico", ".heic", ".heif"}
+    if ext in _img_ext:
+        j2 = '{"анализ_изображения": {"путь": "' + _win + '"}}'
+        lines += [
+            "",
+            "Метаданные изображения (размер, разрешение, EXIF):",
+            "```text",
+            j2,
+            "```",
+        ]
+    return chr(10).join(lines)
+
+
+@register(["читать", "прочитать", "прочитай", "прочитать_файл", "читать_файл"])
 def read_(args):
     """Прочитать файл или показать содержимое папки.
 
@@ -131,6 +223,10 @@ def read_(args):
 
     size = os.path.getsize(path)
     KB = 1024
+
+    _is_bin, _ = _looks_binary(path)
+    if _is_bin:
+        return _binary_redirect_msg(path, size)
 
     if size <= KB:
         try:
@@ -255,7 +351,7 @@ def read_full(args):
                 _pc.copy(win_path)
             except Exception:
                 pass
-        return "[BUF] 📋 Файл уже в буфере обмена."
+        return "[BUF] 📋 Файл в буфере обмена"
 
     # не поддерживается: показываем форматы и подсказки
     lines = [status, "", "Поддерживаемые форматы:"]
@@ -297,6 +393,14 @@ def read_kb(args):
         return "Укажите 'путь'."
     if not os.path.isfile(path):
         return f"❌ Файл не найден: {path}"
+
+    _is_bin, _ = _looks_binary(path)
+    if _is_bin:
+        try:
+            _sz = os.path.getsize(path)
+        except OSError:
+            _sz = None
+        return _binary_redirect_msg(path, _sz)
 
     try:
         kb = int(args.get("кб", 1) or 1)
@@ -343,6 +447,9 @@ def read_kb(args):
         footer += (f'\n\n◀ Назад: ```text\n'
                    f'{{"читать_по_кб": {{"путь": "{_win}", '
                    f'"кб": {kb}, "скролл": {scroll - 1}}}}}\n```')
+
+    footer += (f'\n\n📄 Весь файл целиком: ```text\n'
+               f'{{"прочитать_полностью": {{"путь": "{_win}"}}}}\n```')
 
     if _should_hint_english(path) and _is_mostly_english(text):
         text += _HINT_EN
@@ -415,7 +522,7 @@ def list_files(args):
     return "\n".join(out)
 
 
-@register("переписать")
+@register(["переписать", "перезаписать_файл"])
 def rewrite(args):
     """Перезаписать файл целиком.
 
@@ -442,9 +549,9 @@ def rewrite(args):
     return write_file(path, args.get("содержание") or args.get("содержимое", ""))
 
 
-@register(["добавить", "записать_файл"])
+@register(["добавить", "записать_файл", "создать_файл"])
 def append_(args):
-    """Дописать текст в конец файла.
+    """Дописать текст в конец файла (создаст, если файла нет).
 
     Если файла нет — создаст его.
     Родительские папки тоже создаются автоматически.
@@ -475,6 +582,7 @@ def append_(args):
 
     Альтернативное имя:
       {"записать_файл": {"путь": "E:/tmp/x.txt", "содержание": "привет"}}
+      {"создать_файл": {"путь": "E:/tmp/new.txt"}}     — создать пустой файл
 
     Важно: команда ДОПИСЫВАЕТ в конец, не перезаписывает.
     Чтобы заменить содержимое — используйте "переписать".

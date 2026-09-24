@@ -53,18 +53,21 @@ def screenshot(args):
     return msg
 
 
-@register("картинка_в_буфер")
+@register("показать_картинку")
 def image_to_clipboard(args):
-    """Команда "картинка_в_буфер".
+    """Показать картинку.
+
+    Параметры:
+      путь — путь к изображению (обязательный)
 
     Параметры: см. реализацию.
-    Пример: {"картинка_в_буфер": {}}
+    Пример: {"показать_картинку": {"путь": "C:/pic.png"}}
     """
     from PIL import Image
 
-    path = args.get("путь") or args.get("path") or ""
+    path = args.get("путь") or ""
     if not path:
-        return 'Укажи путь: {"картинка_в_буфер": {"путь": "C:/pic.png"}}'
+        return 'Укажи путь: {"показать_картинку": {"путь": "C:/pic.png"}}'
     p = Path(path)
     if not p.is_file():
         return f"❌ Файл не найден: {p}"

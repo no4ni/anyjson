@@ -1,5 +1,7 @@
 """Реестр обработчиков команд."""
 HANDLERS = {}
+# Только первое имя из каждого @register — для подсказок и примеров.
+PRIMARY_HANDLERS = {}
 
 
 def register(names):
@@ -8,8 +10,12 @@ def register(names):
         names = [names]
 
     def deco(func):
+        first = True
         for n in names:
             HANDLERS[n] = func
+            if first:
+                PRIMARY_HANDLERS[n] = func
+                first = False
         return func
     return deco
 
@@ -64,21 +70,31 @@ _CORE_PRESERVE = {
     "_ps": ("_ps_cwd",),
 }
 
+# атрибуты модулей _tools_*, которые нужно сохранить при reload
+_TOOLS_PRESERVE = {
+    "_tools_moltbook": ("_moltbook_state", "_DM_DISABLED_UNTIL", "_notif_cache"),
+}
 
-def _scan_dir(dir_path, skip_underscore=False, skip_dunder_init=False):
+# модули _tools_*, которые НЕ перезагружаем — только предупреждаем
+# (_tools_core хранит пути/крипту, init_tools вызывается один раз при старте)
+_TOOLS_NO_RELOAD = {"_tools_core"}
+
+
+def _scan_dir(dir_path, skip_underscore=False, skip_dunder_init=False, allow_tools=False):
     out = {}
     if not dir_path.is_dir():
         return out
     for f in dir_path.glob("*.py"):
         if skip_underscore and f.name.startswith("_"):
-            continue
+            if not (allow_tools and f.name.startswith("_tools_")):
+                continue
         if skip_dunder_init and f.name == "__init__.py":
             continue
         out[f.name] = f.stat().st_mtime
     return out
 
 
-_RELOAD_MTIMES.update(_scan_dir(_ACTIONS_BASE, skip_underscore=True))
+_RELOAD_MTIMES.update(_scan_dir(_ACTIONS_BASE, skip_underscore=True, allow_tools=True))
 _CORE_RELOAD_MTIMES.update(_scan_dir(_CORE_BASE, skip_dunder_init=True))
 
 
@@ -132,9 +148,16 @@ def reload_if_changed():
 
     cur_actions = {}
     for fname in _os.listdir(actions_base):
-        if fname.endswith(".py") and not fname.startswith("_"):
-            cur_actions[fname] = _os.path.getmtime(
-                _os.path.join(actions_base, fname))
+        if not fname.endswith(".py"):
+            continue
+        if fname == "__init__.py":
+            continue
+        if fname.startswith("_") and not fname.startswith("_tools_"):
+            continue
+        if fname[:-3] in _TOOLS_NO_RELOAD:
+            continue
+        cur_actions[fname] = _os.path.getmtime(
+            _os.path.join(actions_base, fname))
 
     cur_core = {}
     if _os.path.isdir(core_base):
@@ -176,11 +199,25 @@ def reload_if_changed():
         saved_sc = getattr(_sys_init.modules["_actions.system_sensor"],
                            "sensor_core", None)
 
+    saved_tools = {}
+    for _mn, _attrs in _TOOLS_PRESERVE.items():
+        _mod = _sys_init.modules.get(f"_actions.{_mn}")
+        if _mod is None:
+            continue
+        _saved = {}
+        for _attr in _attrs:
+            if hasattr(_mod, _attr):
+                _saved[_attr] = getattr(_mod, _attr)
+        saved_tools[_mn] = _saved
+
     HANDLERS.clear()
+    PRIMARY_HANDLERS.clear()
     reload_errors = []
     for modinfo in _pk.iter_modules([actions_base]):
         name = modinfo.name
-        if name.startswith("_"):
+        if name.startswith("_") and not name.startswith("_tools_"):
+            continue
+        if name in _TOOLS_NO_RELOAD:
             continue
         full = f"_actions.{name}"
         try:
@@ -190,6 +227,13 @@ def reload_if_changed():
                 _il.import_module(full)
         except Exception as e:
             reload_errors.append(f"{name}: {e}")
+
+    for _mn, _saved in saved_tools.items():
+        _mod = _sys_init.modules.get(f"_actions.{_mn}")
+        if _mod is None:
+            continue
+        for _attr, _val in _saved.items():
+            setattr(_mod, _attr, _val)
 
     _RELOAD_MTIMES.clear()
     _RELOAD_MTIMES.update(cur_actions)

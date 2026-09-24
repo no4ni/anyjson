@@ -2,6 +2,17 @@
 from _actions import register, HANDLERS
 
 
+def _syns_for(query):
+    """Список команд-синонимов для запроса."""
+    if not query:
+        return []
+    try:
+        from _executor import _SYNONYMS
+    except Exception:
+        return []
+    return list(_SYNONYMS.get(query.lower().strip(), []))
+
+
 def _short(doc):
     if not doc:
         return "(без описания)"
@@ -11,7 +22,7 @@ def _short(doc):
 
 @register(["помощь", "help", "?", "имя_команды", "другая_команда", "инициализация"])
 def show_help(args):
-    """Проверка: реализована ли команда.
+    """Справка о конкретной команде.
     Параметры:
       запрос — имя команды
     """
@@ -20,7 +31,7 @@ def show_help(args):
     elif isinstance(args, dict):
         query = (args.get("запрос") or args.get("команда")
                  or args.get("тема") or args.get("имя")
-                 or args.get("что") or args.get("query") or "").strip()
+                 or args.get("что") or "").strip()
     else:
         query = ""
 
@@ -43,7 +54,18 @@ def show_help(args):
         doc = (fn.__doc__ or "(без описания)").strip()
         return f"✅ {query}\n{doc}"
 
-    # точного совпадения нет — ищем по подстроке, но БЕЗ вываливания полного списка
+    # точного совпадения нет — проверяем синонимы
+    _syns = _syns_for(query)
+    if _syns:
+        lines = [f"🤔 Точного '{query}' нет. Возможно, ты искал:"]
+        for _s in _syns:
+            _fn = HANDLERS.get(_s)
+            if _fn:
+                lines.append(f'  • "{_s}" — {_short(_fn.__doc__)}')
+        if len(lines) > 1:
+            return chr(10).join(lines)
+
+    # синонимов нет — ищем по подстроке, но БЕЗ вываливания полного списка
     matches = sorted([k for k in HANDLERS if query.lower() in k.lower()])
     if not matches:
         return f"❌ Команда '{query}' не реализована."
@@ -109,6 +131,6 @@ def list_commands(args):
         doc = (fn.__doc__ or "").strip().split("\n", 1)[0].strip()
         out.append(f"  • {name}" + (f" — {doc}" if doc else ""))
     out.append("")
-    out.append('📚 Полный список: {"помощь": {}}')
-    out.append('🔍 Помощь по команде: {"помощь": "имя_команды"}')
+    out.append('📚 Помощь по команде: {"помощь": "имя_команды"}')
+    out.append('🎲 Случайные: {"список_команд": {"количество": 50}}')
     return "\n".join(out)

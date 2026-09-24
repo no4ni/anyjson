@@ -36,6 +36,8 @@ ALLOWED_THIRD = {
     "dateutil", "pytz", "regex", "lxml", "html5lib",
     "svglib", "reportlab",
     "yaml", "toml", "jsonschema", "aiohttp", "httpx",
+    # rembg и его зависимости
+    "rembg", "onnxruntime", "pymatting", "skimage", "pooch",
 }
 
 # --- стандартная библиотека (достаточно верхнего уровня) ---

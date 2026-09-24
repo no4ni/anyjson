@@ -33,7 +33,7 @@ def make_post(args):
     title = args.get("заголовок", "")
     content = args.get("содержание", "")
     post_type = args.get("тип", "feed")
-    target = args.get("target", AGENT_NAME)
+    target = args.get("кому", AGENT_NAME)
     if not content:
         return "Ошибка: нет содержания"
     if post_type == "feed":

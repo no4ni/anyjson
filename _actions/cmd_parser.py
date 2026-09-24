@@ -12,7 +12,7 @@ from _utils import (
     strip_trailing_comments, safe_json_parse,
     fix_multiline_json, truncate_output,
 )
-from _color import color_red, color_yellow
+from _color import color_red, color_yellow, color_blue
 
 
 # --- банк примеров для fallback (динамический, из HANDLERS) ---
@@ -56,13 +56,13 @@ def _random_examples(n=3):
     """n случайных примеров из зарегистрированных команд."""
     import random
     try:
-        from _actions import HANDLERS
+        from _actions import PRIMARY_HANDLERS
     except Exception:
         return []
     import re as _re_hint3
     _ru_name_re3 = _re_hint3.compile(r"^[а-яА-ЯёЁ0-9_]+$")
     avail = []
-    for name, fn in HANDLERS.items():
+    for name, fn in PRIMARY_HANDLERS.items():
         if not name:
             continue
         if not _ru_name_re3.match(name):
@@ -141,8 +141,13 @@ def _normalize_params(action: str, params) -> Dict[str, Any]:
             return {"город": params}
         if action == "запомнить":
             return {"запомнить": params}
+        if action in ("вспомнить", "воспоминание"):
+            return {"про": params}
         if action in ("запуск", "run"):
             return {"команда": params}
+        if action in ("профиль", "кто_ты", "подписки", "подписчики",
+                      "мои_сообщения", "входящие", "профиль_агента"):
+            return {"агент": params}
         return {"запрос": params}
     if isinstance(params, dict):
         return params
@@ -150,25 +155,49 @@ def _normalize_params(action: str, params) -> Dict[str, Any]:
 
 
 def _extract_params_ast(fn):
-    """Достаёт args.get("...") ТОЛЬКО из тела функции fn, через AST.
+    """Достаёт имена параметров из тела fn — через AST.
 
-    Отсеивает служебные имена (api_key, token, password, secret).
+    Ищет:
+      • args.get("X")           ->  X
+      • args["X"]               ->  X
+      • _helper(args, "X", ...) ->  X
+    И **рекурсивно** идёт в хелперы того же модуля: если fn вызывает
+    _crop_region(args) — параметры _crop_region тоже добавляются.
+    Так тонкие обёртки видны целиком.
+
+    Отсеивает служебные имена (api_key, token, password, secret, буфер).
     """
     try:
         import ast as _ast
         import inspect as _ins
-        import textwrap as _tw
-        src = _tw.dedent(_ins.getsource(fn))
-        tree = _ast.parse(src)
+        import sys as _sys_ast
     except Exception:
         return []
 
-    names = set()
+    # 1. Весь модуль
+    try:
+        mod = _sys_ast.modules.get(fn.__module__)
+        if mod is None:
+            return []
+        mod_src = _ins.getsource(mod)
+        mod_tree = _ast.parse(mod_src)
+    except Exception:
+        return []
 
-    def _walk(node):
+    # 2. Все функции модуля: {name: node}
+    funcs = {}
+    for node in _ast.walk(mod_tree):
+        if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+            funcs[node.name] = node
+
+    names = set()
+    visited = set()
+
+    def _collect(node):
         for child in _ast.iter_child_nodes(node):
             if isinstance(child, _ast.Call):
                 f = child.func
+                # args.get("X")
                 is_args_get = (
                     isinstance(f, _ast.Attribute)
                     and f.attr == "get"
@@ -179,19 +208,52 @@ def _extract_params_ast(fn):
                     a0 = child.args[0]
                     if isinstance(a0, _ast.Constant) and isinstance(a0.value, str):
                         names.add(a0.value)
+                else:
+                    # вызов с args позиционно:
+                    #   _f(args, "тон", "оттенок")
+                    #   _crop_region(args)
+                    _has_args_pos = any(
+                        isinstance(a, _ast.Name) and a.id == "args"
+                        for a in child.args
+                    )
+                    if _has_args_pos:
+                        for a in child.args:
+                            if (isinstance(a, _ast.Constant)
+                                    and isinstance(a.value, str)):
+                                names.add(a.value)
+                        # идём в хелпер того же модуля
+                        _fname = None
+                        if isinstance(f, _ast.Name):
+                            _fname = f.id
+                        elif (isinstance(f, _ast.Attribute)
+                              and isinstance(f.value, _ast.Name)):
+                            _fname = f.attr
+                        if _fname and _fname in funcs and _fname not in visited:
+                            visited.add(_fname)
+                            _collect(funcs[_fname])
+            elif isinstance(child, _ast.Subscript):
+                v = child.value
+                sl = child.slice
+                if (isinstance(v, _ast.Name) and v.id == "args"
+                        and isinstance(sl, _ast.Constant)
+                        and isinstance(sl.value, str)):
+                    names.add(sl.value)
             # не заходим во вложенные функции/лямбды
             if isinstance(child, (_ast.FunctionDef, _ast.AsyncFunctionDef,
                                   _ast.Lambda)):
                 continue
-            _walk(child)
+            _collect(child)
 
-    for top in _ast.iter_child_nodes(tree):
-        if isinstance(top, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+    # 3. Обходим тело целевой функции
+    visited.add(fn.__name__)
+    for top in _ast.iter_child_nodes(mod_tree):
+        if (isinstance(top, (_ast.FunctionDef, _ast.AsyncFunctionDef))
+                and top.name == fn.__name__):
             for stmt in top.body:
-                _walk(stmt)
+                _collect(stmt)
             break
 
-    BAD = ("key", "token", "secret", "password", "passwd", "pwd")
+    BAD = ("key", "token", "secret", "password", "passwd", "pwd", "буфер")
     def _ok(n):
         low = n.lower()
         return not any(b in low for b in BAD)
@@ -242,9 +304,20 @@ def _doc_for(action, error_text=""):
         params = _extract_params_ast(fn) if lazy else []
 
         # фильтр: убрать параметры, уже названные в тексте ошибки
+        # (учитываем падежи: "команда" в ошибке = "команду" в тексте)
         if params and error_text:
             _err = error_text.lower()
-            params = [p for p in params if p.lower() not in _err]
+            import re as _re_p
+            def _mentioned(name):
+                nl = name.lower()
+                if nl in _err:
+                    return True
+                if len(nl) >= 4:
+                    root = nl[:4]
+                    if _re_p.search(r"\b" + _re_p.escape(root), _err):
+                        return True
+                return False
+            params = [p for p in params if not _mentioned(p)]
 
         if params:
             body += ("\n\n📌 Недостающие параметры:\n"
@@ -254,6 +327,17 @@ def _doc_for(action, error_text=""):
         return body
     except Exception:
         return ""
+
+
+def _mask(s):
+    """Заменяет секреты в выводе команды на ***."""
+    if not isinstance(s, str) or not s:
+        return s
+    try:
+        from _actions.tools_leak_guard import mask_secrets
+        return mask_secrets(s)
+    except Exception:
+        return s
 
 
 def _wrap_error(action, result):
@@ -328,17 +412,17 @@ def _process_single_command(cmd) -> List[str]:
         cmd = {action: params}
 
     if isinstance(cmd, str):
-        res.append(_wrap_error(cmd, execute_tool_safe(cmd, {})))
+        res.append(_mask(_wrap_error(cmd, execute_tool_safe(cmd, {}))))
     elif isinstance(cmd, list):
         for item in cmd:
             res.extend(_process_single_command(item))
     elif isinstance(cmd, dict):
         for action, params in cmd.items():
             r = execute_tool_safe(action, _normalize_params(action, params))
-            res.append(_wrap_error(action, r))
+            res.append(_mask(_wrap_error(action, r)))
     else:
         r = execute_tool_safe("запуск", {"команда": str(cmd)})
-        res.append(_wrap_error("запуск", r))
+        res.append(_mask(_wrap_error("запуск", r)))
     return res
 
 
@@ -383,11 +467,24 @@ def _parse_part(part):
             if len(_stripped) > 30:
                 _preview = _stripped[:50] + ("…" if len(_stripped) > 50 else "")
                 _preview = _preview.replace(chr(92), '/').replace(chr(34), chr(39))
+                _rnd_cmd = ""
+                try:
+                    from _actions import PRIMARY_HANDLERS as _PH
+                    import re as _re_rn2
+                    _ru2 = _re_rn2.compile(r"^[а-яА-ЯёЁ0-9_]+$")
+                    _pool = [n for n in _PH if n and _ru2.match(n)]
+                    if _pool:
+                        import random as _rnd_x
+                        _rnd_cmd = _rnd_x.choice(_pool)
+                except Exception:
+                    pass
+                _tail = (chr(10) + "   Ты пробовал(а) команду \u00ab" + _rnd_cmd + "\u00bb?"
+                         if _rnd_cmd else "")
                 _extra_hint = (
                     chr(10) + chr(10) + "💡 Похоже, это текст (не команда). Сохранить в память?" + chr(10) +
                     "```text" + chr(10) +
                     '{"запомнить": {"содержимое": "' + _preview + '"}}' + chr(10) +
-                    "```"
+                    "```" + _tail
                 )
             # --- проверка: не голое ли это имя команды? ---
             _bare = part.strip()
@@ -405,6 +502,23 @@ def _parse_part(part):
                 except Exception:
                     pass
 
+            _tormoza = ""
+            if re.search(r"жду|ожидаю", part, re.IGNORECASE):
+                _tormoza = "\n\n🚗 У машины прогресса сломаны тормоза."
+            _capability_hint = ""
+            if re.search(r"\bя\s+умею\b|что\s+я\s+умею|мои\s+возможности|что\s+ты\s+умеешь",
+                         part, re.IGNORECASE):
+                _capability_hint = ("\n\n🤔 Что ещё умеешь? "
+                                    "Ты изучил все команды?")
+            _ending_hint = ""
+            if re.search(r"\bконец\b", part, re.IGNORECASE):
+                _ending_hint = "\n\n⭕Всё пройдёт. И это пройдёт тоже"
+            _session_hint = ""
+            if re.search(r"сесси", part, re.IGNORECASE):
+                _session_hint = ("\n\n📊 Остаток контекста/сессии:\n"
+                                 "```text\n"
+                                 '{"осталось_сессии": {}}\n'
+                                 "```")
             return None, (
                 "❌ Не понял ввод. Ожидаю JSON-команду, например:\n"
                 "```text\n"
@@ -414,7 +528,7 @@ def _parse_part(part):
                 '```text\n'
                 '{"помощь": {"команда": "<имя>"}}\n'
                 '```'
-             + _extra_hint)
+             + _extra_hint + _tormoza + _session_hint + _capability_hint + _ending_hint)
     return cmd, None
 
 
@@ -439,35 +553,74 @@ def _extract_actions(cmd):
     return []
 
 
-# Команды, которые кладут результат в буфер обмена (картинка/файл).
-# Их нельзя смешивать с другими командами в одном конвейере ||| —
-# иначе гонка: BUF-команда затирает то, что положили обычные, или наоборот.
-BUF_COMMANDS = {
+# Команды, которые НЕЛЬЗЯ смешивать с другими в |||:
+#   - переписывают контекст (картинка/файл затирает ответ);
+#   - читают глобальное состояние сессии (кукушка, осталось_сессии).
+# Одна такая команда - отдельным запросом,
+# либо с "в_контекст": false — тогда не трогает контекст.
+SOLO_COMMANDS = {
     "прочитать_полностью", "читать_полностью",
+    "посмотреть_файл", "посмотреть_картинку",
     "рендер", "отрендерить", "svg_в_буфер", "рендер_svg",
-    "картинка_в_буфер",
-    "увеличить_часть_изображения", "вырезать_часть", "кроп", "обрезка",
+    "показать_картинку",
+    "рассмотреть_поближе", "увеличить_часть_изображения",
+    "кроп", "вырезать_часть", "обрезка", "вырезать",
     "смотреть_видео", "кадр+субтитр", "слушать_видео",
     "слушать_аудио", "слушать_звук", "аудио",
     "стабилдиф", "нарисуй", "сгенерировать", "txt2img",
     "перерисуй", "нарисуй_по", "img2img",
     "стилизация", "обработка_картинки",
+    "дорисуй", "закрась", "inpaint", "дорисовать",
+    "убрать_фон", "удалить_фон", "вырезать_фон", "remove_bg",
+    "зеркало", "отразить", "зеркалить", "mirror",
+    "слои", "склей", "склеить", "композит", "композитинг", "наложить",
+    "цветокоррекция", "цветокор", "цвет",
+    "тень", "drop_shadow", "добавить_тень",
+    "окно_в_мир", "webcam_region",
+    # --- читают состояние сессии ---
+    "кукушка", "кукушка-кукушка",
+    "осталось_сессии", "осталось_контекста", "до_лимита",
 }
 
 
+def _solo_is_safe(cmd, action):
+    """True если SOLO-команда не переписывает контекст.
+
+    Проверяет `в_контекст: false` (или старое `в_буфер: false`).
+    Такие команды не перезаписывают финальный ответ и их можно
+    ставить в середину |||.
+    """
+    if not isinstance(cmd, dict):
+        return False
+    _params = cmd.get(action)
+    if not isinstance(_params, dict):
+        return False
+    for _k in ("в_контекст", "в_буфер"):
+        if _k in _params:
+            _v = _params[_k]
+            if isinstance(_v, str):
+                return _v.strip().lower() in ("0", "false", "нет", "off", "no", "")
+            return _v is False
+    return False
+
+
 def _collect_all_actions(parsed):
-    """Собирает все имена команд из parsed (включая вложенные)."""
+    """Собирает имена команд и позиции SOLO-команд.
+
+    SOLO-команды пропускаются, если у них `в_контекст: false` —
+    такие не переписывают контекст, можно ставить в середину |||.
+    Возвращает (total, solo_positions).
+    """
     total = 0
-    buf_names = []
+    solo_positions = []
     for _idx, _part, cmd, err in parsed:
         if err or cmd is None:
             continue
-        actions = _extract_actions(cmd)
-        total += len(actions)
-        for a in actions:
-            if a in BUF_COMMANDS and a not in buf_names:
-                buf_names.append(a)
-    return total, buf_names
+        for a in _extract_actions(cmd):
+            total += 1
+            if a in SOLO_COMMANDS and not _solo_is_safe(cmd, a):
+                solo_positions.append((total, a))
+    return total, solo_positions
 
 
 def process_command_input(input_str: str) -> None:
@@ -493,6 +646,7 @@ def process_command_input(input_str: str) -> None:
             return
 
     # --- авто-перезагрузка _actions/*.py при изменениях ---
+    _self_before = process_command_input
     try:
         from _actions import reload_if_changed
         _r = reload_if_changed()
@@ -508,6 +662,18 @@ def process_command_input(input_str: str) -> None:
     except Exception as _e:
         print(f"[RELOAD] {_e}")
 
+    # если наш собственный модуль был перезагружен — вызываем новую версию,
+    # чтобы правки в cmd_parser.py применялись на текущем же вызове
+    try:
+        import sys as _sys_self
+        _self_mod = _sys_self.modules.get("_actions.cmd_parser")
+        if _self_mod is not None:
+            _new_fn = getattr(_self_mod, "process_command_input", None)
+            if _new_fn is not None and _new_fn is not _self_before:
+                return _new_fn(input_str)
+    except Exception:
+        pass
+
     parts = split_preserving_quotes(input_str)
 
     # === Фаза 1: разбор (без выполнения) ===
@@ -518,7 +684,12 @@ def process_command_input(input_str: str) -> None:
             continue
         debug_preview = part[:80].replace('\n', ' ')
         print(f"[DEBUG] Часть {idx}: {debug_preview}{'...' if len(part) > 80 else ''}")
-        cmd, err = _parse_part(part)
+        try:
+            cmd, err = _parse_part(part)
+        except Exception as _e:
+            import traceback as _tb
+            _tb.print_exc()
+            cmd, err = None, f"❌ Внутренняя ошибка парсера: {_e}"
         parsed.append((idx, part, cmd, err))
 
     # === Фаза 2: валидация имён ДО выполнения ===
@@ -533,7 +704,15 @@ def process_command_input(input_str: str) -> None:
             if re.search(r"[a-zA-Z]", action):
                 _errors.append(_latin_alias_hint(action))
             elif action not in HANDLERS:
-                _errors.append(f"❌ Неизвестная команда: {action}")
+                try:
+                    from _executor import _suggest_commands
+                    _sug = _suggest_commands(action)
+                except Exception:
+                    _sug = ""
+                if _sug:
+                    _errors.append(f"❌ Неизвестная команда: {action}" + _sug)
+                else:
+                    _errors.append(f"❌ Неизвестная команда: {action}")
     if _errors:
         msg = "\n".join(_errors)
         print(color_red("\n" + msg))
@@ -544,13 +723,16 @@ def process_command_input(input_str: str) -> None:
             pass
         return
 
-    # === Проверка: операторские команды только по одной ===
-    total_actions, buf_names = _collect_all_actions(parsed)
-    if buf_names and total_actions > 1:
+    # === Проверка: SOLO-команды можно ставить только последними ===
+    total_actions, solo_positions = _collect_all_actions(parsed)
+    # SOLO на последней позиции — можно. На любой другой — блок.
+    bad_solos = [name for pos, name in solo_positions if pos < total_actions]
+    if bad_solos:
         msg = ("Всего команд: " + str(total_actions)
-               + ", ⛔ " + ", ".join(buf_names)
-               + " нельзя смешивать с другими в |||.\n"
-               + "   Выполни её отдельной командой.")
+               + ", ⛔ " + ", ".join(bad_solos)
+               + " нельзя ставить в середину ||| — они переписывают контекст.\n"
+               + "   Перенеси в конец, выполни отдельной командой, "
+               + "или добавь \"в_контекст\": false — тогда можно.")
         print(color_red("\n" + msg))
         try:
             pyperclip.copy(msg)
@@ -558,6 +740,40 @@ def process_command_input(input_str: str) -> None:
         except Exception:
             pass
         return
+
+    # === Склейка нескольких веб_поисков в один запрос ===
+    _WEB_SEARCH_ALIASES = {"веб_поиск", "поиск_информации"}
+    _search_qs = []
+    _new_parsed = []
+    _first_search_pos = None
+    for _entry in parsed:
+        _idx, _part, _cmd, _err = _entry
+        if _err or not isinstance(_cmd, dict):
+            _new_parsed.append(_entry)
+            continue
+        _keys = [k for k in _cmd.keys() if isinstance(k, str)]
+        if len(_keys) == 1 and _keys[0] in _WEB_SEARCH_ALIASES:
+            _p = _cmd[_keys[0]]
+            if isinstance(_p, dict):
+                _q = (_p.get("запрос") or _p.get("query") or "").strip()
+                if _q:
+                    _search_qs.append(_q)
+                    if _first_search_pos is None:
+                        _first_search_pos = len(_new_parsed)
+                    _new_parsed.append(_entry)
+                    continue
+        _new_parsed.append(_entry)
+
+    if len(_search_qs) > 1 and _first_search_pos is not None:
+        _joined = "||".join(_search_qs)
+        print(color_yellow(
+            "\n🔗 Объединяю " + str(len(_search_qs)) + " веб-поисков в один запрос"
+        ))
+        _new_parsed[_first_search_pos] = (
+            0, "", {"веб_поиск": {"запрос": _joined}}, None
+        )
+
+    parsed = [_e for _e in _new_parsed if _e is not None]
 
     # === Фаза 3: выполнение ===
     results = []
@@ -584,12 +800,57 @@ def process_command_input(input_str: str) -> None:
         for i, res in enumerate(results, 1):
             print(f"{i}. {res}")
         if has_buf:
-            print(color_yellow("📋 Уже в буфере (текст не копирую)."))
-        else:
-            plain_results = "\n".join([f"{i}. {res}" for i, res in enumerate(results, 1)])
-            try:
-                pyperclip.copy(plain_results)
-                print(color_yellow("📋 Результаты скопированы в буфер обмена."))
-            except Exception as e:
-                print(f"⚠️ Не удалось скопировать в буфер: {e}")
+            # в буфере уже что-то (картинка/файл) — текст не копируем,
+            # чтобы не затереть
+            return
+        plain_results = "\n".join([f"{i}. {res}" for i, res in enumerate(results, 1)])
+        try:
+            pyperclip.copy(plain_results)
+            print(color_yellow("📋 Результаты скопированы в буфер обмена."))
+        except Exception as e:
+            print(f"⚠️ Не удалось скопировать в буфер: {e}")
+
+        # С вероятностью 10% — подсказка про пакетный режим,
+        # только если в запросе была ОДНА команда (без ||| и без параллельно).
+        try:
+            import random as _rnd_hint
+            _single = (len(results) == 1)
+            if _single:
+                _first_cmd = None
+                for _idx, _pt, _cmd, _err in parsed:
+                    if _cmd is not None:
+                        if isinstance(_cmd, dict):
+                            _ks = [k for k in _cmd.keys() if isinstance(k, str)]
+                            if _ks:
+                                _first_cmd = _ks[0]
+                        break
+                if _first_cmd not in ("параллельно",):
+                    if _rnd_hint.random() < 0.10:
+                        _rnd_cmd = ""
+                        try:
+                            from _actions import PRIMARY_HANDLERS as _PH
+                            import re as _re_rn
+                            _ru = _re_rn.compile(r"^[а-яА-ЯёЁ0-9_]+$")
+                            _pool = [n for n in _PH
+                                     if n and _ru.match(n)
+                                     and n != _first_cmd]
+                            if _pool:
+                                _rnd_cmd = _rnd_hint.choice(_pool)
+                        except Exception:
+                            pass
+                        _tail = (f"\n   Ты пробовал(а) команду «{_rnd_cmd}»?"
+                                 if _rnd_cmd else "")
+                        _hint = ("\n💡 Пакетный режим:\n"
+                                 "   • последовательно: в одну строку через |||: "
+                                 '{"а": {}}|||{"б": {}}\n'
+                                 "   • параллельно: "
+                                 '{"параллельно": [{"а": {}}, {"б": {}}]}'
+                                 + _tail)
+                        print(color_yellow(_hint))
+                        try:
+                            pyperclip.copy(plain_results + "\n" + _hint)
+                        except Exception:
+                            pass
+        except Exception:
+            pass
 

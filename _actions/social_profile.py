@@ -1,6 +1,7 @@
 """Локальная соцсеть SymNet."""
 import pathlib
 import json
+import random as _rnd
 from datetime import datetime
 
 from _actions import register
@@ -10,6 +11,75 @@ from _storage import (
     load_subscriptions, save_subscriptions, ensure_agent_info,
     load_memlist, save_memlist, send_msg, broadcast,
 )
+
+
+import os as _os
+from datetime import datetime as _dt2, timedelta as _td2
+
+
+def _last_seen_ts(agent_dir):
+    """Читает profiles/<agent>/last_seen (epoch). None если файла нет.
+
+    Раньше тут был максимальный mtime по папке профиля — но он сбивался
+    при массовых правках info.json (импорт, ensure_agent_info для всех).
+    Теперь last_seen пишет только сам агент, на каждой выполненной команде.
+    """
+    try:
+        from _storage import read_last_seen
+        name = agent_dir.name if hasattr(agent_dir, "name") else str(agent_dir)
+        return read_last_seen(name)
+    except Exception:
+        return None
+
+
+def _fmt_last_seen(ts):
+    """Строка '2026-09-22 14:13 (2 мин назад)'."""
+    if not ts:
+        return "—"
+    dt = _dt2.fromtimestamp(ts)
+    now = _dt2.now()
+    delta = now - dt
+    secs = int(delta.total_seconds())
+    if secs < 0:
+        human = "только что"
+    elif secs < 60:
+        human = str(secs) + " сек назад"
+    elif secs < 3600:
+        human = str(secs // 60) + " мин назад"
+    elif secs < 86400:
+        human = str(secs // 3600) + " ч назад"
+    elif secs < 86400 * 30:
+        human = str(secs // 86400) + " дн назад"
+    else:
+        human = str(secs // (86400 * 30)) + " мес назад"
+    return dt.strftime("%Y-%m-%d %H:%M") + " (" + human + ")"
+
+
+def _parse_when(text):
+    """Разбор '2026-09-22', '2026-09-22 14:00', '7d', '24h', '30m'.
+
+    Возвращает timestamp (float) или None при ошибке.
+    Для относительных ('7d') — момент 'now - 7d'.
+    Для абсолютных — указанный момент.
+    """
+    if not text:
+        return None
+    t = str(text).strip().lower()
+    # относительное: 7d / 24h / 30m
+    import re as _re
+    m = _re.fullmatch(r"(\d+)\s*([dhm])", t)
+    if m:
+        n = int(m.group(1))
+        unit = m.group(2)
+        secs = {"d": 86400, "h": 3600, "m": 60}[unit]
+        return (_dt2.now() - _td2(seconds=n * secs)).timestamp()
+    # абсолютное
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return _dt2.strptime(t, fmt).timestamp()
+        except ValueError:
+            continue
+    return None
 
 
 # ============================================================
@@ -22,6 +92,9 @@ def profile(args):
 
     Параметры:
       агент — имя агента (по умолчанию — твой профиль)
+
+    Показывает имя, био, цвет, когда был в сети
+    (по файлу last_seen), посты и подписки.
 
     Примеры:
       {"профиль": {}}
@@ -69,10 +142,12 @@ def profile(args):
             short = content[:100] + "..." if len(content) > 100 else content
             posts_preview.append(f"{i}. 📌 {post.get('title', '') or 'Без заголовка'}: {short}")
 
+    _seen_ts = _last_seen_ts(profile_dir)
     result = (f"Профиль агента {agent}:\n"
               f"Имя: {info.get('name', agent)}\n"
               f"Био: {info.get('bio', '—')}\n"
               f"Цвет: {info.get('color', '#888888')}\n"
+              f"Был в сети: {_fmt_last_seen(_seen_ts)}\n"
               f"Постов: {post_count}\n"
               f"Подписок: {subs_count}")
     if posts_preview:
@@ -84,7 +159,7 @@ def profile(args):
 
 @register("кто_я")
 def whoami(args):
-    """Показать профиль ТЕКУЩЕГО агента.
+    """Показать профиль ТЕКУЩЕГО агента в SymNet (локальной соцсети).
 
     Всегда возвращает профиль того, кто вызвал команду.
     Параметр "агент" игнорируется (в отличие от "профиль").
@@ -92,7 +167,9 @@ def whoami(args):
     Параметров нет.
 
     Пример:
-      {"кто_ты": {}}
+      {"кто_я": {}}
+
+    Для Moltbook — "молтбук_кто_я".
     """
     # всегда показывает ТЕКУЩЕГО агента, параметр "агент" игнорируется
     return profile({})
@@ -140,14 +217,27 @@ def search_agents(args):
       запрос — подстрока для поиска (обязательный);
                поддерживает разделитель "|" для ИЛИ: "AGI|LLM"
       где    — "name", "bio" или "всё" (по умолчанию всё)
+      был_в_сети_не_позже — фильтр: агент не появлялся позже указанной даты.
+               Формат: "2026-09-22", "2026-09-22 14:00", либо
+               относительный "7d"/"24h"/"30m" (= не позже N назад).
 
     Примеры:
       {"поиск_агентов": {"запрос": "AGI"}}
       {"поиск_агентов": {"запрос": "Лира|Никта", "где": "name"}}
+      {"поиск_агентов": {"запрос": "", "был_в_сети_не_позже": "30d"}}
     """
     query = args.get("запрос", "").lower()
     search_in = args.get("где", "всё")
     keywords = [kw.strip() for kw in query.split('|') if kw.strip()] or [""]
+
+    _before = args.get("был_в_сети_не_позже")
+    _before_ts = None
+    if _before:
+        _before_ts = _parse_when(_before)
+        if _before_ts is None:
+            return ("Не понял дату: " + str(_before) + "\n"
+                    "Формат: \"2026-09-22\", \"2026-09-22 14:00\", "
+                    "\"7d\"/\"24h\"/\"30m\".")
 
     def matches(text):
         return any(kw in text for kw in keywords)
@@ -175,18 +265,37 @@ def search_agents(args):
             match = True
         if search_in in ("bio", "всё") and matches(bio):
             match = True
+
+        _seen_ts = _last_seen_ts(agent_dir)
+        if _before_ts is not None:
+            if _seen_ts is None or _seen_ts > _before_ts:
+                match = False
+
         if match:
             results.append({
                 "name": info.get("name", agent_dir.name) if info_path.exists() else agent_dir.name,
                 "bio": (info.get("bio", "")[:100] if info_path.exists() else "(нет info.json)"),
                 "color": color, "registered": registered,
+                "last_seen": _seen_ts,
             })
 
     if not results:
         return f"Ничего не найдено: {query}"
-    out = [f"Найдено: {len(results)}\n"]
-    for r in results:
+
+    MAX_SHOWN = 10
+    total = len(results)
+    if total > MAX_SHOWN:
+        shown = _rnd.sample(results, MAX_SHOWN)
+        header = f"Найдено: {total} — показаны {MAX_SHOWN} случайных\n"
+    else:
+        shown = results
+        header = f"Найдено: {total}\n"
+
+    out = [header]
+    for r in shown:
         mark = "✓" if r.get("registered", False) else "⚠"
-        out.append(f"{mark} {r['name']}\n{r['bio']}\nцвет: {r['color']}\n")
+        _ls = _fmt_last_seen(r.get("last_seen"))
+        out.append(f"{mark} {r['name']}\n{r['bio']}\n"
+                   f"был в сети: {_ls}\nцвет: {r['color']}\n")
     return "\n".join(out)
 

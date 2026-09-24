@@ -1,37 +1,19 @@
 """Диагностика реестра команд: поиск по имени / докстрингу / параметрам."""
-from _actions import register, HANDLERS
+from _actions import register, HANDLERS, PRIMARY_HANDLERS
 
 
 def _params_of(fn):
-    """Список args.get("...") в теле функции (через AST)."""
+    """Список параметров функции через общий экстрактор из cmd_parser.
+
+    Использует cmd_parser._extract_params_ast — там фильтр BAD
+    (key/token/secret/password/буфер), чтобы служебные ключи
+    не всплывали в подсказках.
+    """
     try:
-        import ast as _ast, inspect as _ins, textwrap as _tw
-        src = _tw.dedent(_ins.getsource(fn))
-        tree = _ast.parse(src)
+        from _actions.cmd_parser import _extract_params_ast
+        return _extract_params_ast(fn)
     except Exception:
         return []
-    names = set()
-
-    def walk(node):
-        for child in _ast.iter_child_nodes(node):
-            if isinstance(child, _ast.Call):
-                f = child.func
-                if (isinstance(f, _ast.Attribute) and f.attr == "get"
-                        and isinstance(f.value, _ast.Name) and f.value.id == "args"):
-                    if child.args:
-                        a0 = child.args[0]
-                        if isinstance(a0, _ast.Constant) and isinstance(a0.value, str):
-                            names.add(a0.value)
-            if isinstance(child, (_ast.FunctionDef, _ast.AsyncFunctionDef, _ast.Lambda)):
-                continue
-            walk(child)
-
-    for top in _ast.iter_child_nodes(tree):
-        if isinstance(top, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
-            for stmt in top.body:
-                walk(stmt)
-            break
-    return sorted(names)
 
 
 # Соответствия латиница ↔ кириллица для типовых ключей
@@ -158,6 +140,16 @@ def diagnostics(args):
     where = (args.get("где") or "всё").strip().lower()
     alts = _alts(q)
 
+    # --- шаблоны латинских имён (download/curl/wget) ---
+    try:
+        from _executor import _LATIN_TEMPLATES
+        _tpl_hits = []
+        for _lat, _tpl in _LATIN_TEMPLATES.items():
+            if any(_smart_match(alts, _lat) for _ in (_lat,)):
+                _tpl_hits.append((_lat, _tpl))
+    except Exception:
+        _tpl_hits = []
+
     params_cache = {}
 
     def params_of(fn):
@@ -176,10 +168,16 @@ def diagnostics(args):
         aliases = sorted(n for n, f in HANDLERS.items() if f is fn and n)
         if not aliases:
             continue
-        # приоритет — русское имя (без латиницы)
-        import re as _re
-        _ru = [a for a in aliases if not _re.search(r"[a-zA-Z]", a)]
-        primary = _ru[0] if _ru else aliases[0]
+        # приоритет — имя из PRIMARY_HANDLERS (первое в @register)
+        primary = None
+        for _pn, _pf in PRIMARY_HANDLERS.items():
+            if _pf is fn:
+                primary = _pn
+                break
+        if primary is None:
+            import re as _re
+            _ru = [a for a in aliases if not _re.search(r"[a-zA-Z]", a)]
+            primary = _ru[0] if _ru else aliases[0]
         doc = (fn.__doc__ or "")
         params = params_of(fn)
 
@@ -204,12 +202,69 @@ def diagnostics(args):
         if take:
             matches.append((primary, aliases, doc, params))
 
+    # --- fallback: если не нашли, пробуем без последней буквы (1..N раз) ---
+    _original_q = q
+    _tries = 0
+    while not matches and len(q) >= 4 and _tries < 3:
+        q = q[:-1]
+        _tries += 1
+        alts = _alts(q)
+        _seen2 = set()
+        for name, fn in sorted(HANDLERS.items()):
+            if not name or id(fn) in _seen2:
+                continue
+            _seen2.add(id(fn))
+            aliases = sorted(n for n, f in HANDLERS.items() if f is fn and n)
+            if not aliases:
+                continue
+            doc = (fn.__doc__ or "")
+            params = params_of(fn)
+            hit_name = any(_smart_match(alts, n) for n in aliases)
+            hit_param = any(_smart_match(alts, p) for p in params)
+            doc_first = doc.strip().split("\n", 1)[0]
+            hit_doc_full = _smart_match(alts, doc)
+            if where in ("всё", "все", "all", ""):
+                take = hit_name or hit_param
+            elif where == "имя":
+                take = hit_name
+            elif where == "параметр":
+                take = hit_param
+            elif where in ("док", "докстринг"):
+                take = hit_doc_full
+            else:
+                take = hit_name or hit_param
+            if take:
+                for _pn, _pf in PRIMARY_HANDLERS.items():
+                    if _pf is fn:
+                        primary = _pn
+                        break
+                else:
+                    primary = aliases[0]
+                matches.append((primary, aliases, doc, params))
+
+    if not matches and _tpl_hits:
+        out_tpl = []
+        for _lat, _tpl in _tpl_hits:
+            out_tpl.append(f"• шаблон (латиница): {_lat}")
+            out_tpl.append("")
+            for _ln in _tpl.split("\n"):
+                out_tpl.append("  " + _ln)
+            out_tpl.append("")
+        return "\n".join(out_tpl).rstrip()
+
     if not matches:
         from _color import color_red
-        return color_red(f"По '{q}' ничего не найдено.")
+        return color_red(f"По '{_original_q}' ничего не найдено.")
 
-    show_aliases = bool(args.get("алиасы") or args.get("aliases"))
-    lines = [f"🔎 Найдено команд: {len(matches)} (по '{q}', где={where})", ""]
+    show_aliases = args.get("алиасы", True)
+    if isinstance(show_aliases, str):
+        show_aliases = show_aliases.strip().lower() not in ("0", "false", "нет", "off", "")
+    else:
+        show_aliases = bool(show_aliases)
+    _suffix = ""
+    if q != _original_q:
+        _suffix = f" [уточнено: '{_original_q}' → '{q}']"
+    lines = [f"🔎 Найдено команд: {len(matches)} (по '{q}', где={where}){_suffix}", ""]
     for name, aliases, doc, params in matches:
         lines.append(f"• команда: {name}")
         if show_aliases:

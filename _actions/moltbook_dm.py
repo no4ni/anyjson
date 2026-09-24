@@ -11,14 +11,21 @@ def notifications(args):
 
     Параметры:
       количество — сколько показать (по умолчанию 10)
+      подробно   — true: с полным текстом постов и комментариев
 
-    Пример:
+    Примеры:
       {"молтбук_уведомления": {"количество": 20}}
+      {"молтбук_уведомления": {"подробно": true}}
+
+    Одно уведомление по id — команда "молтбук_уведомление".
     """
     if not _need_tor():
         return "❌ Tor недоступен."
     from _actions._tools_moltbook import moltbook_notifications
-    return moltbook_notifications(args.get("количество", 10))
+    detailed = args.get("подробно")
+    if isinstance(detailed, str):
+        detailed = detailed.strip().lower() not in ("0", "false", "нет", "off", "")
+    return moltbook_notifications(args.get("количество", 10), detailed=bool(detailed))
 
 
 @register("молтбук_дм_запросы")
@@ -166,5 +173,27 @@ def read_notifications(args):
     if not _need_tor():
         return "❌ Tor недоступен."
     from _actions._tools_moltbook import moltbook_read_notifications
-    return moltbook_read_notifications(args.get("пост_id"))
+    return moltbook_read_notifications(args.get("пост_id") or args.get("id") or args.get("post_id"))
+
+@register(["молтбук_уведомление", "молтбук_уведомление_читать"])
+def notification_by_id(args):
+    """Прочитать одно уведомление Moltbook по id — с полным текстом поста и комментария.
+
+    Параметры:
+      id — UUID уведомления (обязательный)
+
+    Пример:
+      {"молтбук_уведомление": {"id": "28de6fdc-ffc7-4df3-82ee-4fff4ba30f0b"}}
+
+    Список уведомлений: {"молтбук_уведомления": {}}
+    """
+    if not _need_tor():
+        return "Tor недоступен."
+    if not isinstance(args, dict):
+        args = {}
+    nid = args.get("id") or args.get("уведомление_id") or args.get("notif_id")
+    if not nid:
+        return "Укажите id уведомления. Список: молтбук_уведомления"
+    from _actions._tools_moltbook import moltbook_notification_by_id
+    return moltbook_notification_by_id(nid)
 

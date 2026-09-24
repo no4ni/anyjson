@@ -21,6 +21,59 @@ _BASE = "http://" + STABLEDIF_HOST + ":" + str(STABLEDIF_PORT)
 _LOG  = MY_DIR / "stabledif.log"
 _PID  = MY_DIR / "stabledif.pid"
 _OUT  = MY_DIR / "stabledif_out"
+_STATE = MY_DIR / "stabledif_state.json"
+
+
+def _load_state():
+    if not _STATE.exists():
+        return {}
+    try:
+        return json.loads(_STATE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_state(d):
+    try:
+        _STATE.write_text(json.dumps(d, ensure_ascii=False, indent=2),
+                          encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _get_last_model():
+    return _load_state().get("last_model")
+
+
+def _set_last_model(name):
+    if not name:
+        return
+    st = _load_state()
+    st["last_model"] = name
+    _save_state(st)
+
+
+def _ensure_model(requested):
+    """Переключить модель на requested, если задана и отличается от текущей.
+
+    Возвращает None при успехе, строку с ошибкой — при проблеме.
+    """
+    if not requested:
+        return None
+    try:
+        _, opts = _http("GET", "/sdapi/v1/options", timeout=10)
+        current = opts.get("sd_model_checkpoint", "")
+    except Exception:
+        current = ""
+    if current == requested:
+        return None
+    try:
+        _http("POST", "/sdapi/v1/options",
+              {"sd_model_checkpoint": requested}, timeout=120)
+    except Exception as e:
+        return "не удалось переключить модель: " + str(e)
+    _set_last_model(requested)
+    return None
 
 
 def _http(method, path, body=None, timeout=60):
@@ -59,36 +112,18 @@ def _wait_ready(deadline_sec=180, expected_sec=30):
         if pct > 99:
             pct = 99
         if pct != last_pct:
-            bar = "#" * (pct // 3)
-            print("\r⏳ Forge стартует... " + str(pct) + "% " + bar,
+            _w = 20
+            filled = _w * pct // 100
+            if filled >= _w:
+                bar = "=" * _w
+            else:
+                bar = "=" * filled + ">" + "." * (_w - filled - 1)
+            print("\r⏳ Forge стартует... " + str(pct) + "% [" + bar + "]",
                   end="", flush=True)
             last_pct = pct
         time.sleep(0.5)
     print("\r" + " " * 60 + "\r", end="", flush=True)
     return False
-
-
-def _read_pid():
-    try:
-        return int(_PID.read_text().strip())
-    except Exception:
-        return None
-
-
-def _pid_alive(pid):
-    if pid is None:
-        return False
-    try:
-        import ctypes
-        k = ctypes.windll.kernel32
-        h = k.OpenProcess(0x101000, False, pid)
-        if not h:
-            return False
-        rc = k.WaitForSingleObject(h, 0)
-        k.CloseHandle(h)
-        return rc == 0x102
-    except Exception:
-        return False
 
 
 def _fmt_eta(secs):
@@ -132,8 +167,10 @@ def _progress_poller(stop_event):
             samples.append(eta)
             if tick > 3:
                 avg = sum(samples) / len(samples)
-                if avg > 3600:
-                    msg = "Осталось: долго"
+                # ETA в Forge сильно завышен на первых шагах.
+                # Всё, что больше 3 минут — врёт, режем.
+                if avg > 180:
+                    msg = "Осталось: 3 мин"
                 else:
                     msg = "Осталось: " + _fmt_eta(avg)
                 if msg != last_shown:
@@ -162,9 +199,8 @@ def _run_with_progress(fn):
         poller.join(timeout=2)
 
 
-@register("стабилдиф_запустить")
-def sd_start(args):
-    """Запустить Forge в фоне (без окна). Ждёт готовности API до 180с."""
+def _ensure_forge():
+    """Внутренняя: поднять Forge, если не отвечает. Не команда."""
     if _is_alive():
         return "Forge уже слушает " + _BASE
     if not STABLEDIF_RUN.exists():
@@ -185,47 +221,65 @@ def sd_start(args):
     return "pid " + str(p.pid) + ", но API не ответил за 180с. Смотри " + str(_LOG)
 
 
-@register("стабилдиф_остановить")
-def sd_stop(args):
-    """Остановить Forge."""
-    if _is_alive():
-        try:
-            _http("POST", "/sdapi/v1/server-stop", timeout=10)
-        except Exception:
-            pass
-        time.sleep(3)
-    if not _is_alive():
-        return "Forge остановлен."
-    pid = _read_pid()
-    if pid and _pid_alive(pid):
-        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True)
-        time.sleep(2)
-    if not _is_alive():
-        return "Forge убит (pid " + str(pid) + ")."
-    return "не удалось остановить"
-
-
-@register("стабилдиф_статус")
+@register(["стабилдиф_статус", "форж", "forge", "стабилдиф_инфо"])
 def sd_status(args):
-    """Статус Forge."""
+    """Статус Forge: текущая модель, путь и список доступных.
+
+    Параметров нет.
+
+    Пример:
+      {"стабилдиф_статус": {}}
+    """
     if not _is_alive():
-        pid = _read_pid()
-        if pid and _pid_alive(pid):
-            return "процесс жив (pid " + str(pid) + "), но API ещё не отвечает"
-        return "Forge не запущен."
+        startup = _ensure_forge()
+        if not _is_alive():
+            return "Не удалось поднять Forge: " + startup
     try:
-        _, opts = _http("GET", "/sdapi/v1/options", timeout=5)
-        model = opts.get("sd_model_checkpoint", "?")
-        return "Forge жив на " + _BASE + " | модель: " + str(model)
+        _http("POST", "/sdapi/v1/refresh-checkpoints", {}, timeout=30)
+    except Exception:
+        pass
+    try:
+        _, opts = _http("GET", "/sdapi/v1/options", timeout=10)
+        current = opts.get("sd_model_checkpoint", "?")
     except Exception as e:
-        return "Forge жив на " + _BASE + " (модель: " + str(e) + ")"
+        return "ошибка запроса options: " + str(e)
+    try:
+        _, ms = _http("GET", "/sdapi/v1/sd-models", timeout=10)
+    except Exception as e:
+        return "ошибка запроса моделей: " + str(e)
+    _last = _get_last_model() or "(не задана)"
+    if not ms:
+        return ("Сейчас: " + str(current) + "\n"
+                "По умолчанию: " + _last + "\n"
+                "Моделей нет.\n"
+                + chr(0x1F4C2) + " Forge: " + str(STABLEDIF_DIR))
+    lines = [chr(0x1F3A8) + " Текущая модель: " + str(current),
+             chr(0x1F3AF) + " По умолчанию: " + _last,
+             chr(0x1F4C1) + " Доступно моделей: " + str(len(ms)),
+             chr(0x1F4C2) + " Forge: " + str(STABLEDIF_DIR),
+             chr(0x1F4C1) + " Модели: "
+             + str(Path(STABLEDIF_DIR) / "webui" / "models"
+                   / "Stable-diffusion"),
+             chr(0x1F3A8) + " LoRA: "
+             + str(Path(STABLEDIF_DIR) / "webui" / "models" / "Lora")]
+    for m in ms:
+        name = str(m.get("model_name", "?"))
+        mark = " \u2190 \u0441\u0435\u0439\u0447\u0430\u0441" if name == current else ""
+        lines.append("  - " + name + mark)
+    return "\n".join(lines)
 
 
 @register(["стабилдиф_модели", "модели_стабилдиф"])
 def sd_models(args):
     """Список моделей."""
     if not _is_alive():
-        return "Forge не запущен."
+        startup = _ensure_forge()
+        if not _is_alive():
+            return "Не удалось поднять Forge: " + startup
+    try:
+        _http("POST", "/sdapi/v1/refresh-checkpoints", {}, timeout=30)
+    except Exception:
+        pass
     try:
         _, ms = _http("GET", "/sdapi/v1/sd-models", timeout=10)
     except Exception as e:
@@ -243,43 +297,63 @@ def sd_txt2img(args):
     """Сгенерировать картинку через Forge (txt2img).
 
     Параметры:
-      промпт     — что нарисовать (обязательно)
+      промпт     — что нарисовать (обязательно), алиас: запрос
       негатив    — что исключить
       ширина     — по умолчанию 512
       высота     — по умолчанию 512
-      шаги       — sampling steps (по умолч. 20)
-      cfg        — CFG Scale (по умолч. 7.0)
-      seed       — по умолч. -1
-      сэмплер    — Euler a по умолчанию
-      модель     — имя чекпойнта
-      в_буфер    — положить PNG в буфер (по умолч. true)
-      сохранить  — путь для PNG
+      шаги       — sampling steps, 1..35 (по умолч. 25)
+      жёсткость  — CFG Scale (по умолч. 7.0), алиас: cfg
+      зерно      — seed (по умолч. -1 = случайный), алиас: seed
+      сэмплер    — DPM++ 2M (по умолч.), Euler a, DPM++ 2M SDE, ...
+      шедулер    — Karras (по умолч.), Exponential, Normal, Simple, ...
+      модель     — имя чекпойнта; запоминается для следующих запросов
+      референс   — блок ControlNet: {поза|референс: путь, модель,
+                   препроцессор, сила, начало, конец, режим},
+                   алиас: контроль
+      в_контекст — положить результат в контекст (по умолч. true)
+      сохранить  — путь для PNG (иначе MY_DIR/stabledif_out/)
     """
-    prompt = args.get("промпт") or args.get("prompt") or args.get("запрос")
+    prompt = args.get("промпт") or args.get("запрос")
     if not prompt:
         return 'Укажи промпт: {"нарисуй": {"промпт": "кот в шляпе"}}'
     if not _is_alive():
         # автостарт: поднять Forge и дождаться API
-        startup = sd_start({})
+        startup = _ensure_forge()
         if not _is_alive():
             return "Не удалось поднять Forge: " + startup
 
     body = {
         "prompt": str(prompt),
-        "negative_prompt": str(args.get("негатив") or args.get("negative") or ""),
-        "width": int(args.get("ширина") or args.get("width") or 512),
-        "height": int(args.get("высота") or args.get("height") or 512),
-        "steps": int(args.get("шаги") or args.get("steps") or 20),
-        "cfg_scale": float(args.get("cfg") or 7.0),
-        "seed": int(args.get("seed") or -1),
-        "sampler_name": str(args.get("сэмплер") or args.get("sampler") or "Euler a"),
+        "negative_prompt": str(args.get("негатив") or ""),
+        "width": int(args.get("ширина") or 512),
+        "height": int(args.get("высота") or 512),
+        "steps": max(1, min(int(args.get("шаги") or 25), 35)),
+        "cfg_scale": float(args.get("жёсткость") or args.get("cfg") or 7.0),
+        "seed": int(args.get("зерно") or args.get("seed") or -1),
+        "sampler_name": str(args.get("сэмплер") or "DPM++ 2M"),
+        "scheduler": str(args.get("шедулер") or "Karras"),
     }
-    model = args.get("модель") or args.get("model")
+    _ctrl = args.get("референс") or args.get("контроль")
+    _cn = _controlnet_block(_ctrl) if _ctrl else None
+    if _cn and _cn.get("error"):
+        return _cn["error"]
+    if _cn:
+        _empty = {"enabled": False}
+        body["alwayson_scripts"] = {
+            "controlnet": {"args": [_cn["unit"], _empty, _empty]}
+        }
+
+    model = args.get("модель")
     if model:
-        try:
-            _http("POST", "/sdapi/v1/options", {"sd_model_checkpoint": model}, timeout=120)
-        except Exception as e:
-            return "не удалось переключить модель: " + str(e)
+        _err = _ensure_model(model)
+        if _err:
+            return _err
+    else:
+        _last = _get_last_model()
+        if _last:
+            _err = _ensure_model(_last)
+            if _err:
+                return _err
 
     def _do_txt2img():
         return _http("POST", "/sdapi/v1/txt2img", body, timeout=600)
@@ -299,7 +373,7 @@ def sd_txt2img(args):
     from PIL import Image
     img = Image.open(io.BytesIO(raw))
 
-    save_arg = args.get("сохранить") or args.get("save")
+    save_arg = args.get("сохранить")
     if save_arg:
         out_path = Path(save_arg).expanduser()
     else:
@@ -312,9 +386,17 @@ def sd_txt2img(args):
         except Exception:
             seed = "x"
         out_path = _OUT / (ts + "_seed" + str(seed) + ".png")
+    try:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
     img.save(str(out_path))
 
-    to_buf = args.get("в_буфер", True)
+    to_buf = args.get("в_контекст")
+    if to_buf is None:
+        to_buf = args.get("в_контекст")
+    if to_buf is None:
+        to_buf = args.get("в_буфер", True)
     if isinstance(to_buf, str):
         to_buf = to_buf.strip().lower() not in ("0", "false", "нет", "off", "")
     prefix = ""
@@ -334,23 +416,28 @@ def sd_img2img(args):
 
     Параметры:
       путь       — входная картинка (обязательно)
-      промпт     — что должно получиться (обязательно)
+      промпт     — что должно получиться (обязательно), алиас: запрос
       сила       — denoising_strength, 0.0..1.0 (по умолч. 0.75)
       негатив    — что исключить
       ширина     — если не задано, берётся из исходной
       высота     — если не задано, берётся из исходной
-      шаги       — sampling steps (по умолч. 20)
-      cfg        — CFG Scale (по умолч. 7.0)
-      seed       — по умолч. -1
-      сэмплер    — Euler a по умолчанию
-      модель     — имя чекпойнта
-      в_буфер    — положить PNG в буфер (по умолч. true)
-      сохранить  — путь для PNG
+      короткая   — меньшая сторона при автоподборе размера (по умолч. 512)
+      шаги       — sampling steps, 1..35 (по умолч. 25)
+      жёсткость  — CFG Scale (по умолч. 7.0), алиас: cfg
+      зерно      — seed (по умолч. -1 = случайный), алиас: seed
+      сэмплер    — DPM++ 2M (по умолч.), Euler a, DPM++ 2M SDE, ...
+      шедулер    — Karras (по умолч.), Exponential, Normal, Simple, ...
+      модель     — имя чекпойнта; запоминается для следующих запросов
+      референс   — блок ControlNet: {поза|референс: путь, модель,
+                   препроцессор, сила, начало, конец, режим},
+                   алиас: контроль
+      в_контекст — положить результат в контекст (по умолч. true)
+      сохранить  — путь для PNG (иначе MY_DIR/stabledif_out/)
     """
-    src = args.get("путь") or args.get("path") or args.get("вход")
+    src = args.get("путь")
     if not src:
         return 'Укажи путь: {"перерисуй": {"путь": "C:/in.png", "промпт": "oil painting"}}'
-    prompt = args.get("промпт") or args.get("prompt") or args.get("запрос")
+    prompt = args.get("промпт") or args.get("запрос")
     if not prompt:
         return 'Укажи промпт: {"перерисуй": {"путь": "C:/in.png", "промпт": "oil painting"}}'
 
@@ -359,9 +446,22 @@ def sd_img2img(args):
         return "Файл не найден: " + str(src_p)
 
     if not _is_alive():
-        startup = sd_start({})
+        startup = _ensure_forge()
         if not _is_alive():
             return "Не удалось поднять Forge: " + startup
+
+    # SVG не читается PIL — растеризуем во временный PNG
+    _tmp_svg_png = None
+    if src_p.suffix.lower() == ".svg":
+        try:
+            from PIL import Image as _ImgSvg
+            from _config import MY_DIR as _MYSvg
+            _svg_img = _svg_to_alpha(src_p).convert("RGB")
+            _tmp_svg_png = _MYSvg / ("_svg_in_" + src_p.stem + ".png")
+            _svg_img.save(str(_tmp_svg_png))
+            src_p = _tmp_svg_png
+        except Exception as e:
+            return "Не удалось растеризовать SVG: " + str(e)
 
     try:
         import base64 as _b64
@@ -373,12 +473,13 @@ def sd_img2img(args):
     body = {
         "init_images": [init_b64],
         "prompt": str(prompt),
-        "negative_prompt": str(args.get("негатив") or args.get("negative") or ""),
-        "denoising_strength": float(args.get("сила") or args.get("strength") or 0.75),
-        "steps": int(args.get("шаги") or args.get("steps") or 20),
-        "cfg_scale": float(args.get("cfg") or 7.0),
-        "seed": int(args.get("seed") or -1),
-        "sampler_name": str(args.get("сэмплер") or args.get("sampler") or "Euler a"),
+        "negative_prompt": str(args.get("негатив") or ""),
+        "denoising_strength": float(args.get("сила") or 0.75),
+        "steps": max(1, min(int(args.get("шаги") or 25), 35)),
+        "cfg_scale": float(args.get("жёсткость") or args.get("cfg") or 7.0),
+        "seed": int(args.get("зерно") or args.get("seed") or -1),
+        "sampler_name": str(args.get("сэмплер") or "DPM++ 2M"),
+        "scheduler": str(args.get("шедулер") or "Karras"),
     }
     # размеры: из аргументов, иначе меньшая сторона = 512, пропорции сохранены
     try:
@@ -388,8 +489,8 @@ def sd_img2img(args):
     except Exception as e:
         return "не удалось прочитать размер исходника: " + str(e)
 
-    w_arg = args.get("ширина") or args.get("width")
-    h_arg = args.get("высота") or args.get("height")
+    w_arg = args.get("ширина")
+    h_arg = args.get("высота")
     if w_arg and h_arg:
         w, h = int(w_arg), int(h_arg)
     else:
@@ -402,12 +503,27 @@ def sd_img2img(args):
     body["width"] = w
     body["height"] = h
 
-    model = args.get("модель") or args.get("model")
+    _ctrl = args.get("референс") or args.get("контроль")
+    _cn = _controlnet_block(_ctrl) if _ctrl else None
+    if _cn and _cn.get("error"):
+        return _cn["error"]
+    if _cn:
+        _empty = {"enabled": False}
+        body["alwayson_scripts"] = {
+            "controlnet": {"args": [_cn["unit"], _empty, _empty]}
+        }
+
+    model = args.get("модель")
     if model:
-        try:
-            _http("POST", "/sdapi/v1/options", {"sd_model_checkpoint": model}, timeout=120)
-        except Exception as e:
-            return "не удалось переключить модель: " + str(e)
+        _err = _ensure_model(model)
+        if _err:
+            return _err
+    else:
+        _last = _get_last_model()
+        if _last:
+            _err = _ensure_model(_last)
+            if _err:
+                return _err
 
     def _do_img2img():
         return _http("POST", "/sdapi/v1/img2img", body, timeout=600)
@@ -427,7 +543,7 @@ def sd_img2img(args):
     from PIL import Image
     img = Image.open(io.BytesIO(raw))
 
-    save_arg = args.get("сохранить") or args.get("save")
+    save_arg = args.get("сохранить")
     if save_arg:
         out_path = Path(save_arg).expanduser()
     else:
@@ -440,9 +556,17 @@ def sd_img2img(args):
         except Exception:
             seed = "x"
         out_path = _OUT / (ts + "_i2i_seed" + str(seed) + ".png")
+    try:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
     img.save(str(out_path))
 
-    to_buf = args.get("в_буфер", True)
+    to_buf = args.get("в_контекст")
+    if to_buf is None:
+        to_buf = args.get("в_контекст")
+    if to_buf is None:
+        to_buf = args.get("в_буфер", True)
     if isinstance(to_buf, str):
         to_buf = to_buf.strip().lower() not in ("0", "false", "нет", "off", "")
     prefix = ""
@@ -455,4 +579,470 @@ def sd_img2img(args):
             return "PNG: " + str(out_path) + " (в буфер не попал: " + str(e) + ")"
 
     return prefix + "OK " + str(img.size[0]) + "x" + str(img.size[1]) + " -> " + out_path.name + " -> буфер"
+
+def _svg_to_alpha(svg_path):
+    """SVG -> PIL.Image (L mode, 255 = непрозрачно)."""
+    from svglib.svglib import svg2rlg
+    from reportlab.graphics import renderPM
+    from io import BytesIO as _BIO
+    from PIL import Image as _I, ImageChops as _IC
+    drawing = svg2rlg(str(svg_path))
+    if drawing is None:
+        raise RuntimeError("svglib вернул None (пустой SVG?)")
+    buf_w = _BIO()
+    renderPM.drawToFile(drawing, buf_w, fmt="PNG", bg=0xFFFFFF)
+    buf_w.seek(0)
+    img_w = _I.open(buf_w).convert("L")
+    buf_c = _BIO()
+    renderPM.drawToFile(drawing, buf_c, fmt="PNG", bg=0x000000)
+    buf_c.seek(0)
+    img_c = _I.open(buf_c).convert("L")
+    diff = _IC.difference(img_w, img_c)
+    return _IC.invert(diff)
+
+
+def _load_mask_image(mask_path, target_size):
+    """Загрузить маску. .svg через svglib+reportlab, .png/.jpg как есть."""
+    from PIL import Image
+    p = Path(mask_path).expanduser()
+    if not p.is_file():
+        return None, "Файл маски не найден: " + str(p)
+    ext = p.suffix.lower()
+    if ext == ".svg":
+        try:
+            mask = _svg_to_alpha(p)
+        except ImportError:
+            return None, ("Для SVG-маски нужны svglib+reportlab. "
+                          "Установи: py -m pip install svglib reportlab")
+        except Exception as e:
+            return None, "Не удалось растеризовать SVG: " + str(e)
+    else:
+        try:
+            mask = Image.open(str(p)).convert("L")
+        except Exception as e:
+            return None, "Не удалось открыть маску: " + str(e)
+    if mask.size != target_size:
+        mask = mask.resize(target_size, Image.LANCZOS)
+    return mask, None
+
+
+@register(["дорисуй", "закрась", "inpaint", "дорисовать"])
+def sd_inpaint(args):
+    """Дорисовать/закрасить область картинки через Forge (inpaint).
+
+    Перерисовывает только пиксели, где маска белая. Чёрные пиксели
+    маски остаются нетронутыми.
+
+    Параметры:
+      путь       — входная картинка (обязательно)
+      маска      — файл-маска (обязательно):
+                   .png/.jpg — белое = перерисовать, чёрное = оставить;
+                   .svg — непрозрачная область = перерисовать
+      промпт     — что должно получиться (обязательно)
+      негатив    — что исключить
+      сила       — denoising_strength, 0.0..1.0 (по умолч. 0.75)
+      ширина/высота — по умолч. из исходной
+      короткая   — если размеры не заданы: меньшая сторона (по умолч. 512)
+      шаги       — sampling steps, 1..35 (по умолч. 25)
+      жёсткость  — CFG Scale (по умолч. 7.0), алиас: cfg
+      зерно      — seed (по умолч. -1 = случайный), алиас: seed
+      сэмплер    — DPM++ 2M (по умолч.), Euler a, DPM++ 2M SDE, ...
+      шедулер    — Karras (по умолч.), Exponential, Normal, Simple, ...
+      модель     — имя чекпойнта; запоминается для следующих запросов
+      референс   — блок ControlNet: {поза|референс: путь, модель,
+                   препроцессор, сила, начало, конец, режим},
+                   алиас: контроль
+      в_контекст — положить результат в контекст (по умолч. true)
+      сохранить  — путь для PNG (иначе MY_DIR/stabledif_out/)
+
+    Примеры:
+      {"дорисуй": {"путь": "C:/in.png", "маска": "C:/mask.png",
+                   "промпт": "sunny sky"}}
+      {"дорисуй": {"путь": "C:/in.png", "маска": "C:/mask.svg",
+                   "промпт": "oil painting", "сила": 0.85}}
+    """
+    src = args.get("путь")
+    if not src:
+        return ('Укажи путь: {"дорисуй": {"путь": "C:/in.png", '
+                '"маска": "C:/mask.png", "промпт": "..."}}')
+    mask_path = args.get("маска")
+    if not mask_path:
+        return ('Укажи маску: {"дорисуй": {"путь": "...", '
+                '"маска": "C:/mask.png", "промпт": "..."}}')
+    prompt = args.get("промпт")
+    if not prompt:
+        return ('Укажи промпт: {"дорисуй": {"путь": "...", '
+                '"маска": "...", "промпт": "sunny sky"}}')
+
+    src_p = Path(src).expanduser()
+    if not src_p.is_file():
+        return "Файл не найден: " + str(src_p)
+
+    if not _is_alive():
+        startup = _ensure_forge()
+        if not _is_alive():
+            return "Не удалось поднять Forge: " + startup
+
+    try:
+        import base64 as _b64
+        with open(src_p, "rb") as f:
+            init_b64 = _b64.b64encode(f.read()).decode("ascii")
+    except Exception as e:
+        return "не удалось прочитать исходник: " + str(e)
+
+    try:
+        from PIL import Image as _Img
+        with _Img.open(str(src_p)) as _im:
+            src_w, src_h = _im.size
+    except Exception as e:
+        return "не удалось прочитать размер исходника: " + str(e)
+
+    w_arg = args.get("ширина")
+    h_arg = args.get("высота")
+    if w_arg and h_arg:
+        w, h = int(w_arg), int(h_arg)
+    else:
+        short = int(args.get("короткая") or 512)
+        k = short / float(min(src_w, src_h))
+        w = max(64, (int(src_w * k) // 8) * 8)
+        h = max(64, (int(src_h * k) // 8) * 8)
+
+    mask_img, err = _load_mask_image(mask_path, (w, h))
+    if err:
+        return err
+    from io import BytesIO as _BIO
+    _mb = _BIO()
+    mask_img.save(_mb, format="PNG")
+    mask_b64 = _b64.b64encode(_mb.getvalue()).decode("ascii")
+
+    body = {
+        "init_images": [init_b64],
+        "mask": mask_b64,
+        "prompt": str(prompt),
+        "negative_prompt": str(args.get("негатив") or ""),
+        "denoising_strength": float(args.get("сила") or 0.75),
+        "steps": max(1, min(int(args.get("шаги") or 25), 35)),
+        "cfg_scale": float(args.get("жёсткость") or args.get("cfg") or 7.0),
+        "seed": int(args.get("зерно") or args.get("seed") or -1),
+        "sampler_name": str(args.get("сэмплер") or "DPM++ 2M"),
+        "scheduler": str(args.get("шедулер") or "Karras"),
+        "width": w,
+        "height": h,
+        "inpainting_fill": 1,
+        "inpaint_full_res": True,
+        "inpaint_full_res_padding": 32,
+        "mask_blur": 4,
+        "resize_mode": 0,
+    }
+
+    _ctrl = args.get("референс") or args.get("контроль")
+    _cn = _controlnet_block(_ctrl) if _ctrl else None
+    if _cn and _cn.get("error"):
+        return _cn["error"]
+    if _cn:
+        _empty = {"enabled": False}
+        body["alwayson_scripts"] = {
+            "controlnet": {"args": [_cn["unit"], _empty, _empty]}
+        }
+
+    model = args.get("модель")
+    if model:
+        _err = _ensure_model(model)
+        if _err:
+            return _err
+    else:
+        _last = _get_last_model()
+        if _last:
+            _err = _ensure_model(_last)
+            if _err:
+                return _err
+
+    def _do():
+        return _http("POST", "/sdapi/v1/img2img", body, timeout=600)
+
+    try:
+        _, resp = _run_with_progress(_do)
+    except urllib.error.HTTPError as e:
+        return "HTTP " + str(e.code) + ": " + str(e.read()[:300])
+    except Exception as e:
+        return "ошибка запроса: " + str(e)
+
+    images = resp.get("images") or []
+    if not images:
+        return "API вернул без images"
+
+    raw = base64.b64decode(images[0])
+    from PIL import Image
+    img = Image.open(io.BytesIO(raw))
+
+    save_arg = args.get("сохранить")
+    if save_arg:
+        out_path = Path(save_arg).expanduser()
+    else:
+        _OUT.mkdir(parents=True, exist_ok=True)
+        ts = time.strftime("%Y%m%d-%H%M%S")
+        info = resp.get("info") or "{}"
+        try:
+            info_j = json.loads(info) if isinstance(info, str) else info
+            seed = info_j.get("seed", "x")
+        except Exception:
+            seed = "x"
+        out_path = _OUT / (ts + "_inpaint_seed" + str(seed) + ".png")
+    try:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    img.save(str(out_path))
+
+    to_buf = args.get("в_контекст")
+    if to_buf is None:
+        to_buf = args.get("в_контекст")
+    if to_buf is None:
+        to_buf = args.get("в_буфер", True)
+    if isinstance(to_buf, str):
+        to_buf = to_buf.strip().lower() not in ("0", "false", "нет", "off", "")
+    prefix = ""
+    if to_buf:
+        try:
+            from _actions.clipboard import _pil_to_clipboard
+            _pil_to_clipboard(img)
+            prefix = "[BUF] "
+        except Exception as e:
+            return "PNG: " + str(out_path) + " (в буфер не попал: " + str(e) + ")"
+
+    return (prefix + "OK " + str(img.size[0]) + "x" + str(img.size[1])
+            + " -> " + out_path.name + " -> буфер")
+
+
+_pose_aliases = {
+    "голова": ["голова", "head", "nose", "0"],
+    "шея": ["шея", "neck", "1"],
+    "правое_плечо": ["правое_плечо", "right_shoulder", "2"],
+    "правый_локоть": ["правый_локоть", "right_elbow", "3"],
+    "правая_кисть": ["правая_кисть", "right_wrist", "right_hand", "4"],
+    "левое_плечо": ["левое_плечо", "left_shoulder", "5"],
+    "левый_локоть": ["левый_локоть", "left_elbow", "6"],
+    "левая_кисть": ["левая_кисть", "left_wrist", "left_hand", "7"],
+    "правый_таз": ["правый_таз", "right_hip", "8"],
+    "правое_колено": ["правое_колено", "right_knee", "9"],
+    "правая_стопа": ["правая_стопа", "right_ankle", "right_foot", "10"],
+    "левый_таз": ["левый_таз", "left_hip", "11"],
+    "левое_колено": ["левое_колено", "left_knee", "12"],
+    "левая_стопа": ["левая_стопа", "left_ankle", "left_foot", "13"],
+}
+
+_pose_colors = {
+    "голова": (255, 255, 255),
+    "шея": (255, 255, 255),
+    "правое_плечо": (255, 0, 0), "правый_локоть": (255, 0, 0),
+    "правая_кисть": (255, 0, 0),
+    "левое_плечо": (255, 0, 255), "левый_локоть": (255, 0, 255),
+    "левая_кисть": (255, 0, 255),
+    "правый_таз": (255, 128, 0), "правое_колено": (255, 128, 0),
+    "правая_стопа": (255, 128, 0),
+    "левый_таз": (0, 128, 255), "левое_колено": (0, 128, 255),
+    "левая_стопа": (0, 128, 255),
+}
+
+_pose_bones = [
+    ("голова", "шея"),
+    ("шея", "правое_плечо"),
+    ("правое_плечо", "правый_локоть"),
+    ("правый_локоть", "правая_кисть"),
+    ("шея", "левое_плечо"),
+    ("левое_плечо", "левый_локоть"),
+    ("левый_локоть", "левая_кисть"),
+    ("шея", "правый_таз"),
+    ("правый_таз", "правое_колено"),
+    ("правое_колено", "правая_стопа"),
+    ("шея", "левый_таз"),
+    ("левый_таз", "левое_колено"),
+    ("левое_колено", "левая_стопа"),
+]
+
+
+def _draw_pose_skeleton(points, size):
+    from PIL import Image, ImageDraw
+    W, H = int(size[0]), int(size[1])
+    img = Image.new("RGB", (W, H), (0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    P = {}
+    for canon, keys in _pose_aliases.items():
+        for k in keys:
+            v = points.get(k)
+            if isinstance(v, (list, tuple)) and len(v) >= 2:
+                try:
+                    P[canon] = (int(v[0]), int(v[1]))
+                except (TypeError, ValueError):
+                    pass
+                break
+    line_w = max(3, W // 200)
+    dot_r = max(3, W // 150)
+    for a, b in _pose_bones:
+        if a in P and b in P:
+            draw.line([P[a], P[b]],
+                      fill=_pose_colors.get(b, (255, 255, 255)),
+                      width=line_w)
+    for canon, xy in P.items():
+        c = _pose_colors.get(canon, (255, 255, 255))
+        draw.ellipse([xy[0] - dot_r, xy[1] - dot_r,
+                      xy[0] + dot_r, xy[1] + dot_r], fill=c)
+    return img
+
+
+@register(["поза", "скелет", "openpose"])
+def sd_pose(args):
+    """Нарисовать скелет OpenPose по координатам (для ControlNet).
+
+    Параметры:
+      размер    — [ширина, высота] (по умолч. [768, 512])
+      точки     — словарь {имя: [x, y]} — координаты суставов
+      сохранить — путь к PNG
+      в_контекст — положить в контекст (по умолч. true)
+
+    Имена суставов (можно латиницей или цифрой 0..13):
+      голова, шея, правое_плечо, правый_локоть, правая_кисть,
+      левое_плечо, левый_локоть, левая_кисть,
+      правый_таз, правое_колено, правая_стопа,
+      левый_таз, левое_колено, левая_стопа.
+
+    Пример:
+      {"поза": {"размер": [768, 512],
+                "точки": {"голова": [384, 130], "шея": [384, 175]},
+                "сохранить": "C:/rpg/pose_kay.png"}}
+    """
+    size = args.get("размер") or [768, 512]
+    points = args.get("точки") or {}
+    if not points:
+        return "Укажи точки — координаты суставов."
+    img = _draw_pose_skeleton(points, size)
+    out_path = None
+    save_arg = args.get("сохранить")
+    if save_arg:
+        out_path = Path(save_arg).expanduser()
+        try:
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+        img.save(str(out_path))
+    to_buf = args.get("в_контекст")
+    if to_buf is None:
+        to_buf = args.get("в_контекст")
+    if to_buf is None:
+        to_buf = args.get("в_буфер", True)
+    if isinstance(to_buf, str):
+        to_buf = to_buf.strip().lower() not in ("0", "false", "нет", "off", "")
+    prefix = ""
+    if to_buf:
+        try:
+            from _actions.clipboard import _pil_to_clipboard
+            _pil_to_clipboard(img)
+            prefix = "[BUF] "
+        except Exception:
+            pass
+    info = "Скелет " + str(img.size[0]) + "x" + str(img.size[1])
+    if out_path:
+        info += " -> " + str(out_path)
+    return prefix + info
+
+
+def _controlnet_block(ctrl, default_prefix="openpose"):
+    if isinstance(ctrl, str):
+        ctrl = {"референс": ctrl}
+    if not isinstance(ctrl, dict):
+        return None
+    pose_path = (ctrl.get("поза") or ctrl.get("референс")
+                 or ctrl.get("image"))
+    if not pose_path:
+        return None
+    p = Path(pose_path).expanduser()
+    if not p.is_file():
+        return {"error": "Не найден файл контроля: " + str(p)}
+    try:
+        with open(p, "rb") as f:
+            img_b64 = base64.b64encode(f.read()).decode("ascii")
+    except Exception as e:
+        return {"error": "Не удалось прочитать файл контроля: " + str(e)}
+    preproc = (ctrl.get("препроцессор") or ctrl.get("preprocessor")
+               or "None")
+    # Forge ищет preprocessor по имени через global_state.get_preprocessor().
+    # Если передать "none" строчными — вернёт None и упадёт дальше.
+    # Нормализуем к "None" (с большой).
+    if isinstance(preproc, str) and preproc.lower() in ("none", "null", ""):
+        preproc = "None"
+    preproc_low = str(preproc).lower().replace("-", "_")
+    _no_model_prefixes = ("reference_only", "reference_adain",
+                          "reference_adain+attn")
+    _no_model = any(preproc_low.startswith(x) for x in _no_model_prefixes)
+
+    _dbg = ""
+    model = ctrl.get("модель") or ctrl.get("model")
+    if not model and not _no_model:
+        try:
+            _st, ml = _http("GET", "/controlnet/model_list", timeout=15)
+            if isinstance(ml, dict):
+                lst = ml.get("model_list", [])
+                _dbg = (" [status=" + str(_st) + ", keys="
+                        + str(list(ml.keys())) + ", N=" + str(len(lst)) + "]")
+                for m in lst:
+                    if m and default_prefix in m.lower():
+                        model = m
+                        break
+            else:
+                _dbg = (" [status=" + str(_st) + ", type="
+                        + type(ml).__name__ + ", head="
+                        + str(ml)[:80] + "]")
+        except Exception as e:
+            _dbg = " [http error: " + type(e).__name__ + ": " + str(e) + "]"
+    if not model and not _no_model:
+        return {"error": "Не указана модель контроля (нет модели с '"
+                + default_prefix + "' в списке)." + _dbg}
+    if not model:
+        model = "None"
+    # Forge ищет модель по ПОЛНОМУ ключу с хешем: "name [abc12345]".
+    # Если пользователь прислал короткое имя — ищем полное в списке.
+    if model and model != "None" and " [" not in str(model):
+        try:
+            _st2, _ml2 = _http("GET", "/controlnet/model_list", timeout=15)
+            _lst2 = _ml2.get("model_list", []) if isinstance(_ml2, dict) else []
+            for _m in _lst2:
+                if not _m:
+                    continue
+                if _m == model or _m.startswith(str(model) + " ["):
+                    model = _m
+                    break
+        except Exception:
+            pass
+    try:
+        weight = float(ctrl.get("сила") or ctrl.get("weight") or 1.0)
+    except (TypeError, ValueError):
+        weight = 1.0
+    try:
+        start = float(ctrl.get("начало") or 0.0)
+    except (TypeError, ValueError):
+        start = 0.0
+    try:
+        end = float(ctrl.get("конец") or 1.0)
+    except (TypeError, ValueError):
+        end = 1.0
+    ctrl_mode = (ctrl.get("режим") or ctrl.get("mode")
+                 or "ControlNet is more important")
+    unit = {
+        "enabled": True,
+        "image": img_b64,
+        "input_image": img_b64,
+        "module": preproc,
+        "model": model,
+        "weight": weight,
+        "resize_mode": "Crop and Resize",
+        "control_mode": ctrl_mode,
+        "pixel_perfect": False,
+        "processor_res": 512,
+        "threshold_a": 64,
+        "threshold_b": 64,
+        "guidance_start": start,
+        "guidance_end": end,
+    }
+    return {"unit": unit}
+
 

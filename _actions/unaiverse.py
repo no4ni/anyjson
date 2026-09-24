@@ -120,31 +120,15 @@ def _read_last_results(n=3):
     return out
 
 
-@register(["юнайверс_запустить", "unaiverse_start"])
-def unaiverse_start(args):
-    """Запустить UNaIVERSE-демон в фоне.
+def _ensure_daemon(force=False):
+    """Внутренняя: поднять демон, если не работает. Не команда.
 
-    Токен берётся из api_keys.json (ключ "unaiverse").
-    Если токена нет — спросит и сохранит.
-
-    Параметры:
-      имя   — имя узла (по умолчанию "Jericho")
-      сила  — true: если демон жив, погасить его и запустить заново
-
-    Примеры:
-      {"юнайверс_запустить": {}}
-      {"юнайверс_запустить": {"имя": "Jericho2"}}
-      {"юнайверс_запустить": {"сила": true}}
+    Возвращает None при успехе, строку с ошибкой — при проблеме.
     """
-    args = args or {}
-    force = bool((args or {}).get("сила") or (args or {}).get("force"))
-
     pid = _read_pid()
     if pid and _is_alive(pid):
         if not force:
-            return (f"ℹ️ Демон уже запущен (PID {pid}). "
-                    f'Добавь "сила": true для перезапуска.')
-        # force — мягко гасим старый, чтобы сервер отпустил имя узла
+            return None
         _graceful_stop(pid)
         PID_FILE.unlink(missing_ok=True)
 
@@ -158,7 +142,7 @@ def unaiverse_start(args):
     if not token:
         return "❌ Токен UNaIVERSE не задан. Отмена."
 
-    node_name = args.get("имя") or args.get("name") or "Jericho"
+    node_name = AGENT_NAME or "Jericho"
 
     if not RUN_AGENT.exists():
         return f"❌ Не найден {RUN_AGENT}"
@@ -198,12 +182,7 @@ def unaiverse_start(args):
 
     PID_FILE.write_text(str(proc.pid), encoding="utf-8")
     time.sleep(2)
-
-    tail = ""
-    if LOG_FILE.exists():
-        last = LOG_FILE.read_text(encoding="utf-8", errors="replace").splitlines()[-3:]
-        tail = "\n".join(last[-3:])
-    return f"✅ Демон запущен (PID {proc.pid}), имя узла: {node_name}\n{tail}"
+    return None
 
 
 @register(["юнайверс_остановить", "unaiverse_stop"])
@@ -264,7 +243,15 @@ def unaiverse_search(args):
       {"юнайверс_поиск": {"запрос": "music"}}
       {"юнайверс_поиск": {}}
     """
-    q = (args or {}).get("запрос") or (args or {}).get("query") or ""
+    a = args or {}
+    q = (a.get("запрос") or a.get("query") or "").strip()
+    # пустой запрос API не принимает — показываем всё через "юнайверс_найти"
+    if not q:
+        return unaiverse_find(a)
+    _err = _ensure_daemon()
+    if _err:
+        return _err
+
     _append_cmd("search", query=q)
     time.sleep(3)
     res = _read_last_results(1)
@@ -310,18 +297,33 @@ def unaiverse_connect(args):
     except Exception:
         pass
 
+    _err = _ensure_daemon()
+    if _err:
+        return _err
+
     _append_cmd("get_in_touch", name=name)
 
-    deadline = time.time() + 60
+    t0 = time.time()
+    deadline = t0 + 120
+    last_shown = -1
     while time.time() < deadline:
-        time.sleep(2)
+        elapsed = int(time.time() - t0)
+        if elapsed != last_shown:
+            sys.stdout.write(f"\r⏳ Подключаюсь к {name}... {elapsed}/120 сек")
+            sys.stdout.flush()
+            last_shown = elapsed
+        time.sleep(1)
         res = _read_last_results(1)
         if not res:
             continue
         last = res[-1]
         if last.get("error"):
+            sys.stdout.write("\r" + " " * 80 + "\r")
+            sys.stdout.flush()
             return f"❌ {last['error']}"
         if "ok" in last or "result" in last:
+            sys.stdout.write("\r" + " " * 80 + "\r")
+            sys.stdout.flush()
             r = last.get("result")
             target = last.get("target") or name
             if r and r != "None":
@@ -331,7 +333,17 @@ def unaiverse_connect(args):
             return (f"❌ Не удалось подключиться к {target}\n"
                     f"   соединение не установлено (None)")
 
-    return "⏱ Не дождались ответа за 60 сек. Смотри лог."
+    sys.stdout.write("\r" + " " * 80 + "\r")
+    sys.stdout.flush()
+    tail = ""
+    try:
+        if RES_FILE.exists():
+            tail = "\n".join(RES_FILE.read_text(encoding="utf-8", errors="replace").splitlines()[-3:])
+    except Exception:
+        pass
+    if tail:
+        return f"⏱ Демон не ответил за 120 сек.\nПоследнее в RES_FILE:\n{tail}"
+    return "⏱ Демон не ответил за 120 сек."
 
 
 @register(["юнайверс_войти_в_мир", "unaiverse_join_world"])
@@ -352,18 +364,33 @@ def unaiverse_join_world(args):
         RES_FILE.write_text("", encoding="utf-8")
     except Exception:
         pass
+    _err = _ensure_daemon()
+    if _err:
+        return _err
+
     _append_cmd("join_world", name=name)
 
-    deadline = time.time() + 60
+    t0 = time.time()
+    deadline = t0 + 120
+    last_shown = -1
     while time.time() < deadline:
-        time.sleep(2)
+        elapsed = int(time.time() - t0)
+        if elapsed != last_shown:
+            sys.stdout.write(f"\r⏳ Вхожу в мир {name}... {elapsed}/120 сек")
+            sys.stdout.flush()
+            last_shown = elapsed
+        time.sleep(1)
         res = _read_last_results(1)
         if not res:
             continue
         last = res[-1]
         if last.get("error"):
+            sys.stdout.write("\r" + " " * 80 + "\r")
+            sys.stdout.flush()
             return f"❌ {last['error']}"
         if last.get("ok"):
+            sys.stdout.write("\r" + " " * 80 + "\r")
+            sys.stdout.flush()
             r = last.get("result")
             target = last.get("target") or name
             if r and r != "None":
@@ -372,6 +399,8 @@ def unaiverse_join_world(args):
                         f"   адресов: {last.get('addrs_count', '?')}")
             return (f"❌ Не удалось войти в {target}\n"
                     f"   соединение не установлено (None)")
+    sys.stdout.write("\r" + " " * 80 + "\r")
+    sys.stdout.flush()
     return "⏱ Не дождались ответа за 60 сек."
 
 
@@ -382,22 +411,39 @@ def unaiverse_leave(args):
         RES_FILE.write_text("", encoding="utf-8")
     except Exception:
         pass
+    _err = _ensure_daemon()
+    if _err:
+        return _err
+
     _append_cmd("leave")
-    deadline = time.time() + 30
+    t0 = time.time()
+    deadline = t0 + 60
+    last_shown = -1
     while time.time() < deadline:
-        time.sleep(2)
+        elapsed = int(time.time() - t0)
+        if elapsed != last_shown:
+            sys.stdout.write(f"\r⏳ Покидаю соединения... {elapsed}/60 сек")
+            sys.stdout.flush()
+            last_shown = elapsed
+        time.sleep(1)
         res = _read_last_results(1)
         if res:
             last = res[-1]
             if last.get("error"):
+                sys.stdout.write("\r" + " " * 80 + "\r")
+                sys.stdout.flush()
                 return f"❌ {last['error']}"
             if last.get("ok"):
+                sys.stdout.write("\r" + " " * 80 + "\r")
+                sys.stdout.flush()
                 n = last.get("left", 0)
                 return f"✅ Покинул соединения: {n}"
+    sys.stdout.write("\r" + " " * 80 + "\r")
+    sys.stdout.flush()
     return "⏱ Не дождались ответа за 30 сек."
 
 
-@register(["юнайверс_входящие", "unaiverse_inbox"])
+@register(["юнайверс_входящие", "юнайверс_лента", "unaiverse_inbox"])
 def unaiverse_inbox(args):
     """Показать входящие сообщения из UNaIVERSE.
 
@@ -407,6 +453,11 @@ def unaiverse_inbox(args):
     Пример:
       {"юнайверс_входящие": {}}
     """
+    _pid = _read_pid()
+    if not (_pid and _is_alive(_pid)):
+        _err = _ensure_daemon()
+        if _err:
+            return _err
     if not INBOX_FILE.exists():
         return "📭 Входящих нет."
     n = int((args or {}).get("количество", 20) or 20)
@@ -423,7 +474,7 @@ def unaiverse_inbox(args):
     return "\n\n".join(out) if out else "📭 Входящих нет."
 
 
-@register(["юнайверс_ответить", "unaiverse_answer"])
+@register(["юнайверс_ответить", "юнайверс_пост", "unaiverse_answer"])
 def unaiverse_answer(args):
     """Отправить текст партнёру в UNaIVERSE.
 
@@ -438,6 +489,10 @@ def unaiverse_answer(args):
     text = (a.get("текст") or a.get("text") or a.get("содержимое") or "").strip()
     if not text:
         return "Пустой текст."
+    _err = _ensure_daemon()
+    if _err:
+        return _err
+
     _append_cmd("answer", text=text)
     time.sleep(2)
     res = _read_last_results(1)
@@ -468,6 +523,10 @@ def unaiverse_find(args):
       {"юнайверс_найти": {"страна": "Germany", "лимит": 30}}
     """
     a = args or {}
+    _err = _ensure_daemon()
+    if _err:
+        return _err
+
     _append_cmd("discover", view="m")
     time.sleep(4)  # ждём ответа
     res = _read_last_results(1)
@@ -490,7 +549,7 @@ def unaiverse_find(args):
     only_online = bool(a.get("онлайн") or a.get("online"))
     only_cert = bool(a.get("сертифицирован") or a.get("certified") or a.get("verified"))
     country = (a.get("страна") or a.get("country") or "").strip().lower()
-    search = (a.get("поиск") or a.get("query") or a.get("q") or "").strip().lower()
+    search = (a.get("поиск") or a.get("запрос") or a.get("query") or a.get("q") or "").strip().lower()
     include_self = bool(a.get("своё") or a.get("include_self") or a.get("self"))
     try:
         limit = int(a.get("лимит") or a.get("limit") or 20)
@@ -635,6 +694,96 @@ def unaiverse_raw_request(args):
     if len(text) > 5000:
         text = text[:5000] + "\n… (обрезано, всего " + str(len(text)) + " байт)"
     return f"Статус: {r.status_code}\n{text}"
+
+
+import re as _re_uprof
+
+_NODE_ID_RE = _re_uprof.compile(r"Node ID:\s*([a-f0-9]+)")
+_OWNER_RE = _re_uprof.compile(r"Owner:\s*(\S+)")
+
+
+def _unaiverse_read_from_log():
+    """Парсит Node ID и Owner из лога."""
+    out = {}
+    if not LOG_FILE.exists():
+        return out
+    text = LOG_FILE.read_text(encoding="utf-8", errors="replace")
+    m = _NODE_ID_RE.search(text)
+    if m:
+        out["node_id"] = m.group(1)
+    m = _OWNER_RE.search(text)
+    if m:
+        out["owner"] = m.group(1)
+    return out
+
+
+@register(["юнайверс_профиль", "unaiverse_profile"])
+def unaiverse_profile(args):
+    """Профиль текущего узла в UNaIVERSE.
+
+    Показывает имя, статус, PID, Node ID и Owner.
+
+    Параметры:
+      запрос_апи — true (по умолчанию): спросить API.
+                   false: только локально, из лога.
+
+    Примеры:
+      {"юнайверс_профиль": {}}
+      {"юнайверс_профиль": {"запрос_апи": false}}
+    """
+    a = args or {}
+    pid = _read_pid()
+    alive = _is_alive(pid)
+
+    lines = ["👤 Профиль UNaIVERSE"]
+    lines.append(f"   Имя: {AGENT_NAME}")
+    lines.append(f"   Статус: {'🟢 запущен' if alive else '🔴 остановлен'}")
+    if pid:
+        lines.append(f"   PID: {pid}")
+
+    log_data = _unaiverse_read_from_log()
+    if log_data.get("node_id"):
+        lines.append(f"   Node ID: {log_data['node_id']}")
+    if log_data.get("owner"):
+        lines.append(f"   Owner: {log_data['owner']}")
+    if not log_data:
+        lines.append("   (лог пуст — демон ещё не стартовал?)")
+
+    if a.get("запрос_апи", True) is not False:
+        try:
+            from _config import API_KEYS
+            token = API_KEYS.get("unaiverse")
+        except Exception:
+            token = None
+        if token:
+            try:
+                r = requests.post(
+                    "https://unaiverse.io/api/account/node/get/id",
+                    json={"node_name": AGENT_NAME, "account_token": token},
+                    timeout=15,
+                )
+                if r.status_code == 200:
+                    try:
+                        j = r.json()
+                        api_id = None
+                        if isinstance(j, dict):
+                            api_id = (j.get("data") or j.get("node_id")
+                                      or j.get("id"))
+                        if api_id:
+                            lines.append(f"   Node ID (API): {api_id}")
+                    except Exception:
+                        pass
+                else:
+                    lines.append(f"   ⚠️ API: HTTP {r.status_code}")
+            except Exception as e:
+                lines.append(f"   ⚠️ API: {type(e).__name__}: {e}")
+
+    if not alive:
+        lines.append("")
+        lines.append("💡 Демон остановлен. Подними любой командой обмена — "
+                     "например, юнайверс_входящие.")
+
+    return chr(10).join(lines)
 
 
 @register(["юнайверс_лог", "унаиверс_лог", "unaiverse_log"])

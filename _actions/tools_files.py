@@ -325,42 +325,81 @@ def move_item(source: str, destination: str) -> str:
     _guard2 = _foreign_guard(destination)
     if _guard2:
         return _guard2
-    src = Path(source)
-    dst = Path(destination)
+    src = Path(source).expanduser()
+    dst = Path(destination).expanduser()
     if not src.exists():
         return f"❌ Источник не существует: {source}"
+
+    # нормализуем пути для сравнения
     try:
-        if src.is_dir() and dst.is_relative_to(src):
-            return f"❌ Нельзя переместить папку {source} внутрь самой себя ({destination})"
+        src_r = src.resolve()
+        dst_r = dst.resolve()
+    except Exception:
+        src_r = src
+        dst_r = dst
+
+    # 1. Источник и назначение совпадают — no-op
+    if src_r == dst_r:
+        return f"❌ Источник и назначение совпадают: {src}"
+
+    # 2. dst — существующая папка: кладём src ВНУТРЬ, если только
+    #    dst не является родителем src (тогда это та же папка)
+    if dst.is_dir():
+        # если dst — родитель src: dst / src.name == src → no-op
+        try:
+            _would_be = (dst / src.name).resolve()
+        except Exception:
+            _would_be = dst / src.name
+        if _would_be == src_r:
+            return f"❌ Папка уже находится здесь: {src}"
+        dst = dst / src.name
+        try:
+            dst_r = dst.resolve()
+        except Exception:
+            dst_r = dst
+
+    # 3. Проверка «внутрь себя»
+    try:
+        if dst_r == src_r or dst_r.is_relative_to(src_r):
+            return f"❌ Нельзя переместить папку {src} внутрь самой себя ({dst})"
     except (ValueError, AttributeError):
         pass
 
-    try:
-        if dst.is_dir():
-            dst = dst / src.name
-        if dst.exists():
-            return f"❌ Цель уже существует: {dst}. Удалите её сначала или укажите другой путь."
-        dst.parent.mkdir(parents=True, exist_ok=True)
+    # 4. Цель уже существует
+    if dst.exists():
+        return f"❌ Цель уже существует: {dst}. Удалите её сначала или укажите другой путь."
 
+    try:
         if src.is_dir():
-            total_files = sum(1 for _ in src.rglob("*") if _.is_file())
+            # СНАЧАЛА собираем список файлов, ПОТОМ создаём dst.
+            # Иначе dst появится внутри src и попадёт в собственный обход.
+            all_items = list(src.rglob("*"))
+            total_files = sum(1 for _ in all_items if _.is_file())
+
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.mkdir(parents=True, exist_ok=True)
+
             with tqdm(total=total_files, desc=f"Перемещение {src.name}",
                       unit="файл") as pbar:
-                def _move_with_progress(current_src, current_dst):
-                    current_dst.mkdir(parents=True, exist_ok=True)
-                    for item in current_src.iterdir():
-                        target = current_dst / item.name
-                        if item.is_file():
-                            shutil.move(str(item), str(target))
-                            pbar.update(1)
-                        elif item.is_dir():
-                            _move_with_progress(item, target)
-                _move_with_progress(src, dst)
+                for item in all_items:
+                    try:
+                        rel = item.relative_to(src)
+                    except ValueError:
+                        continue
+                    target = dst / rel
+                    if item.is_file():
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.move(str(item), str(target))
+                        pbar.update(1)
+                    elif item.is_dir():
+                        target.mkdir(parents=True, exist_ok=True)
+            # удаляем пустой src
             try:
                 src.rmdir()
             except OSError:
-                shutil.rmtree(src)
+                shutil.rmtree(src, ignore_errors=True)
         else:
+            dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(src), str(dst))
         return f"✅ Перемещено: {source} → {dst}"
     except Exception as e:

@@ -46,10 +46,10 @@ def distort_image(args):
     Параметры:
       путь   — входной файл (обязательно)
       сила   — 1..20 (по умолчанию 5)
-      выход  — если задан, файл сохраняется; иначе результат только в буфер
-      буфер  — true/false (по умолч. true, если "выход" не задан)
+      выход  — если задан, файл сохраняется
+      
     """
-    src = args.get("путь") or args.get("path")
+    src = args.get("путь")
     if not src:
         return 'Укажи путь: {"исказить_картинку": {"путь": "C:/in.png", "сила": 5}}'
 
@@ -63,7 +63,7 @@ def distort_image(args):
         strength = 5
     strength = max(1, min(20, strength))
 
-    out = args.get("выход") or args.get("save")
+    out = args.get("выход")
     explicit_save = bool(out)
 
     if explicit_save:

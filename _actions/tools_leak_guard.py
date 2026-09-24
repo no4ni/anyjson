@@ -23,6 +23,80 @@ _TOKEN_PATTERNS = [
     re.compile(r"\b[a-fA-F0-9]{40,}\b"),
 ]
 
+# Длинные строки вида base64url: MEGA-ключи, JWT-сегменты, API-секреты.
+# Email — маскируем в выводе, но не блокируем отправку.
+_EMAIL_PATTERN = re.compile(
+    r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"
+)
+
+
+_SECRET_LONG_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_\-])([A-Za-z0-9_\-]{40,})(?![A-Za-z0-9_\-])"
+)
+
+
+def _looks_like_secret(s):
+    if len(s) < 40:
+        return False
+    if re.fullmatch(r"[a-fA-F0-9]+", s):
+        return False  # чистый hex — sha256, git-хэш
+    cats = 0
+    if any(c.isupper() for c in s): cats += 1
+    if any(c.islower() for c in s): cats += 1
+    if any(c.isdigit() for c in s): cats += 1
+    if ("-" in s) or ("_" in s): cats += 1
+    # длинные серии однотипных букв — часть слова, не токен
+    # (Aggressive, Uncensored и т.п. вместо случайной base64url-последовательности)
+    if re.search(r"[a-z]{8,}", s):
+        return False
+    if re.search(r"[A-Z]{6,}", s):
+        return False
+    return cats >= 3
+
+
+_VOWELS = set("aeiouyAEIOUYаеёиоуыэюяАЕЁИОУЫЭЮЯ")
+
+
+def _looks_like_identifier(s):
+    """snake_case-идентификатор (имя файла, функции) — не секрет.
+
+    Требует: 2+ части, разделённых "_", каждая часть — слово
+    (начинается с буквы, есть гласная, длина <= 20) или число.
+    Настоящие base64url-токены так не выглядят.
+    """
+    parts = s.split("_")
+    if len(parts) < 2:
+        return False
+    words = 0
+    for part in parts:
+        if not part or len(part) > 20:
+            return False
+        if part.isdigit():
+            continue
+        if not part[0].isalpha():
+            return False
+        if not any(c in _VOWELS for c in part):
+            return False
+        words += 1
+    return words >= 2
+
+
+def mask_secrets(text):
+    """Заменяет секреты в строке на ***. Для вывода в консоль/буфер."""
+    if not isinstance(text, str) or not text:
+        return text
+    out = text
+    out = _EMAIL_PATTERN.sub("***", out)
+    for pat in _TOKEN_PATTERNS:
+        out = pat.sub("***", out)
+    def _sub(m):
+        s_val = m.group(1)
+        if _looks_like_identifier(s_val):
+            return m.group(0)
+        return "***" if _looks_like_secret(s_val) else m.group(0)
+    out = _SECRET_LONG_PATTERN.sub(_sub, out)
+    return out
+
 
 class LeakDetected(RuntimeError):
     """Обнаружен потенциальный секрет в исходящих данных."""

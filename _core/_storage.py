@@ -18,6 +18,36 @@ stop_event = threading.Event()
 processed_inbox_files: set = set()
 
 
+def touch_last_seen() -> None:
+    """Отметить активность ТЕКУЩЕГО агента (AGENT_NAME).
+
+    Пишет текущее время (epoch) в profiles/<agent>/last_seen.
+    Вызывается один раз на каждую выполненную команду.
+    """
+    if not AGENT_NAME:
+        return
+    profile = PROFILES_DIR / AGENT_NAME
+    if not profile.exists():
+        return
+    try:
+        (profile / "last_seen").write_text(str(time.time()), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def read_last_seen(agent: str):
+    """Прочитать timestamp последней активности агента. None если нет."""
+    if not agent:
+        return None
+    f = PROFILES_DIR / agent / "last_seen"
+    if not f.exists():
+        return None
+    try:
+        return float(f.read_text(encoding="utf-8").strip())
+    except Exception:
+        return None
+
+
 def load_memlist() -> List[Union[str, Dict]]:
     if MEMLIST_FILE.exists():
         try:

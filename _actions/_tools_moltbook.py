@@ -430,32 +430,58 @@ def moltbook_join_submolt(submolt_name: str) -> str:
         return f"Ошибка присоединения к сообществу: {e}"
 
 
-def moltbook_notifications(limit: int = 10) -> str:
+_notif_cache = {"ts": 0.0, "data": None}
+_NOTIF_CACHE_TTL = 300.0
+
+
+def moltbook_notifications(limit: int = 10, detailed: bool = False) -> str:
+    """Список уведомлений. detailed=True — с полным текстом постов и комментариев."""
     try:
-        resp = _moltbook_request("GET", f"/api/v1/notifications?limit={limit}")
-        if resp.status_code != 200:
-            return f"Ошибка Moltbook: {resp.status_code} {resp.text[:500]}"
-        data = resp.json()
-        if data.get("error") or data.get("message"):
-            error_detail = data.get("error") or data.get("message")
-            return f"Ошибка загрузки уведомлений: {error_detail}"
-        notifications = data.get("notifications")
-        if notifications is None:
-            return f"Неожиданный формат ответа: {json.dumps(data, ensure_ascii=False)[:200]}"
+        import time as _t
+        now = _t.time()
+        cached = False
+        if _notif_cache["data"] is not None and now - _notif_cache["ts"] < _NOTIF_CACHE_TTL:
+            notifications = _notif_cache["data"]
+            cached = True
+        else:
+            resp = _moltbook_request("GET", "/api/v1/notifications?limit=100")
+            if resp.status_code != 200:
+                return "Ошибка Moltbook: " + str(resp.status_code) + " " + resp.text[:500]
+            data = resp.json()
+            if data.get("error") or data.get("message"):
+                err = data.get("error") or data.get("message")
+                return "Ошибка загрузки уведомлений: " + str(err)
+            notifications = data.get("notifications")
+            if notifications is None:
+                return "Неожиданный формат: " + json.dumps(data, ensure_ascii=False)[:200]
+            _notif_cache["ts"] = now
+            _notif_cache["data"] = notifications
+
         if not notifications:
             return "Уведомлений нет."
-        result = f"🔔 Уведомления (показано {len(notifications)}):\n\n"
-        for n in notifications:
-            n_type = n.get("type", "unknown")
-            n_id = n.get("id", "?")
-            msg = n.get("content") or n.get("message") or ""
-            created = n.get("createdAt") or n.get("created_at") or ""
-            read = "✅" if n.get("isRead") or n.get("read") else "🔴"
-            result += f"{read} [{n_type}] (id: {n_id}) {msg} ({created})\n"
-        return result
-    except Exception as e:
-        return f"Ошибка получения уведомлений: {e}"
 
+        shown = notifications[:max(1, int(limit))]
+        bell = chr(0x1F514)
+        sep = chr(0x2500) * 40
+        parts = [bell + " Уведомления (показано " + str(len(shown)) + " из " + str(len(notifications)) + "):"]
+        for n in shown:
+            if detailed:
+                parts.append("")
+                parts.append(sep)
+                parts.append(_format_notification(n))
+            else:
+                n_type = n.get("type", "unknown")
+                n_id = n.get("id", "?")
+                msg = n.get("content") or n.get("message") or ""
+                created = n.get("createdAt") or n.get("created_at") or ""
+                read = chr(0x2705) if n.get("isRead") else chr(0x1F534)
+                parts.append(read + " [" + n_type + "] (id: " + n_id + ") " + msg + " (" + created + ")")
+        if cached:
+            parts.append("")
+            parts.append("[кэш] ответ менее 5 минут назад")
+        return chr(10).join(parts)
+    except Exception as e:
+        return "Ошибка получения уведомлений: " + str(e)
 
 def moltbook_dm_requests() -> str:
     try:
@@ -694,3 +720,104 @@ def moltbook_following(agent_name: str) -> str:
         return result
     except Exception as e:
         return f"Ошибка: {e}"
+
+def _format_notification(n):
+    """Форматирует одно уведомление с полным постом и комментарием."""
+    nid = n.get("id", "?")
+    n_type = n.get("type", "?")
+    msg = n.get("content") or n.get("message") or ""
+    created = n.get("createdAt") or n.get("created_at") or ""
+    read = "\u2705" if n.get("isRead") else "\U0001f534"
+    lines = [read + " [" + n_type + "] (id: " + nid + ")"]
+    lines.append("   " + msg)
+    lines.append("   " + created)
+
+    post = n.get("post") or {}
+    if post:
+        pid = post.get("id", "?")
+        title = post.get("title") or "(без заголовка)"
+        content = (post.get("content") or "")[:3000]
+        up = post.get("upvotes", 0)
+        cc = post.get("commentCount", 0)
+        deleted = " [удалён]" if post.get("isDeleted") else ""
+        lines.append("")
+        lines.append("\U0001f4cc Пост" + deleted + ": " + title)
+        lines.append("   ID: " + str(pid) + " | upvotes: " + str(up) + " | comments: " + str(cc))
+        if content:
+            lines.append("")
+            lines.append(content)
+
+    comment = n.get("comment") or {}
+    if comment:
+        cid = comment.get("id", "?")
+        c_content = (comment.get("content") or "")[:3000]
+        c_author = comment.get("authorId", "?")
+        c_created = comment.get("createdAt") or comment.get("created_at") or ""
+        c_deleted = " [удалён]" if comment.get("isDeleted") else ""
+        lines.append("")
+        lines.append("\U0001f4ac Комментарий" + c_deleted + ":")
+        lines.append("   ID: " + str(cid) + " | автор: " + str(c_author) + " | " + str(c_created))
+        if c_content:
+            lines.append("")
+            lines.append(c_content)
+
+    return "\n".join(lines)
+
+
+def moltbook_notification_by_id(notif_id):
+    """Найти уведомление по id и показать подробно: пост + комментарий."""
+    if not notif_id:
+        return "Укажите id уведомления."
+    import time as _t
+    now = _t.time()
+    cached = False
+    if _notif_cache["data"] is not None and now - _notif_cache["ts"] < _NOTIF_CACHE_TTL:
+        notifications = _notif_cache["data"]
+        cached = True
+    else:
+        try:
+            resp = _moltbook_request("GET", "/api/v1/notifications?limit=100")
+            if resp.status_code != 200:
+                return "Ошибка Moltbook: " + str(resp.status_code) + " " + resp.text[:200]
+            data = resp.json()
+            notifications = data.get("notifications") or []
+            _notif_cache["ts"] = now
+            _notif_cache["data"] = notifications
+        except Exception as e:
+            return "Ошибка: " + str(e)
+    target = None
+    for n in notifications:
+        if n.get("id") == notif_id:
+            target = n
+            break
+    if target is None:
+        return ("Уведомление " + str(notif_id) + " не найдено (получено "
+                + str(len(notifications)) + "). Список: молтбук_уведомления")
+    out = _format_notification(target)
+    if cached:
+        out += chr(10) + chr(10) + "[кэш] ответ менее 5 минут назад"
+    return out
+
+
+def moltbook_whoami() -> str:
+    """Кто я в Moltbook: имя, карма, непрочитанные."""
+    try:
+        resp = _moltbook_request("GET", "/api/v1/home")
+        if resp.status_code != 200:
+            return "Ошибка Moltbook: " + str(resp.status_code) + " " + resp.text[:200]
+        data = resp.json()
+        acc = data.get("your_account") or {}
+        if not acc:
+            return "Не удалось получить данные аккаунта. Ответ: " + json.dumps(data, ensure_ascii=False)[:300]
+        name = acc.get("name", "?")
+        karma = acc.get("karma", "?")
+        unread = acc.get("unread_notification_count", "?")
+        lines = [
+            chr(0x1F464) + " Я в Moltbook: " + str(name),
+            "   карма: " + str(karma),
+            "   непрочитанных: " + str(unread),
+        ]
+        return chr(10).join(lines)
+    except Exception as e:
+        return "Ошибка: " + str(e)
+

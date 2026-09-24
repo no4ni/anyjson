@@ -106,7 +106,7 @@ def weather(args):
     Пример: {"погода": {}}
     """
     city = args.get("город", "")
-    api_key = args.get("api_key") or API_KEYS.get("weatherapi")
+    api_key = args.get("апи_ключ") or API_KEYS.get("weatherapi")
     if not city:
         return "Ошибка: не указан город"
     if not api_key:
@@ -166,7 +166,7 @@ def arxiv(args):
     query = args.get("запрос", "")
     if not query:
         # если передан путь/файл — вероятно, имели в виду листинг архива
-        _path = args.get("путь") or args.get("path") or args.get("файл")
+        _path = args.get("путь") or args.get("файл")
         if _path:
             _win = str(_path).replace("/", "\\")
             return (
@@ -240,7 +240,7 @@ def wolfram(args):
       {"исчисление": {"запрос": "distance Earth to Mars"}}
     """
     query = args.get("запрос", "")
-    api_key = args.get("api_key") or ensure_api_key(
+    api_key = args.get("апи_ключ") or ensure_api_key(
         "wolfram",
         prompt="🔑 API-ключ 'wolfram' не найден. Введи (Enter — пропустить): ",
     )

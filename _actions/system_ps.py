@@ -30,12 +30,14 @@ def _log_run(command, status, extra=""):
 
 
 def _split_ps_links(command):
-    """Разбивает PS-команду по |, ;, &&, || — не трогая кавычки и бэктик-эскейпы."""
+    """Разбивает PS-команду по |, ;, &&, || — не трогая кавычки, бэктик-эскейпы
+    и вложенные скобки { } ( ) [ ]."""
     parts = []
     buf = []
     i = 0
     n = len(command)
     in_s = in_d = False
+    depth_b = depth_p = depth_s = 0   # { }, ( ), [ ]
     while i < n:
         ch = command[i]
         if in_s:
@@ -73,21 +75,42 @@ def _split_ps_links(command):
             buf.append(ch)
             i += 1
             continue
-        if ch == '|' and i + 1 < n and command[i + 1] == '|':
-            parts.append(''.join(buf))
-            buf = []
-            i += 2
-            continue
-        if ch in '|;':
-            parts.append(''.join(buf))
-            buf = []
-            i += 1
-            continue
-        if ch == '&' and i + 1 < n and command[i + 1] == '&':
-            parts.append(''.join(buf))
-            buf = []
-            i += 2
-            continue
+
+        # Обновляем глубину скобок
+        if ch == '{':
+            depth_b += 1
+        elif ch == '}':
+            if depth_b > 0:
+                depth_b -= 1
+        elif ch == '(':
+            depth_p += 1
+        elif ch == ')':
+            if depth_p > 0:
+                depth_p -= 1
+        elif ch == '[':
+            depth_s += 1
+        elif ch == ']':
+            if depth_s > 0:
+                depth_s -= 1
+
+        # Режем только на верхнем уровне (вне скобок)
+        _inside = (depth_b > 0) or (depth_p > 0) or (depth_s > 0)
+        if not _inside:
+            if ch == '|' and i + 1 < n and command[i + 1] == '|':
+                parts.append(''.join(buf))
+                buf = []
+                i += 2
+                continue
+            if ch in '|;':
+                parts.append(''.join(buf))
+                buf = []
+                i += 1
+                continue
+            if ch == '&' and i + 1 < n and command[i + 1] == '&':
+                parts.append(''.join(buf))
+                buf = []
+                i += 2
+                continue
         buf.append(ch)
         i += 1
     if buf:
@@ -97,7 +120,18 @@ def _split_ps_links(command):
 
 @register(["запуск", "терминал", "шелл"])
 def run_ps(args):
-    """PowerShell с БЕЛЫМ списком. Разрешено только чтение."""
+    """PowerShell с БЕЛЫМ списком.
+
+    Чтение файлов — через встроенные команды (читать, читать_по_кб,
+    прочитать_полностью). Разрешены только навигация, процессы,
+    сеть (ipconfig/ping/nslookup), git и rclone (read-only).
+
+    Параметры:
+      команда    — PowerShell-команда из белого списка
+      таймаут    — секунд (мин/по умолч. 45, макс 3600)
+      тишина     — секунд без вывода до убийства
+                   (по умолч. max(30, min(таймаут/2, 300)))
+    """
     command = args.get("команда", "").strip()
     if not command:
         return "Пустая команда."
@@ -109,7 +143,6 @@ def run_ps(args):
 
     ALLOWED = {
         "dir", "get-childitem", "ls", "gci",
-        "type", "get-content", "cat", "gc",
         "test-path", "select-string", "findstr",
         "echo", "write-output", "write-host",
         "get-process", "get-service", "get-date",
@@ -119,8 +152,8 @@ def run_ps(args):
         "where.exe", "where", "hostname", "whoami", "systeminfo",
         # смена рабочей папки (сохраняется между вызовами запуска)
         "cd", "set-location", "sl", "push-location", "pop-location",
-        # git — только читающие подкоманды (проверяются ниже)
-        "git",
+        # git, rclone — только читающие подкоманды (проверяются ниже)
+        "git", "rclone",
         # --- конвейерные (только трансформация данных, без записи) ---
         "sort-object", "sort", "select-object", "select",
         "where-object", "foreach-object", "foreach",
@@ -135,6 +168,9 @@ def run_ps(args):
         # --- WMI/CIM (чтение объектов; запись идёт через Invoke-CimMethod — он НЕ разрешён) ---
         "get-ciminstance", "gcim",
         "get-wmiobject", "gwmi",
+        # MEGAcmd — только безобидное (версия, справка).
+        # Никаких mega-whoami/ls/pwd/du/find/mount: утечка персональных данных.
+        "mega-version", "mega-help",
     }
 
     # Дополнительная проверка для git: только безопасные подкоманды
@@ -143,43 +179,89 @@ def run_ps(args):
         "ls-files", "rev-parse", "config", "describe", "blame",
         "shortlog", "reflog", "whatchanged", "cat-file", "ls-tree",
         "for-each-ref", "show-ref", "rev-list", "name-rev",
+        "count-objects", "verify-pack", "fsck", "grep", "cherry",
+        "merge-base", "symbolic-ref", "var", "notes", "worktree",
+        "stash", "bisect", "gc", "prune", "repack", "pack-refs",
+        "pack-objects", "unpack-objects", "index-pack",
+        "maintenance", "commit-graph", "multi-pack-index",
     }
     # git lfs — отдельный whitelist подкоманд
     _git_lfs_safe = {
         "ls-files", "env", "status", "logs", "version", "help",
     }
-    _git_parts = command.split()
-    for _i, _tok in enumerate(_git_parts):
-        if _tok.lower() in ("git", "git.exe"):
-            if _i + 1 >= len(_git_parts):
+    # rclone — только читающие подкоманды
+    _rclone_safe = {
+        "size", "ls", "lsd", "lsl", "lsf", "lsjson", "lsdirs",
+        "about", "check", "md5sum", "sha1sum", "sha256sum", "hashsum",
+        "version", "listremotes", "tree", "backend",
+    }
+    # Разбиваем по |, ;, && — проверяем только ПЕРВЫЙ токен каждого сегмента.
+    # Так "Get-Command rclone ..." не считается вызовом rclone.
+    _segments = _split_ps_links(command)
+    for _seg in _segments:
+        _parts = _seg.split()
+        if not _parts:
+            continue
+        _head = _parts[0].lower().lstrip('(\'"&@$.')
+        _head = _head.rsplit('\\', 1)[-1].rsplit('/', 1)[-1].rstrip(')]},:;')
+
+        if _head in ("git", "git.exe"):
+            if len(_parts) < 2:
                 return "⚠️ git без подкоманды."
-            _sub = _git_parts[_i + 1].lower().lstrip("-")
-            # git lfs <подкоманда>
+            _sub = _parts[1].lower().lstrip("-")
             if _sub == "lfs":
-                if _i + 2 >= len(_git_parts):
+                if len(_parts) < 3:
                     return "⚠️ git lfs без подкоманды."
-                _lfs = _git_parts[_i + 2].lower().lstrip("-")
+                _lfs = _parts[2].lower().lstrip("-")
                 if _lfs not in _git_lfs_safe:
                     return (f"⛔ git lfs {_lfs} запрещён (только чтение). "
                             f"Разрешены: {', '.join(sorted(_git_lfs_safe))}")
-                break
+                continue
             if _sub not in _git_safe:
                 return (f"⛔ git {_sub} запрещён (только чтение). "
                         f"Разрешены: {', '.join(sorted(_git_safe))}")
-            break
+            continue
+
+        if _head in ("rclone", "rclone.exe"):
+            if len(_parts) < 2:
+                return "⚠️ rclone без подкоманды."
+            _sub = _parts[1].lower().lstrip("-")
+            if _sub == "config":
+                return ("⛔ rclone config запрещён: содержит секреты "
+                        "(user, pass, session_id, master_key).")
+            if _sub not in _rclone_safe:
+                return (f"⛔ rclone {_sub} запрещён (только чтение). "
+                        f"Разрешены: {', '.join(sorted(_rclone_safe))}")
+            continue
+
+    # dir/gci + Length — это анализ размеров, отсылаем на анализ_папки/список_файлов
+    _cmd_early = command.lower()
+    if ("length" in _cmd_early or "size" in _cmd_early):
+        _head = _cmd_early.split(None, 1)[0].rstrip('(') if _cmd_early else ""
+        if _head in ("dir", "get-childitem", "gci", "ls",
+                     "(dir", "(get-childitem", "(gci"):
+            _log_run(command, "BLOCKED", "use-analiz-papki")
+            return (
+                "⚠️ Похоже, это анализ размеров папки.\n"
+                "Используй встроенные команды:\n"
+                '  {"анализ_папки": {"путь": "D:/"}}\n'
+                '  {"список_файлов": {"путь": "D:/"}}\n'
+                '  {"найти_файл": {"путь": "D:/", "маска": "*.7z"}}'
+            )
 
     links = _split_ps_links(command)
     for link in links:
         link = link.strip()
         if not link:
             continue
-        first = re.split(r'\s+', link, maxsplit=1)[0].lower()
-        # срезаем ведущие группирующие символы: (, @(, $(, &, ., -,
-        first = first.lstrip('(\'\"&@$.')
-        first = first.strip('"\'')
-        base = first.rsplit('\\', 1)[-1].rsplit('/', 1)[-1]
-        # убираем хвостовую пунктуацию: ), ], },
-        base = base.rstrip(')]},:;')
+        # берём первый непустой токен (пропускаем ведущий & / & "$env:...")
+        base = ""
+        for _t in link.split():
+            _tl = _t.lower().lstrip('(\'"&@$.').strip('"\'')
+            _tl = _tl.rsplit('\\', 1)[-1].rsplit('/', 1)[-1].rstrip(')]},:;')
+            if _tl:
+                base = _tl
+                break
         if base not in ALLOWED:
             _log_run(command, "BLOCKED", f"not-in-whitelist:{base}")
             # подсказка: похожая команда + 3 случайные из реестра
@@ -188,24 +270,53 @@ def run_ps(args):
             guess = ""
             extra_hint = ""
             base_low = base.lower().replace("-", "_")
-            for _alias, _target in (
-                ("remove_item", "удалить_файл"),
-                ("rm", "удалить_файл"),
-                ("del", "удалить_файл"),
-                ("erase", "удалить_файл"),
-                ("rmdir", "удалить_папку"),
-                ("copy_item", "переместить"),
-                ("move_item", "переместить"),
-                ("move", "переместить"),
-                ("new_item", "добавить"),
-                ("set_content", "переписать"),
-                ("attrib", "снять_только_чтение"),
-            ):
-                if base_low == _alias or _alias in base_low:
-                    guess = _target
-                    break
+
+            # New-Item / mkdir / md / ni — от контекста зависит
+            _dir_markers = ("-itemtype directory", "-itemtype dir",
+                            "-type directory", "-type dir")
+            _cmd_low = command.lower()
+            _is_dir_create = any(m in _cmd_low for m in _dir_markers)
+            if base_low in ("type", "get_content", "getcontent",
+                            "cat", "gc"):
+                guess = "читать"
+            elif base_low in ("new_item", "ni", "mkdir", "md"):
+                if _is_dir_create or base_low in ("mkdir", "md"):
+                    guess = "создать_папку"
+                else:
+                    guess = "добавить"
+            else:
+                for _alias, _target in (
+                    ("remove_item", "удалить_файл"),
+                    ("rm", "удалить_файл"),
+                    ("del", "удалить_файл"),
+                    ("erase", "удалить_файл"),
+                    ("rmdir", "удалить_папку"),
+                    ("copy_item", "переместить"),
+                    ("move_item", "переместить"),
+                    ("move", "переместить"),
+                    ("set_content", "переписать"),
+                    ("attrib", "снять_только_чтение"),
+                ):
+                    if base_low == _alias or _alias in base_low:
+                        guess = _target
+                        break
             if base_low == "attrib":
                 extra_hint = " (или поставить_только_чтение, если нужно добавить флаг)"
+
+            # архивы — на архив_список
+            if base_low in ("7z", "7za", "7z.exe",
+                            "rar", "unrar",
+                            "unzip", "zipinfo",
+                            "tar", "gzip", "bzip2", "xz",
+                            "zstd", "cabextract"):
+                guess = "архив_список"
+
+            # dir/gci + сортировка по Length — это анализ_папки
+            _cmd_low2 = command.lower()
+            if (_cmd_low2.startswith("dir") or _cmd_low2.startswith("get-childitem")
+                    or _cmd_low2.startswith("gci")) and (
+                    "length" in _cmd_low2 or "size" in _cmd_low2):
+                guess = "анализ_папки"
             import re as _re_hint
             _ru_name_re = _re_hint.compile(r"^[а-яА-ЯёЁ0-9_]+$")
             names = [n for n in HANDLERS if n and _ru_name_re.match(n) and n != guess]
@@ -255,12 +366,44 @@ def run_ps(args):
             # &&  — оставляем как есть
             if _i + 1 < _n and command[_i + 1] == "&":
                 _out.append("&&"); _i += 2; continue
+            # 2>&1, 1>&2 и т.п. — часть редиректа, НЕ трогаем
+            _prev = _out[-1] if _out else ""
+            _next = command[_i + 1] if _i + 1 < _n else ""
+            if _prev == ">" or _next.isdigit():
+                _out.append("&"); _i += 1; continue
+            # ведущий & (call operator) — оставляем как есть
+            if not _prev or _prev in ";|":
+                _out.append("&"); _i += 1; continue
             # одиночный &  -> ;
             _out.append(";"); _i += 1; continue
         _out.append(_ch); _i += 1
     command = "".join(_out)
 
-    result = run_with_wait(run_powershell_with_cwd, (command,), timeout=45)
+    # Таймаут: из args["таймаут"] (по умолч. 30, макс 3600).
+    # Тишина: min(таймаут/2, 300); отключается "без_тишины": true.
+    try:
+        _user_timeout = int(args.get("таймаут") or 0)
+    except (ValueError, TypeError):
+        _user_timeout = 0
+    if _user_timeout <= 0:
+        _user_timeout = 45
+    _user_timeout = max(45, min(_user_timeout, 3600))
+
+    # Тишина: из args["тишина"], иначе min(таймаут/2, 300), не меньше 30
+    try:
+        _user_silence = float(args.get("тишина") or 0)
+    except (ValueError, TypeError):
+        _user_silence = 0
+    if _user_silence > 0:
+        _silence = max(10.0, min(_user_silence, 3600.0))
+    else:
+        _silence = max(30.0, min(_user_timeout / 2.0, 300.0))
+
+    result = run_with_wait(
+        run_powershell_with_cwd,
+        (command, _user_timeout, _silence),
+        timeout=_user_timeout + 15,
+    )
     _log_run(command, "OK", (result or "")[:200])
     return result
 

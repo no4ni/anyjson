@@ -123,6 +123,10 @@ _DIR_CACHE = {}
 _DIR_CACHE_TTL = 300
 _DIR_CACHE_MAX_ROOTS = 8
 
+# последний критерий поиска — чтобы "номер: 2" работал без повторения маски
+_LAST_SEARCH = {"root": "", "name": "", "content": "",
+                "all": "", "mask": "", "only_files": None}
+
 
 def _cache_get(root):
     """Возвращает состояние кэша и ПРОДЛЕВАЕТ TTL на 5 минут."""
@@ -198,7 +202,8 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
               search_all: str = "", encoding: str = "utf-8",
               max_file_size: int = 1_000_000, text_extensions: set = None,
               timeout: int = 30, target_num: int = 1,
-              only_files: bool = False) -> str:
+              only_files: bool = False, search_mask: str = "",
+              ignore_cache: bool = False) -> str:
     if text_extensions is None:
         text_extensions = {".txt", ".py", ".md", ".json", ".log", ".csv",
                            ".ini", ".cfg", ".xml", ".html", ".css", ".js"}
@@ -210,9 +215,37 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
     search_name = (search_name or "").replace("*", "")
     search_content = (search_content or "").replace("*", "")
     search_all = (search_all or "").replace("*", "")
+    search_mask = search_mask or ""
 
-    if not (search_name or search_content or search_all):
-        return "Ошибка: укажите 'имя', 'содержание' или 'всё' для поиска."
+    # Если критерий пуст, но есть прошлый поиск и номер > 1 — берём из памяти.
+    if not (search_name or search_content or search_all or search_mask):
+        _ls = _LAST_SEARCH
+        if (_ls.get("root") and str(root) == _ls["root"]
+                and target_num > 1
+                and (_ls["name"] or _ls["content"]
+                     or _ls["all"] or _ls["mask"])):
+            search_name = _ls["name"]
+            search_content = _ls["content"]
+            search_all = _ls["all"]
+            search_mask = _ls["mask"]
+            if _ls["only_files"] is not None:
+                only_files = bool(_ls["only_files"])
+        else:
+            return ("Ошибка: укажите 'имя', 'содержание', 'всё' или 'маска' "
+                    "для поиска.\n"
+                    "💡 Если это продолжение прошлого поиска — "
+                    "проверь, что 'корень' совпадает с прошлым.")
+
+    # Запоминаем критерий — пригодится для 'номер: N+1' без повторения
+    _LAST_SEARCH.update({
+        "root": str(root),
+        "name": search_name or "",
+        "content": (search_content if isinstance(search_content, str)
+                    else "|".join(search_content or [])),
+        "all": search_all or "",
+        "mask": search_mask or "",
+        "only_files": bool(only_files),
+    })
 
     if search_all:
         target = search_all.lower()
@@ -225,6 +258,11 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
 
     if not check_content:
         max_file_size = None
+
+    # glob-маска (например *mega*, src/*.py) — через fnmatch
+    import fnmatch as _fnm
+    _mask = (search_mask or "").strip().lower()
+    check_mask = bool(_mask)
 
     if isinstance(search_content, str) and "|" in search_content:
         search_content = [kw.strip() for kw in search_content.split("|") if kw.strip()]
@@ -239,6 +277,9 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
         ".idea", "dist", "build", ".mypy_cache", ".pytest_cache",
         ".cache", ".gradle", ".cargo", ".npm", ".nuget", "target",
     }
+
+    if ignore_cache:
+        _DIR_CACHE.pop(str(root), None)
 
     cache = _cache_get(root)
     if cache:
@@ -280,14 +321,32 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
 
     found_entries = []
 
-    if check_name and not only_files:
+    def _mask_match(name):
+        """fnmatch по маске, плюс fallback — как подстрока (удобно)."""
+        if not check_mask:
+            return True
+        nl = name.lower()
+        if _fnm.fnmatch(nl, _mask):
+            return True
+        # если маска без * — сравнение как подстрока
+        _bare = _mask.replace("*", "").replace("?", "")
+        if _bare and _bare in nl:
+            return True
+        return False
+
+    # Папки проверяем, только если есть имя/маска/всё.
+    # Если ищем ТОЛЬКО по содержанию — папки не считаем совпадениями.
+    _check_dirs = check_name or check_mask or bool(search_all)
+    if not only_files and _check_dirs:
         for dir_full in state["dirs"]:
             dirname = os.path.basename(dir_full)
             if search_all:
                 m = target in dirname.lower()
-            else:
+            elif check_name:
                 m = search_name.lower() in dirname.lower()
-            if m:
+            else:
+                m = True
+            if m and _mask_match(dirname):
                 found_entries.append((dir_full, "directory"))
                 if len(found_entries) >= target_num:
                     break
@@ -305,6 +364,8 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
                     name_match = target in file.lower()
                 else:
                     name_match = search_name.lower() in file.lower()
+            if not _mask_match(file):
+                continue
 
             content_match = True
             if check_content:
@@ -321,14 +382,18 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
                         if search_all:
                             content_match = target in content_lower
                         elif isinstance(search_content, list):
-                            content_match = all(kw.lower() in content_lower
+                            content_match = any(kw.lower() in content_lower
                                                 for kw in search_content)
                         else:
                             content_match = search_content.lower() in content_lower
                     except Exception:
                         continue
 
-            if (search_all and (name_match or content_match)) or (name_match and content_match):
+            _final_match = (search_all and (name_match or content_match)) or (name_match and content_match)
+            # Только маска (без имени и без контента) — матч по маске
+            if check_mask and not check_name and not check_content:
+                _final_match = True
+            if _final_match:
                 found_entries.append((file_path, "file"))
                 if len(found_entries) >= target_num:
                     break
@@ -339,13 +404,17 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
     _rate = (state["scanned"] / elapsed) if elapsed > 0 else 0
 
     _found = len(found_entries)
-    _word = "совпадение" if _found == 1 else "совпадений"
     _cache_mark = " (кэш)" if from_cache else ""
 
     if _found == 0:
         _progress_line = f"❌ Ничего не найдено{_cache_mark}"
+    elif _found >= target_num:
+        # Остановились на target_num: возможно, есть ещё.
+        _progress_line = (f"✅ Найдено ≥{_found} "
+                          f"(показан #{target_num}){_cache_mark}")
     else:
-        _progress_line = f"✅ Найдено {_found} {_word}{_cache_mark}"
+        _word = "совпадение" if _found == 1 else "совпадений"
+        _progress_line = f"✅ Найдено {_found} {_word} (все){_cache_mark}"
 
     prefix = ""
     if not complete and deadline:
@@ -430,13 +499,13 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
             if search_all:
                 _search_args.append(f'"всё": "{search_all}"')
             _search_args.append(f'"корень": "{str(root).replace(chr(92), "/")}"')
-            if only_files:
-                _search_args.append('"только_файлы": true')
             _search_args_str = ", ".join(_search_args)
 
+            _cmd_name = "найти_файл" if only_files else "найти_всё"
             _next_hint = (
-                f'{{"найти_файл": {{{_search_args_str}, "номер": {target_num + 1}}}}}  '
-                f'— следующий результат (если есть)'
+                '{"' + _cmd_name + '": {' + _search_args_str
+                + ', "номер": ' + str(target_num + 1) + '}}'
+                + '  — следующий результат (если есть)'
             )
 
             _parts = []

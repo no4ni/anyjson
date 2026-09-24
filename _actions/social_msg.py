@@ -132,7 +132,7 @@ def inbox(args):
     return "\n".join(out)
 
 
-@register(["уведомление", "notification", "ответ", "симнет_уведомить"])
+@register(["уведомление", "notification", "ответ", "ответ_агенту", "симнет_уведомить"])
 def notify(args):
     """Отправить уведомление агенту. Алиас к "сообщение".
 
@@ -147,7 +147,7 @@ def notify(args):
     """
     if not isinstance(args, dict):
         args = {}
-    target = args.get("кому") or args.get("агент") or args.get("для") or args.get("agent")
+    target = args.get("кому") or args.get("агент") or args.get("для")
     text = args.get("текст") or args.get("содержимое") or args.get("сообщение") or ""
     if not target:
         return "Ошибка: не указан 'кому'"
@@ -176,7 +176,7 @@ def message(args):
       {"сообщение": {"агент": "Никта", "содержимое": "привет"}}
       {"локальное_сообщение": {"для": "Лира", "содержимое": "..."}}
     """
-    agent = (args.get("агент") or args.get("для") or args.get("agent")
+    agent = (args.get("агент") or args.get("для")
              or args.get("кому") or args.get("получатель"))
     text = (args.get("содержимое") or args.get("текст")
             or args.get("сообщение") or "")
@@ -217,7 +217,7 @@ def broadcast_cmd(args):
     import time as _t
     if not isinstance(args, dict):
         args = {}
-    force = bool(args.get("сила") or args.get("force"))
+    force = bool(args.get("сила"))
     text = (args.get("содержимое") or args.get("сообщение")
             or args.get("текст") or "").strip()
     if not text and isinstance(args, dict):
@@ -315,7 +315,7 @@ def confirm_ready(args):
 
     if do_broadcast:
         return broadcast_cmd({"содержимое": text})
-    reason = args.get("причина") or args.get("reason") or ""
+    reason = args.get("причина") or ""
     if reason:
         return f"⏸️ Рассылка не выполнена: {reason}"
     return f"⏸️ Рассылка не выполнена (запросить=false). Текст: {text}"
@@ -337,7 +337,7 @@ def roll_call(args):
       {"отзовись": {"вопрос": "как работает питон?"}}
     """
     args = args or {}
-    agent = args.get("агент") or args.get("для") or args.get("agent")
+    agent = args.get("агент") or args.get("для")
     question = args.get("вопрос") or args.get("вопрос_по_команде") or ""
     if question and not agent:
         return ("ℹ️ Вопрос без адресата. Используйте команду \"помощь\" "

@@ -150,10 +150,10 @@ def predict_continuation(args):
                 "таймаут", "timeout"}
     named = {k: v for k, v in (args or {}).items() if k not in _service}
 
-    t = args.get("t")
+    t = args.get("точка")
     explicit = (args.get("значение")
                 or args.get("значения")
-                or args.get("values"))
+                or args.get("значения"))
 
     if t is None and explicit is None and not named:
         return ('Укажи значения — одним из способов:\n'

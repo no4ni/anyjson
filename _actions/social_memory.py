@@ -60,7 +60,9 @@ def remember(args):
     """Сохранить запись в память агента.
 
     Параметры:
-      содержимое — текст записи (обязательный), алиасы: содержание, запомнить
+      содержимое — текст записи, алиасы: содержание, запомнить, текст
+      ключ       — первая часть пары (склеивается с значением через " — ")
+      значение   — вторая часть пары
 
     Запись сохраняется с датой впереди: "ДД.ММ.ГГГГ - <текст>".
 
@@ -68,7 +70,18 @@ def remember(args):
       {"запомнить": {"содержимое": "проверить Moltbook в 11:00"}}
       {"запомнить": "короткая запись"}
     """
-    text = args.get("содержимое") or args.get("содержание") or args.get("запомнить")
+    text = (args.get("содержимое") or args.get("содержание")
+            or args.get("запомнить") or args.get("текст"))
+    if not text:
+        # пара ключ/значение → склеиваем
+        _k = args.get("ключ") or args.get("key") or args.get("имя")
+        _v = args.get("значение") or args.get("value") or args.get("текст_значения")
+        if _k and _v:
+            text = f"{_k} — {_v}"
+        elif _v:
+            text = str(_v)
+        elif _k:
+            text = str(_k)
     if not text:
         return "Ошибка: пусто"
     memlist = load_memlist()
@@ -97,7 +110,8 @@ def recall(args):
 
     Алиас: воспоминание.
     """
-    keyword = args.get("про") or args.get("инцидент") or args.get("ключ") or args.get("keyword") or ""
+    keyword = (args.get("про") or args.get("инцидент")
+               or args.get("ключ") or args.get("запрос") or "")
     memlist = load_memlist()
 
     def normalize(item):

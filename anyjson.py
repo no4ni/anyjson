@@ -36,8 +36,8 @@ from _config import (
     WIKI_TEXTS_DIR, _WIKIGET_PATH, API_KEYS, MY_DIR,
 )
 from _utils import is_parallel_json, count_json_objects
-from _color import color_blue
-from _actions.cmd_parser import process_command_input
+from _color import color_blue, color_red, color_yellow
+from _actions import cmd_parser as _cmd_parser
 from _actions import load_all
 from _storage import (
     load_processed_messages, save_processed_messages,
@@ -132,7 +132,7 @@ def _looks_like_python(text):
 def _run_as_python(full_input):
     """Обернуть сырой код в {"питон": {"скрипт": ...}} и передать дальше."""
     import json as _j
-    process_command_input(_j.dumps(
+    _cmd_parser.process_command_input(_j.dumps(
         {"питон": {"скрипт": full_input}}, ensure_ascii=False
     ))
 
@@ -144,10 +144,29 @@ def _shutdown_children():
         from _config import MY_DIR, STABLEDIF_HOST, STABLEDIF_PORT
         pid_file = MY_DIR / "stabledif.pid"
         if pid_file.exists():
+            import sys as _sys_f, time as _t_f
+            _sys_f.stderr.write("Закрывается Stable Diffusion (Forge)...\n")
+            _sys_f.stderr.flush()
             try:
                 pid = int(pid_file.read_text().strip())
             except Exception:
                 pid = None
+
+            def _pid_alive(_p):
+                if not _p:
+                    return False
+                try:
+                    import subprocess as _sp
+                    r = _sp.run(
+                        ["tasklist", "/FI", "PID eq " + str(_p), "/NH"],
+                        capture_output=True, text=True, timeout=5,
+                        creationflags=getattr(_sp, "CREATE_NO_WINDOW", 0),
+                    )
+                    return str(_p) in (r.stdout or "")
+                except Exception:
+                    return False
+
+            _ok = False
             if pid:
                 # мягко через API
                 try:
@@ -160,15 +179,42 @@ def _shutdown_children():
                     urllib.request.urlopen(req, timeout=3)
                 except Exception:
                     pass
-                import time as _t
-                _t.sleep(2)
+
+                # ждём до 10 сек с прогрессом в stderr
+                _t0 = _t_f.time()
+                for _ in range(20):
+                    if not _pid_alive(pid):
+                        _ok = True
+                        break
+                    _t_f.sleep(0.5)
+                    _el = _t_f.time() - _t0
+                    _sys_f.stderr.write(
+                        "\r⏳ Forge закрывается... " + format(_el, ".1f") + "с")
+                    _sys_f.stderr.flush()
+                _sys_f.stderr.write("\r" + " " * 60 + "\r")
+                _sys_f.stderr.flush()
+
                 # жёстко, если ещё жив
-                try:
-                    import subprocess as _sp
-                    _sp.run(["taskkill", "/PID", str(pid), "/T", "/F"],
-                            capture_output=True, timeout=10)
-                except Exception:
-                    pass
+                if not _ok and _pid_alive(pid):
+                    try:
+                        import subprocess as _sp
+                        _sp.run(["taskkill", "/PID", str(pid), "/T", "/F"],
+                                capture_output=True, timeout=10)
+                    except Exception:
+                        pass
+                    for _ in range(6):
+                        if not _pid_alive(pid):
+                            _ok = True
+                            break
+                        _t_f.sleep(0.5)
+
+            if _ok or not pid:
+                _sys_f.stderr.write("✅ Forge закрыт.\n")
+            else:
+                _sys_f.stderr.write(
+                    "⚠️ Forge не отвечает (PID " + str(pid) + ").\n")
+            _sys_f.stderr.flush()
+
             try:
                 pid_file.unlink()
             except Exception:
@@ -178,29 +224,162 @@ def _shutdown_children():
 
     # --- UNaIVERSE демон ---
     try:
-        from _actions import HANDLERS
-        _stop = HANDLERS.get("юнайверс_остановить")
-        if _stop:
+        import sys as _sys_u, time as _t_u
+        _has = False
+        _pid_u = None
+        try:
+            from _actions.unaiverse import _read_pid, _is_alive
+            _pid_u = _read_pid()
+            _has = bool(_pid_u and _is_alive(_pid_u))
+        except Exception:
+            _has = False
+        if _has:
+            _sys_u.stderr.write("Закрывается UNaIVERSE...\n")
+            _sys_u.stderr.flush()
             try:
-                _stop({})
+                from _actions.unaiverse import unaiverse_stop
+                unaiverse_stop({})
             except Exception:
                 pass
+            # ждём до 10 сек
+            _t0 = _t_u.time()
+            _ok = False
+            for _ in range(20):
+                try:
+                    from _actions.unaiverse import _read_pid, _is_alive
+                    _p2 = _read_pid()
+                    if not (_p2 and _is_alive(_p2)):
+                        _ok = True
+                        break
+                except Exception:
+                    _ok = True
+                    break
+                _t_u.sleep(0.5)
+                _el = _t_u.time() - _t0
+                _sys_u.stderr.write(
+                    "\r⏳ UNaIVERSE закрывается... " + format(_el, ".1f") + "с")
+                _sys_u.stderr.flush()
+            _sys_u.stderr.write("\r" + " " * 60 + "\r")
+            _sys_u.stderr.flush()
+            if _ok:
+                _sys_u.stderr.write("✅ UNaIVERSE закрыт.\n")
+            else:
+                _sys_u.stderr.write(
+                    "⚠️ UNaIVERSE не отвечает (PID " + str(_pid_u) + ").\n")
+            _sys_u.stderr.flush()
+    except Exception:
+        pass
+
+    # --- zapret (winws.exe) — только если anyjson его поднимал ---
+    try:
+        import sys as _sys_z, time as _t_z
+        from _actions import video as _video_mod
+        from _config import MY_DIR as _zapret_mydir
+        _zapret_pid_file = _zapret_mydir / "zapret.pid"
+        if _zapret_pid_file.exists():
+            _z_pid = None
+            try:
+                _z_pid = int(_zapret_pid_file.read_text().strip())
+            except Exception:
+                _z_pid = None
+
+            _sys_z.stderr.write("Закрывается zapret...\n")
+            _sys_z.stderr.flush()
+            try:
+                _video_mod._stop_zapret_if_started()
+            except Exception:
+                pass
+
+            def _z_alive(_p):
+                if not _p:
+                    return False
+                try:
+                    import subprocess as _sp
+                    r = _sp.run(
+                        ["tasklist", "/FI", "PID eq " + str(_p), "/NH"],
+                        capture_output=True, text=True, timeout=5,
+                        creationflags=getattr(_sp, "CREATE_NO_WINDOW", 0),
+                    )
+                    return str(_p) in (r.stdout or "")
+                except Exception:
+                    return False
+
+            _t0 = _t_z.time()
+            _ok = False
+            for _ in range(20):
+                if not _z_alive(_z_pid):
+                    _ok = True
+                    break
+                _t_z.sleep(0.5)
+                _el = _t_z.time() - _t0
+                _sys_z.stderr.write(
+                    "\r⏳ zapret закрывается... " + format(_el, ".1f") + "с")
+                _sys_z.stderr.flush()
+            _sys_z.stderr.write("\r" + " " * 60 + "\r")
+            _sys_z.stderr.flush()
+            if _ok:
+                _sys_z.stderr.write("✅ zapret закрыт.\n")
+            else:
+                _sys_z.stderr.write(
+                    "⚠️ zapret не отвечает (PID " + str(_z_pid) + ").\n")
+            _sys_z.stderr.flush()
     except Exception:
         pass
 
     # --- PyBullet симулятор ---
     try:
+        import sys as _sys_s, time as _t_s
         from _config import MY_DIR as _MY_DIR
         _sim_pid_file = _MY_DIR / "sim.pid"
         if _sim_pid_file.exists():
+            _sim_pid = None
             try:
                 _sim_pid = int(_sim_pid_file.read_text().strip())
             except Exception:
                 _sim_pid = None
-            if _sim_pid:
-                import subprocess as _sp
-                _sp.run(["taskkill", "/PID", str(_sim_pid), "/T", "/F"],
-                        capture_output=True, timeout=10)
+
+            def _sim_alive(_p):
+                if not _p:
+                    return False
+                try:
+                    import subprocess as _sp
+                    r = _sp.run(
+                        ["tasklist", "/FI", "PID eq " + str(_p), "/NH"],
+                        capture_output=True, text=True, timeout=5,
+                        creationflags=getattr(_sp, "CREATE_NO_WINDOW", 0),
+                    )
+                    return str(_p) in (r.stdout or "")
+                except Exception:
+                    return False
+
+            if _sim_pid and _sim_alive(_sim_pid):
+                _sys_s.stderr.write("Закрывается симулятор (PyBullet)...\n")
+                _sys_s.stderr.flush()
+                try:
+                    import subprocess as _sp
+                    _sp.run(["taskkill", "/PID", str(_sim_pid), "/T", "/F"],
+                            capture_output=True, timeout=10)
+                except Exception:
+                    pass
+                _t0 = _t_s.time()
+                _ok = False
+                for _ in range(10):
+                    if not _sim_alive(_sim_pid):
+                        _ok = True
+                        break
+                    _t_s.sleep(0.5)
+                    _el = _t_s.time() - _t0
+                    _sys_s.stderr.write(
+                        "\r⏳ симулятор закрывается... " + format(_el, ".1f") + "с")
+                    _sys_s.stderr.flush()
+                _sys_s.stderr.write("\r" + " " * 60 + "\r")
+                _sys_s.stderr.flush()
+                if _ok:
+                    _sys_s.stderr.write("✅ симулятор закрыт.\n")
+                else:
+                    _sys_s.stderr.write(
+                        "⚠️ симулятор не отвечает (PID " + str(_sim_pid) + ").\n")
+                _sys_s.stderr.flush()
             try:
                 _sim_pid_file.unlink()
             except Exception:
@@ -379,14 +558,45 @@ def main():
         # --- HEREDOC: <<< ... >>> ---
         if line.strip() == "<<<":
             raw_lines = []
+            _empty_streak = 0
+            _aborted = False
+            _tail_after_close = ""
             while True:
                 try:
                     rl = input("| ")
                 except (EOFError, KeyboardInterrupt):
                     break
-                if rl.strip() == ">>>":
+                _rl_s = rl.strip()
+                if _rl_s == ">>>":
                     break
+                if _rl_s.startswith(">>>|||"):
+                    _tail_after_close = _rl_s[6:].strip()
+                    break
+                if _rl_s == "":
+                    _empty_streak += 1
+                    if _empty_streak >= 3:
+                        _aborted = True
+                        break
+                else:
+                    _empty_streak = 0
                 raw_lines.append(rl)
+            if _aborted:
+                _msg = (
+                    "❌ Heredoc прерван.\n"
+                    "   Возможно внутри тела ``` (markdown-ограждение).\n"
+                    "   Либо забыт >>> на отдельной строке.\n"
+                    "   Содержимое не выполнено."
+                )
+                print(color_red(_msg))
+                try:
+                    pyperclip.copy(_msg)
+                    print(color_yellow("📋 Скопировано в буфер обмена."))
+                except Exception:
+                    pass
+                buffer.clear()
+                empty_line_count = 0
+                prompt = "> "
+                continue
             payload = "\n".join(raw_lines)
             json_part = "\n".join(buffer).strip() if buffer else ""
             if not json_part:
@@ -409,7 +619,10 @@ def main():
                     buffer.clear()
                     empty_line_count = 0
                     prompt = "> "
-                    process_command_input(_j.dumps(obj, ensure_ascii=False))
+                    _full = _j.dumps(obj, ensure_ascii=False)
+                    if _tail_after_close:
+                        _full = _full + "|||" + _tail_after_close
+                    _cmd_parser.process_command_input(_full)
                     continue
                 else:
                     print("[HEREDOC] ожидаю JSON с одной командой")
@@ -437,7 +650,7 @@ def main():
             empty_line_count = 0
             prompt = "> "
             if full_input:
-                process_command_input(full_input)
+                _cmd_parser.process_command_input(full_input)
             continue
 
         # --- Пустая строка ---
@@ -483,7 +696,7 @@ def main():
                             print(color_blue(
                                 f"ℹ️ Обнаружено {len(_objs)} JSON без ||| — "
                                 f"выполняю последовательно."))
-                            process_command_input(_joined)
+                            _cmd_parser.process_command_input(_joined)
                             print(color_blue(
                                 "\nℹ️ Команды выполнены последовательно."
                                 '\n   Параллельно: {"параллельно": [ ... ]}'
@@ -501,7 +714,7 @@ def main():
                             except Exception as e:
                                 print(f"⚠️ Не удалось скопировать в буфер: {e}")
                     else:
-                        process_command_input(buffer_copy)
+                        _cmd_parser.process_command_input(buffer_copy)
                 continue
             buffer.append(line)
             prompt = "... "
@@ -519,7 +732,7 @@ def main():
                 # Так вставка многострочного скрипта уходит одним куском.
                 prompt = "... "
                 continue
-            process_command_input(line)
+            _cmd_parser.process_command_input(line)
             buffer.clear()
             prompt = "> "
             continue
@@ -530,7 +743,7 @@ def main():
             buffer.clear()
             empty_line_count = 0
             prompt = "> "
-            process_command_input(buffer_copy)
+            _cmd_parser.process_command_input(buffer_copy)
             continue
 
         prompt = "... "

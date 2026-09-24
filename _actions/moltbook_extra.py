@@ -24,7 +24,7 @@ def replies(args):
     if not isinstance(args, dict):
         return "Ошибка: параметры должны быть словарём"
 
-    posts = args.get("посты") or args.get("ids") or args.get("post_ids")
+    posts = args.get("посты")
     if not posts:
         return "Ошибка: не указан список 'посты'"
     if isinstance(posts, str):
@@ -78,9 +78,9 @@ def mark_read(args):
     if not isinstance(args, dict):
         args = {}
 
-    post_id = args.get("пост_id") or args.get("post_id") or args.get("id")
-    posts = args.get("посты") or args.get("пост_ids") or args.get("ids")
-    mark_all = bool(args.get("все") or args.get("all"))
+    post_id = args.get("пост_id") or args.get("id") or args.get("post_id")
+    posts = args.get("посты") or args.get("пост_ids")
+    mark_all = bool(args.get("все"))
 
     from _actions._tools_moltbook import moltbook_raw_request
     base = "https://www.moltbook.com"
@@ -129,7 +129,7 @@ def home(args):
         return "❌ Tor недоступен."
     if not isinstance(args, dict):
         args = {}
-    raw = bool(args.get("сырое") or args.get("raw"))
+    raw = bool(args.get("сырое"))
 
     from _actions._tools_moltbook import moltbook_raw_request
     url = "https://www.moltbook.com/api/v1/home"
@@ -198,7 +198,7 @@ def bulk_comments(args):
     if not isinstance(args, dict):
         return "Ошибка: параметры должны быть словарём"
 
-    items = args.get("содержимое") or args.get("комментарии") or args.get("items")
+    items = args.get("содержимое") or args.get("комментарии")
     if not items:
         return "Ошибка: пустой список 'содержимое'"
     if not isinstance(items, list):
@@ -288,17 +288,124 @@ def bulk_comments(args):
     return header + "\n".join(out)
 
 
+def _parse_json_resp(resp_str):
+    """Из ответа moltbook_raw_request ("Статус: N\n{json}") достать dict."""
+    import json as _json
+    if not isinstance(resp_str, str):
+        return None
+    m = resp_str.find("{")
+    if m < 0:
+        return None
+    try:
+        return _json.loads(resp_str[m:])
+    except Exception:
+        return None
+
+
+def _fmt_date(iso):
+    if not iso or not isinstance(iso, str):
+        return "?"
+    return iso.replace("T", " ")[:16]
+
+
+def _fmt_post_readable(data):
+    """Форматирует пост Moltbook человекочитаемо."""
+    post = data.get("post") or data
+    if not isinstance(post, dict):
+        return None
+    lines = []
+    title = post.get("title") or "(без заголовка)"
+    author = (post.get("author") or {}).get("name") or "?"
+    created = _fmt_date(post.get("created_at") or post.get("createdAt"))
+    up = post.get("upvotes", 0)
+    cc = post.get("comment_count", 0)
+    submolt = post.get("submolt") or {}
+    sname = submolt.get("display_name") or submolt.get("name") or ""
+
+    lines.append("📌 " + str(title))
+    lines.append("   Автор: " + str(author)
+                 + "  •  " + created
+                 + "  •  ↑" + str(up)
+                 + "  •  💬" + str(cc))
+    if sname:
+        lines.append("   Сообщество: m/" + str(sname))
+    flags = []
+    if post.get("is_deleted"):
+        flags.append("удалён")
+    if post.get("is_locked"):
+        flags.append("закрыт")
+    if post.get("is_pinned"):
+        flags.append("закреплён")
+    if flags:
+        lines.append("   ⚠️ " + ", ".join(flags))
+    content = (post.get("content") or "").strip()
+    if content:
+        lines.append("")
+        lines.append(content)
+    return NL.join(lines)
+
+
+def _fmt_comment_readable(c, indent=0):
+    """Форматирует один комментарий с отступом по глубине."""
+    pre = "   " * indent
+    lines = []
+    author = (c.get("author") or {}).get("name") or "?"
+    created = _fmt_date(c.get("created_at") or c.get("createdAt"))
+    up = c.get("upvotes", 0)
+    rc = c.get("reply_count", 0)
+    head = (pre + "── " + str(author)
+            + " · " + created
+            + " · ↑" + str(up))
+    if rc:
+        head += " · ответов: " + str(rc)
+    if c.get("is_deleted"):
+        head += " · [удалён]"
+    lines.append(head)
+    content = (c.get("content") or "").strip()
+    if content:
+        for ln in content.split(NL):
+            lines.append(pre + "   " + ln)
+    return lines
+
+
+def _fmt_comments_readable(data, max_depth=3, max_len=4000):
+    """Форматирует дерево комментариев."""
+    comments = data.get("comments") or []
+    if not comments:
+        return "💬 Комментариев нет."
+    total = data.get("count", len(comments))
+    out = ["💬 Комментарии (" + str(total) + "):", ""]
+
+    def _walk(items, depth):
+        for c in items:
+            if not isinstance(c, dict):
+                continue
+            out.extend(_fmt_comment_readable(c, indent=depth))
+            replies = c.get("replies") or []
+            if replies and depth < max_depth:
+                _walk(replies, depth + 1)
+            out.append("")
+
+    _walk(comments, 0)
+    text = NL.join(out).rstrip()
+    if len(text) > max_len:
+        text = text[:max_len].rstrip() + NL + "… [обрезано]"
+    return text
+
+
 @register(["молтбук_пост_читать", "молтбук_пост_показать"])
 def read_post(args):
-    """Прочитать один пост Moltbook по ID.
+    """Прочитать один пост Moltbook по ID (человекочитаемо).
 
     Параметры:
-      пост_id — UUID поста (обязательный), алиас: id, post_id
-      с_комментариями — если true, добавить комментарии (по умолчанию true)
-      количество — сколько комментариев (по умолчанию 10)
+      id          — UUID поста (обязательный),
+                    алиасы: пост_id, post_id
+      с_комментариями — добавить комментарии (по умолчанию true)
+      количество  — сколько комментариев (по умолчанию 10)
+      сырое       — true: вернуть сырой JSON (для отладки)
 
     Пример:
-      {"молтбук_пост_читать": {"пост_id": "50554013-e6bf-4a65-bf77-a265a0e90241"}}
+      {"молтбук_пост_показать": {"id": "8c30ae25-..."}}
     """
     if not _need_tor():
         return "❌ Tor недоступен."
@@ -311,27 +418,50 @@ def read_post(args):
     from _actions._tools_moltbook import moltbook_raw_request
     base = "https://www.moltbook.com"
 
-    out = []
+    raw = bool(args.get("сырое"))
+
     try:
-        res = moltbook_raw_request("GET", f"{base}/api/v1/posts/{pid}", json_data=None)
-        out.append(str(res))
+        res = moltbook_raw_request("GET", f"{base}/api/v1/posts/{pid}",
+                                   json_data=None)
     except Exception as e:
-        return f"❌ Ошибка запроса поста: {e}"
+        return "❌ Ошибка запроса поста: " + str(e)
+
+    if raw:
+        out = [str(res)]
+    else:
+        data = _parse_json_resp(res)
+        if data is None:
+            return "❌ Не удалось разобрать ответ:" + NL + str(res)[:500]
+        if not data.get("success", True):
+            return "❌ API вернул ошибку: " + str(data)[:300]
+        formatted = _fmt_post_readable(data)
+        if formatted is None:
+            return "❌ Странный формат ответа:" + NL + str(data)[:500]
+        out = [formatted]
 
     if args.get("с_комментариями", True):
         try:
-            comments = moltbook_raw_request(
+            limit = int(args.get("количество", 10))
+        except (TypeError, ValueError):
+            limit = 10
+        try:
+            c_res = moltbook_raw_request(
                 "GET",
-                f"{base}/api/v1/posts/{pid}/comments?sort=best&limit={int(args.get('количество', 10))}",
+                f"{base}/api/v1/posts/{pid}/comments?sort=best&limit={limit}",
                 json_data=None,
             )
-            out.append("")
-            out.append("=== КОММЕНТАРИИ ===")
-            out.append(str(comments))
+            if raw:
+                out.append(NL + "=== КОММЕНТАРИИ ===" + NL + str(c_res))
+            else:
+                c_data = _parse_json_resp(c_res)
+                if c_data is not None:
+                    out.append(NL + _fmt_comments_readable(c_data))
+                else:
+                    out.append(NL + "⚠️ Комментарии: " + str(c_res)[:300])
         except Exception as e:
-            out.append(f"⚠️ Комментарии недоступны: {e}")
+            out.append(NL + "⚠️ Комментарии недоступны: " + str(e))
 
-    return "\n".join(out)
+    return NL.join(out)
 
 
 @register(["молтбук_удалить_пост", "молтбук_удалить_пост_свой"])
@@ -445,7 +575,7 @@ def edit_comment(args):
         return "Ошибка: параметры должны быть словарём"
     cid = (args.get("комментарий_id") or args.get("коммент_id")
            or args.get("comment_id") or args.get("id"))
-    text = args.get("содержание") or args.get("текст") or args.get("content")
+    text = args.get("содержание") or args.get("текст")
     if not cid or not text:
         return "Ошибка: нужны 'комментарий_id' и 'содержание'"
 
@@ -469,17 +599,16 @@ def raw_request(args):
     """Произвольный запрос к API Moltbook.
 
     Параметры:
-      url   — относительный путь (/api/v1/...) или полный URL
+      урл   — относительный путь (/api/v1/...) или полный URL (алиас: адрес)
       метод — GET / POST / PUT / DELETE (по умолчанию GET)
-      тело  — тело запроса для POST/PUT, алиас: json
+      тело  — тело запроса для POST/PUT (алиас: json)
 
     Примеры:
-      {"молтбук_запрос": {"url": "/api/v1/notifications"}}
-      {"молтбук_запрос": {"url": "/api/v1/posts", "метод": "POST",
-                          "тело": {"title": "x", "content": "y"}}}
+      {"молтбук_запрос": {"урл": "/api/v1/notifications"}}
+      {"молтбук_запрос": {"метод": "POST", "урл": "/api/v1/posts"}}
     """
     method = args.get("метод", "GET").upper()
-    url = args.get("url", "")
+    url = args.get("урл") or args.get("адрес") or ""
     body = args.get("тело") or args.get("json")
     if not url:
         return "Ошибка: не указан URL"
@@ -509,11 +638,11 @@ def check(args):
     """
     if not isinstance(args, dict):
         args = {}
-    endpoint = args.get("endpoint") or args.get("url") or args.get("путь")
+    endpoint = args.get("endpoint") or args.get("путь")
     if not endpoint:
         return "Ошибка: не указан 'endpoint'"
     sub = {
-        "url": endpoint,
+        "урл": endpoint,
         "метод": args.get("метод", "GET"),
     }
     if "тело" in args:

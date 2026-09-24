@@ -50,7 +50,7 @@ def delete_any(args):
     """
     if not isinstance(args, dict):
         args = {}
-    path = args.get("путь") or args.get("path") or ""
+    path = args.get("путь") or ""
     if not path:
         return "Укажите 'путь' — файл или папку."
     if not os.path.exists(path):
@@ -123,10 +123,53 @@ def delete_folder(args):
         return _g
     if not path:
         return "Укажите путь в поле 'путь'"
-    dangerous = [r"C:\Windows", r"C:\Program Files",
-                 r"C:\Program Files (x86)", "C:\\", "D:\\", "E:\\"]
-    if any(path.lower().startswith(d.lower()) for d in dangerous):
-        return f"⛔ Удаление системной папки {path} запрещено."
+
+    # Сравнение по АБСОЛЮТНОМУ нормализованному пути:
+    #   • корни дисков (C:\, D:\, E:\, ...) — только ТОЧНОЕ совпадение;
+    #   • системные папки (C:\Windows, C:\Program Files, ...) — совпадение
+    #     «сегмент + сепаратор» (C:\Windows\foo запрещено, C:\WindowsXP — нет).
+    import string as _string
+    _root_letters = set(_string.ascii_uppercase)
+    try:
+        _abs = str(Path(path).resolve()).rstrip("\\/").lower()
+    except Exception:
+        _abs = str(path).rstrip("\\/").lower()
+
+    # 1. Корень диска — только точное совпадение
+    _is_drive_root = (
+        len(_abs) == 2 and _abs[1] == ":" and _abs[0].upper() in _root_letters
+    )
+    if _is_drive_root:
+        return f"⛔ Удаление корня диска {path} запрещено."
+
+    # 2. Системные папки — сегмент + сепаратор
+    _sys_dirs = [
+        r"c:\windows",
+        r"c:\program files",
+        r"c:\program files (x86)",
+        r"c:\programdata",
+    ]
+    for _d in _sys_dirs:
+        _dl = _d.lower()
+        if _abs == _dl or _abs.startswith(_dl + "\\"):
+            return f"⛔ Удаление системной папки {path} запрещено."
+
+    # 3. anyjson и все его родители — никогда
+    try:
+        from _config import BASE_DIR as _BASE
+        _b = str(Path(_BASE).resolve()).rstrip("\\/").lower()
+        if _abs == _b or _abs.startswith(_b + "\\"):
+            return (f"⛔ Удаление anyjson и его содержимого запрещено: {path}")
+        # родители BASE_DIR (вплоть до корня диска)
+        _p = Path(_b).parent
+        while str(_p) != str(_p.parent):
+            _pl = str(_p).rstrip("\\/").lower()
+            if _abs == _pl:
+                return (f"⛔ Удаление родительской папки anyjson "
+                        f"({path}) запрещено — снесёт сам anyjson.")
+            _p = _p.parent
+    except Exception:
+        pass
     if not os.path.exists(path):
         return f"❌ Папка не существует: {path}"
     if not os.path.isdir(path):
@@ -136,6 +179,386 @@ def delete_folder(args):
         return f"✅ Папка удалена: {path}"
     except Exception as e:
         return f"❌ Ошибка: {e}"
+
+
+@register(["удалить_пустые_папки", "убрать_пустые", "почистить_пустые"])
+def remove_empty_dirs(args):
+    """Рекурсивно удалить пустые папки.
+
+    Пустой считается папка без файлов. Вложенные пустые папки
+    удаляются снизу вверх — то есть папка, внутри которой только
+    пустые подпапки, тоже удаляется.
+
+    Параметры:
+      корень    — корневая папка (обязательный), алиас: путь
+      безопасно — true: только показать список, не удалять
+      только_файлы_как_непустое — не влияет, оставлено на будущее
+
+    Сам корень НЕ удаляется — даже если внутри него пусто.
+
+    Защита: anyjson, его родители, системные папки — не удаляются.
+
+    Примеры:
+      {"удалить_пустые_папки": {"корень": "E:/Jericho/tmp"}}
+      {"удалить_пустые_папки": {"корень": "E:/downloads",
+                                "безопасно": true}}
+    """
+    from pathlib import Path as _Path
+
+    args = args or {}
+    root = args.get("корень") or args.get("путь") or ""
+    if not root:
+        return "Укажи 'корень'."
+
+    try:
+        root_p = _Path(root).expanduser().resolve()
+    except Exception as e:
+        return f"❌ Плохой путь: {e}"
+
+    if not root_p.is_dir():
+        return f"❌ Не папка: {root_p}"
+
+    safe = args.get("безопасно", False)
+    if isinstance(safe, str):
+        safe = safe.strip().lower() not in ("0", "false", "нет", "off", "")
+
+    # защита: anyjson и все его родители
+    try:
+        from _config import BASE_DIR as _BASE
+        _base_l = str(_Path(_BASE).resolve()).rstrip("\\/").lower()
+    except Exception:
+        _base_l = ""
+
+    _parents = set()
+    if _base_l:
+        _cur = _Path(_base_l).parent
+        while str(_cur) != str(_cur.parent):
+            _parents.add(str(_cur).rstrip("\\/").lower())
+            _cur = _cur.parent
+
+    def _protected(p):
+        try:
+            a = str(_Path(p).resolve()).rstrip("\\/").lower()
+        except Exception:
+            return True
+        if _base_l and (a == _base_l or a.startswith(_base_l + "\\")):
+            return True
+        if a in _parents:
+            return True
+        # системные
+        for _sd in (r"c:\\windows", r"c:\\program files",
+                    r"c:\\program files (x86)", r"c:\\programdata"):
+            if a == _sd or a.startswith(_sd + "\\"):
+                return True
+        return False
+
+    deleted = []
+    errors = []
+
+    # topdown=False — обход от самых глубоких к корню.
+    # Тогда после удаления детей папка-родитель тоже станет пустой.
+    for dirpath, dirnames, filenames in os.walk(str(root_p), topdown=False):
+        try:
+            cur = _Path(dirpath).resolve()
+        except Exception:
+            continue
+        if cur == root_p:
+            continue  # сам корень не трогаем
+        if filenames:
+            continue  # в папке есть файлы
+        if _protected(dirpath):
+            continue
+        try:
+            if safe:
+                # пустота в текущий момент?
+                if not os.listdir(dirpath):
+                    deleted.append(dirpath)
+            else:
+                os.rmdir(dirpath)  # упадёт, если не пусто
+                deleted.append(dirpath)
+        except OSError:
+            # не пусто, нет прав или занято — пропускаем
+            continue
+        except Exception as e:
+            errors.append(f"{dirpath}: {e}")
+
+    lines = []
+    if safe:
+        lines.append(f"🔎 Пустых папок найдено: {len(deleted)} (режим показа)")
+    else:
+        lines.append(f"🗑️ Удалено пустых папок: {len(deleted)}")
+    lines.append(f"   корень: {root_p}")
+    if deleted:
+        lines.append("")
+        for d in deleted[:50]:
+            lines.append("  • " + d)
+        if len(deleted) > 50:
+            lines.append(f"  ... и ещё {len(deleted) - 50}")
+    if errors:
+        lines.append("")
+        lines.append(f"⚠️ Ошибок: {len(errors)}")
+        for e in errors[:5]:
+            lines.append("  • " + e)
+    if safe and deleted:
+        lines.append("")
+        lines.append("Для удаления: повтори без \"безопасно\".")
+    return chr(10).join(lines)
+
+
+@register(["копировать", "скопировать", "copy"])
+def copy_item(args):
+    """Скопировать файл или папку.
+
+    Параметры:
+      откуда      — источник (обязательный), алиасы: из, источник
+      куда        — назначение (обязательный), алиасы: в, назначение
+      перезаписать — true: заменить существующую цель
+                     (по умолчанию false — отказать)
+
+    Если «куда» — существующая папка, копирует ВНУТРЬ неё
+    с тем же именем. Если «куда» — путь к новому файлу/папке,
+    копирует под этим именем.
+
+    Работает с папками рекурсивно. Сохраняет метаданные (mtime).
+
+    Примеры:
+      {"копировать": {"откуда": "E:/a.txt", "куда": "E:/backup/"}}
+      {"копировать": {"откуда": "E:/data", "куда": "D:/backup/data",
+                      "перезаписать": true}}
+    """
+    import shutil as _sh
+    args = args or {}
+    src_arg = args.get("откуда") or args.get("из") or args.get("источник")
+    dst_arg = args.get("куда") or args.get("в") or args.get("назначение")
+    if not src_arg:
+        return "Укажи 'откуда'."
+    if not dst_arg:
+        return "Укажи 'куда'."
+
+    overwrite = args.get("перезаписать", False)
+    if isinstance(overwrite, str):
+        overwrite = overwrite.strip().lower() not in ("0", "false", "нет", "off", "")
+
+    src = Path(src_arg).expanduser()
+    dst = Path(dst_arg).expanduser()
+
+    if not src.exists():
+        return f"❌ Источник не существует: {src}"
+
+    # защита чужого профиля — и на чтение, и на запись
+    from _actions.tools_files import _foreign_guard
+    _g1 = _foreign_guard(str(src))
+    if _g1:
+        return _g1
+    _g2 = _foreign_guard(str(dst))
+    if _g2:
+        return _g2
+
+    try:
+        src_r = src.resolve()
+        dst_r = dst.resolve()
+    except Exception:
+        src_r, dst_r = src, dst
+
+    # 1. src и dst совпадают — no-op
+    if src_r == dst_r:
+        return f"❌ Источник и назначение совпадают: {src}"
+
+    # 2. dst — существующая папка → копируем ВНУТРЬ под именем src
+    if dst.is_dir():
+        dst = dst / src.name
+
+    # 3. проверка «внутрь себя» (для папок)
+    if src.is_dir():
+        try:
+            if dst_r == src_r or dst_r.is_relative_to(src_r):
+                return (f"❌ Нельзя скопировать папку {src} "
+                        f"внутрь самой себя ({dst})")
+        except (ValueError, AttributeError):
+            pass
+
+    # 4. цель существует?
+    if dst.exists():
+        if not overwrite:
+            return (f"❌ Цель уже существует: {dst}. "
+                    f"Добавь \"перезаписать\": true, чтобы заменить.")
+        # удалить цель перед копированием
+        try:
+            if dst.is_dir():
+                _sh.rmtree(dst)
+            else:
+                dst.unlink()
+        except Exception as e:
+            return f"❌ Не удалось удалить старую цель: {e}"
+
+    try:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if src.is_dir():
+            _sh.copytree(str(src), str(dst))
+        else:
+            _sh.copy2(str(src), str(dst))
+        return f"✅ Скопировано: {src} → {dst}"
+    except Exception as e:
+        return f"❌ Ошибка копирования: {e}"
+
+
+@register(["починить_вложенность", "развернуть_вложенность",
+           "убрать_вложенность", "fix_nesting"])
+def fix_nesting(args):
+    """Убрать дублирующую вложенность папок вида X/X/X/...
+
+    Ищет папки, у которых есть подпапка с ТЕМ ЖЕ именем, и «поднимает»
+    содержимое вложенной на уровень выше. Работает рекурсивно, снизу
+    вверх — если после подъёма снова образовалась X/X, разворачивает
+    ещё раз.
+
+    Параметры:
+      корень        — где искать (обязательный), алиас: путь
+      сухо          — true: только показать, что будет сделано
+                      (по умолчанию false — реально делать)
+      включая_файлы — true: разворачивать, даже если в родителе есть
+                      другие файлы/папки (по умолчанию false — только
+                      безопасный случай, когда X содержит РОВНО одну X/X)
+
+    Защита: anyjson, его содержимое, системные папки — не трогает.
+
+    Примеры:
+      {"починить_вложенность": {"корень": "E:/projects/motionVideoplayer", "сухо": true}}
+      {"починить_вложенность": {"корень": "E:/projects/motionVideoplayer", "включая_файлы": true}}
+    """
+    import shutil as _sh
+    args = args or {}
+    root = args.get("корень") or args.get("путь") or ""
+    if not root:
+        return "Укажи 'корень'."
+
+    try:
+        root_p = Path(root).expanduser().resolve()
+    except Exception as e:
+        return f"❌ Плохой путь: {e}"
+    if not root_p.is_dir():
+        return f"❌ Не папка: {root_p}"
+
+    dry = args.get("сухо", False)
+    if isinstance(dry, str):
+        dry = dry.strip().lower() not in ("0", "false", "нет", "off", "")
+    incl = args.get("включая_файлы", False)
+    if isinstance(incl, str):
+        incl = incl.strip().lower() not in ("0", "false", "нет", "off", "")
+
+    # защита anyjson / системных папок
+    try:
+        from _config import BASE_DIR as _BASE
+        _base_l = str(Path(_BASE).resolve()).rstrip("\\/").lower()
+    except Exception:
+        _base_l = ""
+
+    def _protected(pp):
+        try:
+            a = str(Path(pp).resolve()).rstrip("\\/").lower()
+        except Exception:
+            return True
+        if _base_l and (a == _base_l or a.startswith(_base_l + "\\")):
+            return True
+        for _sd in (r"c:\\windows", r"c:\\program files",
+                    r"c:\\program files (x86)", r"c:\\programdata"):
+            if a == _sd or a.startswith(_sd + "\\"):
+                return True
+        return False
+
+    actions = []
+    errors = []
+
+    def _try_unwrap(p_cur):
+        """Один уровень X/X -> X. True если что-то сделал."""
+        nested = p_cur / p_cur.name
+        if not nested.is_dir():
+            return False
+        try:
+            outer = [it for it in p_cur.iterdir() if it.name != p_cur.name]
+        except Exception as e:
+            errors.append(f"{p_cur}: {e}")
+            return False
+        if outer and not incl:
+            return False
+        try:
+            inner = list(nested.iterdir())
+        except Exception as e:
+            errors.append(f"{nested}: {e}")
+            return False
+        outer_names = {it.name for it in outer}
+        for item in inner:
+            if item.name in outer_names:
+                return False
+        moved_any = False
+        for item in inner:
+            target = p_cur / item.name
+            if target.exists():
+                return moved_any
+            if dry:
+                moved_any = True
+            else:
+                try:
+                    _sh.move(str(item), str(target))
+                    moved_any = True
+                except Exception as e:
+                    errors.append(f"{item}: {e}")
+                    return moved_any
+        if not dry:
+            try:
+                nested.rmdir()
+            except OSError:
+                return moved_any
+        return True
+
+    def _rec(p_cur):
+        if _protected(p_cur):
+            return
+        try:
+            children = list(p_cur.iterdir())
+        except Exception:
+            return
+        for child in children:
+            if child.is_dir():
+                _rec(child)
+        if dry:
+            # в режиме показа файловая система не меняется —
+            # считаем только ОДИН уровень (иначе бесконечный цикл)
+            if _try_unwrap(p_cur):
+                actions.append((str(p_cur), 1))
+        else:
+            count = 0
+            while _try_unwrap(p_cur):
+                count += 1
+                if count > 50:
+                    break
+            if count:
+                actions.append((str(p_cur), count))
+
+    _rec(root_p)
+
+    lines = []
+    if dry:
+        lines.append(f"🔎 Вложенностей найдено: {len(actions)} (режим показа)")
+    else:
+        lines.append(f"✅ Исправлено папок: {len(actions)}")
+    lines.append(f"   корень: {root_p}")
+    lines.append(f"   включая_файлы: {incl}")
+    if actions:
+        lines.append("")
+        for path_a, count_a in actions[:30]:
+            lines.append(f"  • {path_a}  (уровней: {count_a})")
+        if len(actions) > 30:
+            lines.append(f"  ... и ещё {len(actions) - 30}")
+    if errors:
+        lines.append("")
+        lines.append(f"⚠️ Ошибок: {len(errors)}")
+        for e in errors[:5]:
+            lines.append(f"  • {e}")
+    if dry and actions:
+        lines.append("")
+        lines.append('Для применения: повтори без "сухо".')
+    return chr(10).join(lines)
 
 
 @register(["снять_только_чтение", "снять_readonly", "сделать_записываемым", "unlock_file"])
@@ -150,7 +573,7 @@ def remove_readonly(args):
     """
     import stat
     args = args or {}
-    path = args.get("путь") or args.get("path") or ""
+    path = args.get("путь") or ""
     if not path:
         return "Укажите 'путь'."
     if not os.path.exists(path):
@@ -179,7 +602,7 @@ def set_readonly(args):
     """
     import stat
     args = args or {}
-    path = args.get("путь") or args.get("path") or ""
+    path = args.get("путь") or ""
     if not path:
         return "Укажите 'путь'."
     if not os.path.isfile(path):
@@ -211,7 +634,7 @@ def remove_readonly_tree(args):
     """
     import stat
     args = args or {}
-    path = args.get("путь") or args.get("path") or ""
+    path = args.get("путь") or ""
     if not path:
         return "Укажите 'путь' к папке."
     if not os.path.exists(path):

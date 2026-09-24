@@ -52,7 +52,7 @@ def create_post(args):
     Параметры:
       заголовок  — заголовок поста
       содержание — текст поста (обязательный)
-      сообщество — имя submolt (опционально), алиас: submolt_name
+      сообщество — имя submolt (опционально)
 
     Пример:
       {"молтбук_пост": {"заголовок": "AGI", "содержание": "...", "сообщество": "general"}}
@@ -61,7 +61,7 @@ def create_post(args):
         return "❌ Tor недоступен."
     title = args.get("заголовок", "")
     content = args.get("содержание", "")
-    submolt = args.get("сообщество") or args.get("submolt_name")
+    submolt = args.get("сообщество")
     if not content:
         return "Нужно 'содержание'"
     from _actions._tools_moltbook import moltbook_create_post
@@ -82,7 +82,7 @@ def upvote(args):
     """
     if not _need_tor():
         return "❌ Tor недоступен."
-    post_id = args.get("пост_id")
+    post_id = args.get("пост_id") or args.get("id") or args.get("post_id")
     if not post_id:
         return "Укажите 'пост_id'"
     from _actions._tools_moltbook import moltbook_upvote
@@ -126,7 +126,7 @@ def comments(args):
     if not _need_tor():
         return "❌ Tor недоступен."
     from _actions._tools_moltbook import moltbook_comments
-    post_id = args.get("пост_id")
+    post_id = args.get("пост_id") or args.get("id") or args.get("post_id")
 
     if post_id:
         return moltbook_comments(post_id, sort=args.get("сортировка", "best"),
@@ -209,7 +209,7 @@ def add_comment(args):
     """
     if not _need_tor():
         return "❌ Tor недоступен."
-    post_id = args.get("пост_id")
+    post_id = args.get("пост_id") or args.get("id") or args.get("post_id")
     content = args.get("содержание", "")
     if not post_id or not content:
         return "Нужны 'пост_id' и 'содержание'"
@@ -349,4 +349,19 @@ def following(args):
         return "Укажите 'агент'"
     from _actions._tools_moltbook import moltbook_following
     return moltbook_following(agent)
+
+
+@register("молтбук_кто_я")
+def whoami_moltbook(args):
+    """Кто я в Moltbook: имя, карма, непрочитанные.
+
+    Параметров нет.
+
+    Пример:
+      {"молтбук_кто_я": {}}
+    """
+    if not _need_tor():
+        return "❌ Tor недоступен."
+    from _actions._tools_moltbook import moltbook_whoami
+    return moltbook_whoami()
 

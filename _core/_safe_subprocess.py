@@ -117,8 +117,13 @@ def install_guard():
     def run(cmd, *a, **kw):
         _check(cmd); return _orig_run(cmd, *a, **kw)
 
-    def Popen(cmd, *a, **kw):
-        _check(cmd); return _orig_popen(cmd, *a, **kw)
+    # Popen должен быть КЛАССОМ — иначе `class Foo(subprocess.Popen)` падает
+    # с TypeError: function() argument 'code' must be code, not str
+    # (так делает, например, yt_dlp.utils.Popen).
+    class Popen(_orig_popen):
+        def __init__(self, cmd, *a, **kw):
+            _check(cmd)
+            super().__init__(cmd, *a, **kw)
 
     def call(cmd, *a, **kw):
         _check(cmd); return _orig_call(cmd, *a, **kw)

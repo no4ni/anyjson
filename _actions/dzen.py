@@ -55,7 +55,7 @@ def update_dzen(args):
     if not SCRAPER.exists():
         return f"❌ Скрипт не найден: {SCRAPER}"
     args = args or {}
-    channel = args.get("канал") or args.get("channel") or DEFAULT_CHANNEL
+    channel = args.get("канал") or DEFAULT_CHANNEL
     try:
         timeout = int(args.get("таймаут", 600))
     except (TypeError, ValueError):
@@ -103,7 +103,7 @@ def list_dzen(args):
       {"статьи_дзена": {"количество": 20}}
     """
     args = args or {}
-    channel = args.get("канал") or args.get("channel") or DEFAULT_CHANNEL
+    channel = args.get("канал") or DEFAULT_CHANNEL
     try:
         limit = int(args.get("количество", 0) or 0)
     except (TypeError, ValueError):
@@ -147,7 +147,7 @@ def read_dzen_article(args):
       {"прочитать_статью_дзен": {"номер": 5}}
     """
     args = args or {}
-    channel = args.get("канал") or args.get("channel") or DEFAULT_CHANNEL
+    channel = args.get("канал") or DEFAULT_CHANNEL
     try:
         size = int(args.get("размер") or args.get("лимит") or 30000)
     except (TypeError, ValueError):

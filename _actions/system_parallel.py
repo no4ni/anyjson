@@ -68,12 +68,17 @@ def parallel(args):
 
     Параметры:
       команды — список команд (словари или строки)
+      таймаут  — общий лимит на всю группу в секундах (по умолчанию 1800)
 
     Пример:
       {"параллельно": [
         {"время": {}},
         {"разведка_системы": {}}
       ]}
+
+      {"параллельно": [
+        {"скачать_видео": {"url": "https://..."}}
+      ], "таймаут": 3600}
     """
     from _executor import execute_tool_safe
     if isinstance(args, list):
@@ -84,7 +89,7 @@ def parallel(args):
         )]
 
     tasks = args if isinstance(args, list) else (
-        args.get("команды") or args.get("tasks") or args.get("значение")
+        args.get("команды") or args.get("значение")
         if isinstance(args, dict) else None
     )
     if not tasks or not isinstance(tasks, list):
@@ -128,7 +133,20 @@ def parallel(args):
 
     if not normalized:
         return "Нет корректных команд"
-    TIMEOUT = 10
+
+    # Таймаут всей группы. По умолчанию 30 минут.
+    # Можно переопределить в самом вызове: {"параллельно": [...], "таймаут": 3600}
+    # или через параметр "таймаут" у подзадачи.
+    TIMEOUT = 1800
+    if isinstance(args, dict):
+        _t = args.get("таймаут")
+        if isinstance(_t, (int, float)) and _t > 0:
+            TIMEOUT = int(_t)
+    for _action, _params in normalized:
+        if isinstance(_params, dict):
+            _pt = _params.get("таймаут")
+            if isinstance(_pt, (int, float)) and _pt > 0:
+                TIMEOUT = max(TIMEOUT, int(_pt) + 60)
 
     def run_single(i, action, params):
         try:
@@ -146,7 +164,9 @@ def parallel(args):
         for i, fut in enumerate(futures):
             if not fut.done():
                 results.append({"index": i + 1, "action": normalized[i][0],
-                                "result": None, "error": f"Таймаут ({TIMEOUT} сек)"})
+                                "result": None,
+                                "error": f"Таймаут {TIMEOUT} сек "
+                                         f"(задача оставлена в фоне)"})
     finally:
         executor.shutdown(wait=False)
     results.sort(key=lambda x: x["index"])

@@ -24,14 +24,24 @@ def log(msg: str) -> None:
     print(f"[LOG] {msg}", file=sys.stderr)
 
 
-TOOLS_DIR = resolve_path(CONFIG["paths"]["tools_dir"])
-PUBLIC_TOOLS_DIR = resolve_path(CONFIG["paths"]["public_tools_dir"])
-PROXY_DIR = (
-    resolve_path(CONFIG["paths"]["proxy_dir"])
-    if CONFIG["paths"].get("proxy_dir")
-    else None
-)
-PROFILES_DIR = resolve_path(CONFIG["paths"]["profiles_dir"])
+def _path_from_config(key, default_rel):
+    """Путь из config.json или дефолт от BASE_DIR.
+
+    Внутренние пути (side/, profiles/, proxy/) не должны быть в конфиге —
+    anyjson можно переместить, и всё останется рабочим. Если ключ есть —
+    уважаем (обратная совместимость), если нет — берём относительный от
+    BASE_DIR.
+    """
+    val = CONFIG.get("paths", {}).get(key)
+    if val:
+        return resolve_path(val)
+    return resolve_path(default_rel)
+
+
+TOOLS_DIR = _path_from_config("tools_dir", ".")
+PUBLIC_TOOLS_DIR = _path_from_config("public_tools_dir", "side")
+PROXY_DIR = _path_from_config("proxy_dir", "proxy")
+PROFILES_DIR = _path_from_config("profiles_dir", "profiles")
 
 # --- внешние CLI-инструменты (копия в side/external/) ---
 EXTERNAL_DIR = BASE_DIR / "side" / "external"
@@ -57,7 +67,7 @@ HEAR_CLI          = EXTERNAL_DIR / "hear"         / "hear_cli.py"
 WIKI_TEXTS_DIR = Path(CONFIG["paths"]["wiki_texts_dir"])
 _TOR_PATH = Path(CONFIG["paths"]["tor_executable"])
 _TORRC = Path(CONFIG["paths"]["torrc"])
-API_KEYS_FILE = resolve_path(CONFIG["paths"]["api_keys_file"])
+API_KEYS_FILE = _path_from_config("api_keys_file", "side/api_keys.json")
 _WIKIGET_PATH = Path(CONFIG["paths"]["wikiget_executable"])
 ACTIONS_DIR = CONFIG["paths"].get("actions_dir")
 
@@ -127,10 +137,27 @@ def _extract_name(raw: str):
             if cand:
                 return cand
 
+    # 2.5) срезать всё после первой . ! ? ; :,
+    #      если после неё есть продолжение.
+    #      "SAAI. Готов к работе." -> "SAAI"
+    #      "SAAI." -> "SAAI"
+    #      "SAAI" -> без изменений
+    m = re.match(r'^([^.!?;:]+?)\s*[.!?;:](?:\s+\S|$)', raw)
+    if m:
+        cand = m.group(1).strip()
+        if cand:
+            raw = cand
+
     # 3) короткая строка — считаем именем
     words = raw.split()
     if 1 <= len(words) <= 3 and len(raw) <= 60:
         return raw
+
+    # 3.5) всё ещё длинно? — взять первое слово (обрезав пунктуацию)
+    if words:
+        first = words[0].strip('.,;:!?\'"«»()[]{}')
+        if first and len(first) <= 30:
+            return first
 
     return None
 
@@ -292,3 +319,27 @@ def ensure_api_key(name, prompt=None):
     except Exception as e:
         print(f"\u26A0\uFE0F Не удалось сохранить ключ: {e}")
     return val
+
+# ============================================================
+# Принудительно используем только IPv4 для исходящих соединений.
+# Причина: локальный DNS может отдавать IPv6-адрес первым, а IPv6
+# в сети не работает → getaddrinfo failed. Firefox не страдает
+# (у него DoH), а requests/urllib идут в лоб.
+# ============================================================
+def _force_ipv4():
+    import socket as _sock
+    _orig = _sock.getaddrinfo
+
+    def _ipv4_only(host, port, family=0, type=0, proto=0, flags=0):
+        return _orig(host, port, _sock.AF_INET, type, proto, flags)
+
+    _sock.getaddrinfo = _ipv4_only
+
+
+try:
+    _force_ipv4()
+    # маркер, что патч применён (не перезапускать)
+    FORCE_IPV4 = True
+except Exception:
+    FORCE_IPV4 = False
+

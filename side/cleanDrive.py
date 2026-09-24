@@ -1,7 +1,6 @@
 # cleanDrive.py — универсальная очистка для C/D/E/...
 import os
 import time
-import json
 import subprocess
 import argparse
 import threading
@@ -179,13 +178,14 @@ def analyze_folder(folder_path, top=15, fast=True):
 
 		size, timeout = get_size_with_timeout(item, timeout_sec=5)
 		if timeout:
-			print(f"{item.name} > {size/(1024**3):.1f} ГБ", file=sys.stderr)
+			print(f"{item.name} (более {size/(1024**3):.1f} ГБ)", file=sys.stderr)
 		if size > 0:
 			results.append({
 				"name": item.name,
 				"path": str(item),
 				"size_mb": round(size / (1024*1024), 2),
-				"is_dir": item.is_dir()
+				"is_dir": item.is_dir(),
+				"partial": timeout
 			})
 
 	results.sort(key=lambda x: x['size_mb'], reverse=True)
@@ -193,10 +193,17 @@ def analyze_folder(folder_path, top=15, fast=True):
 	total_size = sum(it['size_mb'] for it in top_items)
 
 	print(f"\nТоп-{len(top_items)} объектов в папке (по занимаемому месту):")
+	_any_partial = False
 	for i, it in enumerate(top_items, 1):
 		type_label = "[ПАПКА]" if it['is_dir'] else "[ФАЙЛ] "
-		print(f"  {i:2}. {type_label} {it['name']:<50} {it['size_mb']:>8.2f} МБ")
-	print(f"\nСуммарный размер этих объектов: {total_size:.2f} МБ ({total_size/1024:.2f} ГБ)")
+		prefix = "более " if it.get("partial") else ""
+		if it.get("partial"):
+			_any_partial = True
+		print(f"  {i:2}. {type_label} {it['name']:<50} {prefix}{it['size_mb']:>8.2f} МБ")
+	_sum_prefix = "более " if _any_partial else ""
+	print(f"\nСуммарный размер этих объектов: {_sum_prefix}{total_size:.2f} МБ ({_sum_prefix}{total_size/1024:.2f} ГБ)")
+	if _any_partial:
+		print("⚠️ Приблизительный подсчёт (часть папок не успела посчитаться за 5 сек)")
 
 def print_top_downloads():
 	print("\n=== ТОП-10 ОБЪЕКТОВ В ПАПКЕ 'C:\\Downloads' (файлы и папки) ===", flush=True)
@@ -210,7 +217,7 @@ def print_top_downloads():
 	for i, item in enumerate(top_objects, 1):
 		type_label = "[ПАПКА]" if item['is_dir'] else "[ФАЙЛ] "
 		print(f"  {i:2}. {type_label} {item['name']:<47} {item['size_mb']:>8.2f} МБ")
-	print("\n💡 Рекомендуется удалить ненужные крупные папки/файлы вручную или переместить на другой диск.\nЗапустить автоматическую очистку диска Windows (cleanmgr /sagerun:1)? [y/N]", flush=True)
+	print("\nЗапустить автоматическую очистку диска Windows (cleanmgr /sagerun:1)? [y/N]", flush=True)
 
 def run_treesize(drive_letter=None, target_path=None, top_level=10, drill_depth=1):
 	script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -318,6 +325,7 @@ def main():
 	parser.add_argument('--fast', action='store_true', help='Быстрый анализ вместо TreeSize (без таймаута)')
 	parser.add_argument('--top', type=int, default=15, help='Количество папок для вывода при --fast')
 	parser.add_argument('--nodelete', action='store_true', help='Не удалять временные файлы и не запускать cleanmgr (только анализ)')
+	parser.add_argument('--yes-cleanmgr', action='store_true', help='Автоматически запускать cleanmgr, не спрашивая')
 
 	args = parser.parse_args()
 
@@ -339,19 +347,6 @@ def main():
 		print("Удаляем файлы старше 7 дней...", flush=True)
 		freed_bytes, deleted_files, errors = clean_temp_directory(temp_path, max_age_days=7)
 		freed_gb = freed_bytes / (1024**3)
-		report = {
-			'timestamp': time.time(),
-			'temp_path': temp_path,
-			'total_freed_gb': round(freed_gb, 2),
-			'deleted_files_count': len(deleted_files),
-			'deleted_files_sample': deleted_files[:10],
-			'errors_count': len(errors),
-			'errors_sample': errors[:5] if errors else []
-		}
-		script_dir = os.path.dirname(os.path.abspath(__file__))
-		report_file = os.path.join(script_dir, "temp_cleanup_report.json")
-		with open(report_file, 'w', encoding='utf-8') as f:
-			json.dump(report, f, ensure_ascii=False, indent=2)
 		print(f"\n=== РЕЗУЛЬТАТЫ ОЧИСТКИ TEMP ===", flush=True)
 		print(f"Освобождено: {round(freed_gb, 2)} ГБ", flush=True)
 		print(f"Удалено файлов: {len(deleted_files)}", flush=True)
@@ -364,7 +359,6 @@ def main():
 			print(f"\nПримеры удаленных файлов (первые 5):")
 			for item in deleted_files[:5]:
 				print(f"  - {os.path.basename(item['file'])} ({item['size_mb']} МБ, {item['age_days']} дней)")
-		print(f"\nОтчет сохранен: {report_file}")
 		if freed_gb > 1:
 			print(f"\n✅ Успех: Освобождено {round(freed_gb, 2)} ГБ", flush=True)
 		else:
@@ -379,12 +373,21 @@ def main():
 	
 	# 3. Очистка диска (cleanmgr) только для C, если не указан --nodelete
 	if drive == 'C' and not args.nocleanmgr and not args.nodelete:
-		print("Запустить автоматическую очистку диска Windows (cleanmgr /sagerun:1)? [y/N]:")
-		answer = input("? [y/N]:").strip().lower()
-		if answer in ('y', 'yes', 'да'):
+		# --yes-cleanmgr или отсутствие tty → запускаем без вопроса
+		if args.yes_cleanmgr:
+			print("Запуск cleanmgr (флаг --yes-cleanmgr).", flush=True)
 			run_disk_cleanup()
 		else:
-			print("Пропущено. Вы можете запустить cleanmgr вручную позже.", flush=True)
+			print("Запустить автоматическую очистку диска Windows (cleanmgr /sagerun:1)? [y/N]:")
+			try:
+				answer = input("? [y/N]:").strip().lower()
+			except (EOFError, KeyboardInterrupt):
+				print("\\n⚙️ stdin недоступен: cleanmgr пропущен. Используй --yes-cleanmgr.", flush=True)
+				answer = ""
+			if answer in ('y', 'yes', 'да'):
+				run_disk_cleanup()
+			else:
+				print("Пропущено. Вы можете запустить cleanmgr вручную позже.", flush=True)
 	elif drive == 'C' and args.nodelete:
 		print("\n⚙️ Режим --nodelete: cleanmgr не запускается.", flush=True)
 	elif drive != 'C':

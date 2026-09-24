@@ -17,7 +17,7 @@ def listen_audio(args):
       размер    — WxH, по умолчанию 1370x675
       сохранить — путь для дополнительного сохранения PNG
     """
-    audio = args.get("путь") or args.get("path") or args.get("файл")
+    audio = args.get("путь") or args.get("файл")
     if not audio:
         return 'Укажи путь: {"слушать_аудио": {"путь": "...", "секунда": 30}}'
 

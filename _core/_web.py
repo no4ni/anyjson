@@ -142,5 +142,22 @@ def parse_ddgs_output(raw: str) -> List[Dict]:
             snippet = ""
         if not title and len(lines) > 1:
             title = lines[0].strip()
-        results.append({"url": url, "title": title, "snippet": snippet})
+        # парсим строку вида "   [ddg,tavily | rel=0.15]"
+        sources = []
+        relevance = None
+        for _ln in lines:
+            _m = re.search(r"\[([^\|\]]+?)\s*\|\s*rel=([\d.]+)\s*\]", _ln)
+            if _m:
+                sources = [x.strip() for x in _m.group(1).split(",") if x.strip()]
+                try:
+                    relevance = float(_m.group(2))
+                except ValueError:
+                    pass
+                break
+        item = {"url": url, "title": title, "snippet": snippet}
+        if sources:
+            item["sources"] = sources
+        if relevance is not None:
+            item["relevance"] = relevance
+        results.append(item)
     return results

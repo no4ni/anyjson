@@ -16,35 +16,64 @@ from _ps import run_with_wait
 #  запрет на запись в системные папки
 # ============================================================
 
+def _find_common(args, only_files):
+    """Общий вызов find_file для «найти_файл» и «найти_всё»."""
+    from _actions.tools_dataset import find_file
+    if not isinstance(args, dict):
+        args = {}
+    return find_file(
+        root_path=(args.get("корень") or args.get("где")
+                   or args.get("путь") or os.getcwd()),
+        search_name=args.get("имя", ""),
+        search_content=args.get("содержание") or args.get("содержимое", ""),
+        search_all=args.get("всё", ""),
+        encoding=args.get("кодировка", "utf-8"),
+        max_file_size=args.get("макс_размер", 1_000_000),
+        timeout=min(int(args.get("таймаут", 30) or 30), 60),
+        target_num=int(args.get("номер", 1) or 1),
+        only_files=only_files,
+        search_mask=args.get("маска") or "",
+        ignore_cache=bool(args.get("свежий")),
+    )
+
+
 @register("найти_файл")
 def find_file_cmd(args):
-    """Поиск файла по имени и/или содержимому.
+    """Поиск ФАЙЛА по имени и/или содержимому.
+
+    Ищет только файлы. Папки пропускает — для них команда «найти_всё».
 
     Параметры:
-      корень      — папка старта (по умолчанию текущая)
+      корень      — папка старта (по умолчанию текущая), алиасы: где, путь
       имя         — подстрока в имени файла
       содержание  — подстрока в тексте (поддерживает "a|b" для ИЛИ)
       всё         — искать и по имени, и по содержимому
+      маска       — glob по имени (например "*mega*", "*.py")
       кодировка   — для чтения (по умолчанию utf-8)
-      max_size    — максимальный размер файла для поиска (байт)
-      таймаут     — секунд (по умолчанию 30)
+      макс_размер — максимальный размер файла для поиска (байт)
+      таймаут     — секунд (по умолчанию 30, максимум 60)
+      свежий      — true: не использовать кэш обхода (искать заново)
 
     Примеры:
       {"найти_файл": {"корень": "E:/", "имя": "log"}}
       {"найти_файл": {"корень": "E:/scripts", "содержание": "AGI|LLM"}}
     """
-    from _actions.tools_dataset import find_file
-    return find_file(
-        root_path=args.get("корень", os.getcwd()),
-        search_name=args.get("имя", ""),
-        search_content=args.get("содержание") or args.get("содержимое", "") or args.get("содержимое", ""),
-        search_all=args.get("всё", ""),
-        encoding=args.get("кодировка", "utf-8"),
-        max_file_size=args.get("max_size", 1_000_000),
-        timeout=args.get("таймаут", 30),
-        target_num=int(args.get("номер", 1) or 1),
-        only_files=bool(args.get("только_файлы") or args.get("only_files")),
-    )
+    return _find_common(args, only_files=True)
+
+
+@register(["найти_всё", "найти", "искать_всё"])
+def find_all_cmd(args):
+    """Поиск файлов И папок по имени и/или содержимому.
+
+    В отличие от «найти_файл», показывает и папки тоже.
+    Параметры — те же.
+
+    Примеры:
+      {"найти_всё": {"корень": "E:/Jericho", "имя": "tools"}}
+      {"найти": {"корень": "E:/", "маска": "*mega*"}}
+    """
+    return _find_common(args, only_files=False)
+
 
 
 @register("анализ_папки")
@@ -98,21 +127,30 @@ def analyze_folder(args):
         return f"Ошибка cleanDrive.py: {e}"
 
 
-@register("убраться_в")
+@register(["убраться_в", "очистка_диска"])
 def cleanup_drive(args):
-    """Анализ занятого места через cleanDrive.py.
+    """Анализ диска и очистка временных файлов.
+
+    Что чистит по умолчанию:
+      • %TEMP% — файлы старше 7 дней;
+      • cleanmgr /sagerun:1 — стандартная очистка Windows.
+    Запись идёт в корзину или удаляется сразу — восстановление
+    штатными средствами Windows.
 
     Параметры:
-      путь   — папка или диск (обязательный), алиасы: буква, диск, path
-      fast   — быстрый режим (по умолчанию true)
-      top    — сколько крупнейших элементов показать (по умолчанию 15)
+      путь      — папка или диск (обязательный), алиасы: буква, диск
+      быстро    — быстрый режим (по умолчанию true)
+      топ       — сколько крупнейших элементов показать (по умолчанию 15)
+      безопасно — true: только анализ, без очистки
+      чистить   — false: не чистить (синоним безопасно=true)
 
     Примеры:
       {"убраться_в": {"путь": "E:/Jericho/Private/profiles"}}
-      {"убраться_в": {"буква": "E", "top": 20}}
-      {"убраться_в": {"путь": "D:/Downloads", "fast": false}}
+      {"убраться_в": {"буква": "E", "топ": 20}}
+      {"убраться_в": {"путь": "D:/Downloads", "быстро": false}}
+      {"убраться_в": {"путь": "C:/", "безопасно": true}}
     """
-    target = (args.get("путь") or args.get("path") or
+    target = (args.get("путь") or
               args.get("буква") or args.get("диск") or
               args.get("значение") or args.get("запрос") or "")
     if not target:
@@ -121,8 +159,8 @@ def cleanup_drive(args):
     script = PUBLIC_TOOLS_DIR / "cleanDrive.py"
     if not script.exists():
         return f"Ошибка: {script} не найден"
-    use_fast = args.get("fast", True)
-    top = args.get("top", 15)
+    use_fast = args.get("быстро", True)
+    top = args.get("топ", 15)
     if ':' in target and any(sep in target for sep in ('\\', '/')):
         cmd = [sys.executable, str(script), "--path", target]
     else:
@@ -133,6 +171,22 @@ def cleanup_drive(args):
     if use_fast:
         cmd.append("--fast")
         cmd.extend(["--top", str(top)])
+    # По умолчанию — реальная очистка (temp + cleanmgr).
+    # Отключить: "безопасно": true или "чистить": false.
+    _safe = args.get("безопасно")
+    _clean_raw = args.get("чистить")
+    if _clean_raw is None:
+        _clean = True   # по умолчанию — чистим
+    else:
+        if isinstance(_clean_raw, str):
+            _clean = _clean_raw.strip().lower() not in ("0", "false", "no", "нет", "off", "")
+        else:
+            _clean = bool(_clean_raw)
+    if _clean and not _safe:
+        cmd.append("--yes-cleanmgr")
+    else:
+        cmd.append("--nodelete")
+        cmd.append("--nocleanmgr")
     env = os.environ.copy()
     env['PYTHONIOENCODING'] = 'utf-8'
     try:
@@ -174,11 +228,17 @@ def inspect(args):
     from _actions.tools_web import view_page
     file_path = args.get("путь", "")
     keywords = args.get("ключевые_слова")
-    target_count = args.get("количество", 0)
+    try:
+        target_count = int(args.get("количество", 0) or 0)
+    except (TypeError, ValueError):
+        target_count = 0
     probability = args.get("вероятность", 0.5)
     encoding = args.get("кодировка", "utf8")
     context = args.get("вокруг", 3)
-    timeout = args.get("таймаут", 30)
+    try:
+        timeout = int(args.get("таймаут", 30) or 0)
+    except (TypeError, ValueError):
+        timeout = 30
 
     if not file_path:
         return "Ошибка: необходимо указать 'путь'"
@@ -186,7 +246,10 @@ def inspect(args):
     if keywords is None or (isinstance(keywords, (str, list)) and not keywords):
         kw_list = [" "]
     elif isinstance(keywords, str):
-        kw_list = [kw.strip() for kw in keywords.split(',') if kw.strip()] or [" "]
+        # разделители: запятая и/или вертикальная черта
+        import re as _re
+        parts = _re.split(r"[,\|]", keywords)
+        kw_list = [kw.strip() for kw in parts if kw.strip()] or [" "]
     elif isinstance(keywords, list):
         kw_list = [str(kw) for kw in keywords if str(kw).strip()] or [" "]
     else:
@@ -204,11 +267,16 @@ def inspect(args):
     if os.path.isdir(file_path) and keywords:
         start_time = time.time()
         all_matches = []
+        timed_out = False
         text_exts = {'.txt', '.log', '.py', '.js', '.html', '.css', '.json', '.xml', '.csv', '.md'}
         for root, dirs, files in os.walk(file_path):
             if timeout and (time.time() - start_time) > timeout:
-                return f"Превышен таймаут. Найдено {len(all_matches)}"
+                timed_out = True
+                break
             for f in files:
+                if timeout and (time.time() - start_time) > timeout:
+                    timed_out = True
+                    break
                 if os.path.splitext(f)[1].lower() not in text_exts:
                     continue
                 full_path = os.path.join(root, f)
@@ -223,10 +291,19 @@ def inspect(args):
                         break
                 except Exception:
                     continue
+            if timed_out:
+                break
         if not all_matches:
+            if timed_out:
+                return (f"⏱ Превышен таймаут ({timeout} с). "
+                        "Совпадений не найдено.")
             return "Не найдено строк с ключевыми словами."
         selected = all_matches if (target_count <= 0 or target_count > len(all_matches)) else random.sample(all_matches, target_count)
-        return "\n".join(f"{p}:\n{l[:1024]}{'…' if len(l) > 1024 else ''}" for p, l in selected)
+        body = "\n".join(f"{p}:\n{l[:1024]}{'…' if len(l) > 1024 else ''}" for p, l in selected)
+        if timed_out:
+            return (f"⏱ Превышен таймаут ({timeout} с) — показано то, что успели "
+                    f"собрать ({len(all_matches)}):\n\n" + body)
+        return body
 
     if os.path.isdir(file_path):
         from _actions.tools_files import read_file
@@ -238,6 +315,10 @@ def inspect(args):
     inspect_script = PUBLIC_TOOLS_DIR / "inspect.ps1"
     ps_command = f'& "{inspect_script}" -FilePath \'{fp_esc}\' -Keywords {ps_array} -TargetCount {target_count} -Probability {probability} -Encoding \'{encoding}\' -Context {context}'
     result = run_with_wait(execute_command, (ps_command,), timeout)
+    # PS 5.1 сериализует Progress/Information в CLIXML и пихает в stderr.
+    # Режем здесь — это последняя точка перед выводом.
+    import re as _re
+    result = _re.sub(r"#<\s*CLIXML.*", "", result, flags=_re.S).rstrip()
     return result[:2048] + ("… (обрезано)" if len(result) > 2048 else "")
 
 
@@ -260,7 +341,7 @@ def format_file(args):
       {"формат": {"путь": "E:/scans/photo.jpg", "язык": "rus+eng"}}
     """
     from _actions.tools_files import run_sensor
-    path = args.get("путь") or args.get("path") or args.get("файл") or ""
+    path = args.get("путь") or args.get("файл") or ""
     path = str(path).strip()
 
     if not path:
@@ -294,19 +375,172 @@ def format_file(args):
 
 @register("анализ_изображения")
 def analyze_image_cmd(args):
-    """Описание изображения мультимодальной моделью (llama-server).
+    """Сведения об изображении: размер, разрешение, каналы, EXIF, DPI.
 
     Параметры:
-      путь   — путь к изображению (обязательный)
-      вопрос — что спросить у модели (по умолчанию "Опиши изображение")
+      путь — путь к изображению (обязательный)
 
-    Примеры:
+    Пример:
       {"анализ_изображения": {"путь": "E:/pic.jpg"}}
-      {"анализ_изображения": {"путь": "E:/chart.png", "вопрос": "что на графике?"}}
+
+    Посмотреть саму картинку: {"посмотреть_файл": {"путь": "..."}}
     """
-    from _actions.tools_media import analyze_image
-    return analyze_image(args.get("путь", ""),
-                         args.get("вопрос", "Опиши изображение"))
+    import os as _os
+    import math as _math
+
+    path = (args.get("путь") or args.get("файл") or "").strip()
+    if not path:
+        return 'Укажи путь: {"анализ_изображения": {"путь": "C:/pic.jpg"}}'
+    if not _os.path.isfile(path):
+        return "❌ Файл не найден: " + path
+
+    src = Path(path).expanduser()
+    try:
+        size_bytes = src.stat().st_size
+    except Exception:
+        size_bytes = 0
+    ext = src.suffix.lower().lstrip(".")
+
+    if ext == "svg":
+        return _analyze_svg(src, size_bytes)
+
+    try:
+        from PIL import Image, ExifTags
+    except ImportError as e:
+        return "❌ Нет PIL: " + str(e)
+
+    try:
+        img = Image.open(str(src))
+        w, h = img.size
+        mode = img.mode
+        fmt = (img.format or ext or "?").lower()
+        info = dict(img.info or {})
+        frames = getattr(img, "n_frames", 1)
+        try:
+            exif = img.getexif()
+        except Exception:
+            exif = None
+        img.close()
+    except Exception as e:
+        return "❌ Не удалось открыть: " + str(e)
+
+    lines = ["📷 " + src.name + "  (" + str(w) + "×" + str(h) + ")"]
+    lines.append("   Размер: " + _fmt_size(size_bytes)
+                 + " (" + "{:,}".format(size_bytes).replace(",", " ")
+                 + " байт)")
+
+    try:
+        g = _math.gcd(w, h)
+        ar = str(w // g) + ":" + str(h // g)
+    except Exception:
+        ar = "?"
+    orient = ("портрет" if h > w else
+              ("альбомная" if w > h else "квадрат"))
+    lines.append("   Разрешение: " + str(w) + "×" + str(h)
+                 + "  (" + ar + ", " + orient + ")")
+
+    if fmt and ext and fmt != ext and not (ext == "jpg" and fmt == "jpeg"):
+        lines.append("   Формат внутри: " + fmt.upper()
+                     + "  (расширение: ." + ext + ")")
+
+    ch_map = {"1": 1, "L": 1, "P": 1, "LA": 2, "RGB": 3, "RGBA": 4,
+              "CMYK": 4, "YCbCr": 3, "I": 1, "F": 1}
+    ch = ch_map.get(mode)
+    line_m = "   Режим: " + mode
+    if ch:
+        line_m += ("  (" + str(ch) + " кан., " + str(ch * 8)
+                   + " бит/пикс.)")
+    lines.append(line_m)
+
+    has_alpha = mode in ("RGBA", "LA", "PA") or "transparency" in info
+    lines.append("   Прозрачность: " + ("есть" if has_alpha else "нет"))
+
+    dpi = info.get("dpi")
+    if dpi:
+        try:
+            lines.append("   DPI: " + format(float(dpi[0]), ".0f")
+                         + "×" + format(float(dpi[1]), ".0f"))
+        except Exception:
+            pass
+
+    if frames and frames > 1:
+        lines.append("   Кадров (анимация): " + str(frames))
+
+    icc = info.get("icc_profile")
+    if icc:
+        lines.append("   ICC-профиль: есть ("
+                     + _fmt_size(len(icc)) + ")")
+    else:
+        lines.append("   ICC-профиль: нет")
+
+    if exif:
+        wanted = {
+            "Make": "Камера",
+            "Model": "Модель",
+            "DateTime": "Изменён",
+            "DateTimeOriginal": "Снято",
+            "ExposureTime": "Выдержка",
+            "FNumber": "Диафрагма",
+            "ISOSpeedRatings": "ISO",
+            "PhotographicSensitivity": "ISO",
+            "FocalLength": "Фокус",
+            "LensModel": "Объектив",
+            "Software": "Обработка",
+            "Orientation": "Ориентация",
+        }
+        got = []
+        for tag_id, value in exif.items():
+            tag = ExifTags.TAGS.get(tag_id, str(tag_id))
+            if tag in wanted:
+                got.append("     " + wanted[tag] + ": " + str(value))
+        if got:
+            lines.append("   EXIF:")
+            lines.extend(got)
+
+    lines.append("")
+    _p = str(src.resolve()).replace(chr(92), "/")
+    lines.append('💡 Посмотреть: {"посмотреть_файл": {"путь": "'
+                 + _p + '"}}')
+    return "\n".join(lines)
+
+
+def _analyze_svg(src, size_bytes):
+    """Сведения об SVG без рендеринга (PIL не читает SVG)."""
+    import xml.etree.ElementTree as _ET
+    lines = ["📷 " + src.name]
+    lines.append("   Размер: " + _fmt_size(size_bytes)
+                 + " (" + str(size_bytes) + " байт)")
+    try:
+        tree = _ET.parse(str(src))
+        root = tree.getroot()
+        tag = root.tag
+        if tag.startswith("{"):
+            tag = tag.split("}", 1)[1]
+        lines.append("   Корень: " + tag)
+        w = root.get("width") or "?"
+        h = root.get("height") or "?"
+        vb = root.get("viewBox")
+        lines.append("   Width/Height: " + str(w) + "×" + str(h))
+        if vb:
+            lines.append("   viewBox: " + vb)
+        _tags = {}
+        for el in root.iter():
+            t = el.tag
+            if t.startswith("{"):
+                t = t.split("}", 1)[1]
+            _tags[t] = _tags.get(t, 0) + 1
+        _top = sorted(_tags.items(), key=lambda x: -x[1])[:10]
+        lines.append("   Элементов: " + str(sum(_tags.values())))
+        for t, n in _top:
+            lines.append("     " + t + ": " + str(n))
+    except Exception as e:
+        lines.append("   ⚠️ Парсинг XML упал: " + str(e))
+    lines.append("")
+    _p = str(src.resolve()).replace(chr(92), "/")
+    lines.append('💡 Посмотреть: {"посмотреть_файл": {"путь": "'
+                 + _p + '"}}')
+    return "\n".join(lines)
+
 
 
 ARCHIVE_EXTS = {'.7z', '.zip', '.rar', '.tar', '.gz', '.bz2', '.xz', '.tgz', '.tbz2'}
@@ -364,7 +598,7 @@ def _list_archives_in_dir(dir_path, limit):
     return "\n".join(out)
 
 
-def _parse_7z_listing(archive_path, output, limit):
+def _parse_7z_listing(archive_path, output, limit, mask=None):
     """Разбор вывода '7z l -slt'."""
     entries = []
     current = {}
@@ -387,9 +621,25 @@ def _parse_7z_listing(archive_path, output, limit):
     if current.get("Path"):
         entries.append(current)
 
+    total_all = len(entries)
+    if mask:
+        import fnmatch as _fnm
+        pat = mask.lower()
+        entries = [e for e in entries
+                   if _fnm.fnmatch((e.get("Path") or "").lower(), pat)
+                   or pat in (e.get("Path") or "").lower()]
+        total_filtered = len(entries)
+    else:
+        total_filtered = total_all
+
     out = [f"📦 Архив: {archive_path}"]
-    out.append(f"   всего записей: {len(entries)}, "
-               f"показано: {min(limit, len(entries))}")
+    if mask:
+        out.append(f"   всего записей: {total_all}, "
+                   f"по маске '{mask}': {total_filtered}, "
+                   f"показано: {min(limit, total_filtered)}")
+    else:
+        out.append(f"   всего записей: {total_all}, "
+                   f"показано: {min(limit, total_filtered)}")
     out.append("")
     for i, e in enumerate(entries[:limit], 1):
         name = e.get("Path", "?")
@@ -408,7 +658,7 @@ def _parse_7z_listing(archive_path, output, limit):
     return "\n".join(out)
 
 
-def _list_archive_contents(archive_path, limit):
+def _list_archive_contents(archive_path, limit, mask=None):
     """Список файлов внутри архива."""
     ext = os.path.splitext(archive_path)[1].lower()
     if ext not in ARCHIVE_EXTS:
@@ -425,7 +675,7 @@ def _list_archive_contents(archive_path, limit):
                 encoding="utf-8", errors="replace", timeout=120,
             )
             if proc.returncode == 0:
-                return _parse_7z_listing(archive_path, proc.stdout, limit)
+                return _parse_7z_listing(archive_path, proc.stdout, limit, mask)
         except Exception:
             pass
 
@@ -435,9 +685,25 @@ def _list_archive_contents(archive_path, limit):
             import zipfile
             with zipfile.ZipFile(archive_path, "r") as zf:
                 infos = zf.infolist()
-                out = [f"📦 Архив: {archive_path}",
-                       f"   всего записей: {len(infos)}, "
-                       f"показано: {min(limit, len(infos))}", ""]
+                total_all = len(infos)
+                if mask:
+                    import fnmatch as _fnm
+                    pat = mask.lower()
+                    infos = [x for x in infos
+                             if _fnm.fnmatch(x.filename.lower(), pat)
+                             or pat in x.filename.lower()]
+                    total_filtered = len(infos)
+                else:
+                    total_filtered = total_all
+                out = [f"📦 Архив: {archive_path}"]
+                if mask:
+                    out.append(f"   всего записей: {total_all}, "
+                               f"по маске '{mask}': {total_filtered}, "
+                               f"показано: {min(limit, total_filtered)}")
+                else:
+                    out.append(f"   всего записей: {total_all}, "
+                               f"показано: {min(limit, total_filtered)}")
+                out.append("")
                 for i, info in enumerate(infos[:limit], 1):
                     name = info.filename
                     is_dir = name.endswith("/")
@@ -464,6 +730,8 @@ def archive_list(args):
     Параметры:
       путь       — файл-архив или папка (обязательный)
       количество — сколько показать (по умолчанию 50)
+      маска      — фильтр по имени внутри архива, например "*.py",
+                   "config*", "src/*" (по умолчанию — без фильтра)
 
     Примеры:
       {"архив_список": {"путь": "E:/backup/data.7z"}}
@@ -471,7 +739,7 @@ def archive_list(args):
       {"архив_список": {"путь": "E:/backup/old.rar", "количество": 30}}
     """
     args = args or {}
-    path = args.get("путь") or args.get("path") or args.get("значение") or ""
+    path = args.get("путь") or args.get("значение") or ""
     if not path:
         return "Укажите 'путь' — к архиву или к папке с архивами."
     if not os.path.exists(path):
@@ -484,9 +752,11 @@ def archive_list(args):
     if limit <= 0:
         limit = 50
 
+    mask = args.get("маска") or args.get("имя") or ""
+
     if os.path.isdir(path):
         return _list_archives_in_dir(path, limit)
-    return _list_archive_contents(path, limit)
+    return _list_archive_contents(path, limit, mask if mask else None)
 
 
 def _find_function_range(src, name):
@@ -517,12 +787,12 @@ def read_function_cmd(args):
       путь — путь к .py-файлу (обязательный)
 
     Пример:
-      {"прочитать_функцию": {"имя": "load_all", "путь": "E:/anyjson/_actions/__init__.py"}}
+      {"прочитать_функцию": {"имя": "load_all", "путь": "C:/project/example.py"}}
     """
     args = args or {}
-    name = (args.get("имя") or args.get("name")
-            or args.get("функция") or args.get("function") or "").strip()
-    path = (args.get("путь") or args.get("path")
+    name = (args.get("имя")
+            or args.get("функция") or "").strip()
+    path = (args.get("путь")
             or args.get("файл") or "").strip()
     if not name:
         return "Укажите 'имя' функции."
@@ -582,15 +852,15 @@ def replace_function_cmd(args):
       содержание  — новый текст функции (обязательный), алиас: содержимое
 
     Пример:
-      {"заменить_функцию": {"имя": "load_all", "путь": "E:/anyjson/_actions/__init__.py",
+      {"заменить_функцию": {"имя": "load_all", "путь": "C:/project/example.py",
                             "содержание": "def load_all():\n    ..."}}
     """
     import ast as _ast
     import shutil as _sh
     args = args or {}
-    name = (args.get("имя") or args.get("name")
-            or args.get("функция") or args.get("function") or "").strip()
-    path = (args.get("путь") or args.get("path")
+    name = (args.get("имя")
+            or args.get("функция") or "").strip()
+    path = (args.get("путь")
             or args.get("файл") or "").strip()
     new_code = args.get("содержание") or args.get("содержимое") or ""
     if not name:
