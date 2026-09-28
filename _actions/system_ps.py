@@ -250,18 +250,32 @@ def run_ps(args):
             )
 
     links = _split_ps_links(command)
+    _SAFE_VARS = {
+        "psversiontable", "pshome", "psedition",
+        "psculture", "psuiculture",
+    }
     for link in links:
         link = link.strip()
         if not link:
             continue
         # берём первый непустой токен (пропускаем ведущий & / & "$env:...")
         base = ""
+        _base_raw = ""
         for _t in link.split():
+            _base_raw = _t
             _tl = _t.lower().lstrip('(\'"&@$.').strip('"\'')
             _tl = _tl.rsplit('\\', 1)[-1].rsplit('/', 1)[-1].rstrip(')]},:;')
             if _tl:
                 base = _tl
                 break
+        # Автоматические переменные PowerShell ($PSVersionTable, $PSHOME, ...).
+        # Свойства и методы (.PSVersion.ToString()) не мешают — берём
+        # только имя до первой точки / скобки / двоеточия.
+        # $env:* НЕ пропускаем: утечка произвольных переменных окружения.
+        if _base_raw.startswith('$'):
+            _var = _base_raw[1:].split('.', 1)[0].split('(', 1)[0].split(':', 1)[0].lower()
+            if _var in _SAFE_VARS:
+                continue
         if base not in ALLOWED:
             _log_run(command, "BLOCKED", f"not-in-whitelist:{base}")
             # подсказка: похожая команда + 3 случайные из реестра

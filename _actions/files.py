@@ -72,6 +72,12 @@ def _should_hint_english(path):
     return ext in _HINT_EXTS
 
 
+def _is_secret_file(path):
+    """True, если файл — приватный ключ (private_key.pem и *private_key.pem)."""
+    name = os.path.basename(str(path)).lower()
+    return name.endswith("private_key.pem")
+
+
 def _is_mostly_english(text: str) -> bool:
     """True, если файл реально английский (кириллицы почти нет).
 
@@ -202,6 +208,9 @@ def read_(args):
     path = args.get("путь", "")
     if not path:
         return "Укажите 'путь'."
+
+    if _is_secret_file(path):
+        return "Приватный ключ — чтение запрещено."
 
     if os.path.isdir(path):
         return list_files({"путь": path, "скрытые": args.get("скрытые", False)})
@@ -394,6 +403,9 @@ def read_kb(args):
     if not os.path.isfile(path):
         return f"❌ Файл не найден: {path}"
 
+    if _is_secret_file(path):
+        return "Приватный ключ — чтение запрещено."
+
     _is_bin, _ = _looks_binary(path)
     if _is_bin:
         try:
@@ -461,12 +473,19 @@ def list_files(args):
     """Листинг папки: имена, размеры, даты изменения.
 
     Параметры:
-      путь    — папка или файл (по умолчанию текущая)
-      скрытые — если true, показывать файлы, начинающиеся с "."
+      путь     — папка или файл (по умолчанию текущая)
+      скрытые  — если true, показывать файлы, начинающиеся с "."
+      страница — номер страницы, 1-based (по умолчанию 1)
+      размер   — элементов на странице (по умолчанию 100, максимум 500)
+
+    Постраничный вывод: если элементов больше «размер», показываются
+    только текущая страница и навигация ▶/◀. На огромных папках
+    метаданные (размер, mtime) собираются только для видимой страницы.
 
     Примеры:
       {"список_файлов": {"путь": "E:/Jericho"}}
-      {"файлы": {"путь": "E:/Jericho", "скрытые": true}}
+      {"файлы": {"путь": "E:/Jericho", "скрытые": true, "страница": 2}}
+      {"список_файлов": {"путь": "E:/big", "размер": 300}}
     """
     path = args.get("путь", "") or "."
     if not os.path.exists(path):
@@ -474,7 +493,8 @@ def list_files(args):
     if not os.path.isdir(path):
         try:
             size = os.path.getsize(path)
-            mtime = time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(path)))
+            mtime = time.strftime("%Y-%m-%d %H:%M",
+                                  time.localtime(os.path.getmtime(path)))
         except OSError:
             size, mtime = "?", "?"
         return (f"📄 {path}\n"
@@ -483,44 +503,113 @@ def list_files(args):
                 f"Изменён: {mtime}")
 
     show_hidden = args.get("скрытые", False)
+
+    # --- параметры пагинации ---
     try:
-        entries = sorted(os.listdir(path), key=lambda n: n.lower())
+        page = int(args.get("страница", 1) or 1)
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        page_size = int(args.get("размер", 100) or 100)
+    except (TypeError, ValueError):
+        page_size = 100
+    if page < 1:
+        page = 1
+    if page_size < 1:
+        page_size = 100
+    if page_size > 500:
+        page_size = 500
+
+    # --- быстрый первый проход: только имена и типы ---
+    dirs_all = []
+    files_all = []
+    try:
+        with os.scandir(path) as it:
+            for entry in it:
+                if not show_hidden and entry.name.startswith("."):
+                    continue
+                try:
+                    if entry.is_dir(follow_symlinks=False):
+                        dirs_all.append(entry.name)
+                    else:
+                        files_all.append(entry.name)
+                except OSError:
+                    continue
     except PermissionError:
         return f"❌ Нет доступа: {path}"
 
-    if not show_hidden:
-        entries = [e for e in entries if not e.startswith(".")]
+    dirs_all.sort(key=lambda n: n.lower())
+    files_all.sort(key=lambda n: n.lower())
 
-    dirs, files = [], []
-    for name in entries:
+    total = len(dirs_all) + len(files_all)
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    if page > total_pages:
+        page = total_pages
+    start_idx = (page - 1) * page_size
+    end_idx = start_idx + page_size
+
+    # --- второй проход: метаданные только для видимой страницы ---
+    selected = [("dir", n) for n in dirs_all] + [("file", n) for n in files_all]
+    page_items = selected[start_idx:end_idx]
+
+    show_progress = len(page_items) > 30
+    items_meta = []
+    total_items = len(page_items)
+    for i, (kind, name) in enumerate(page_items, 1):
         full = os.path.join(path, name)
         try:
-            mtime = time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(full)))
+            st = os.stat(full)
+            mtime = time.strftime("%Y-%m-%d %H:%M",
+                                  time.localtime(st.st_mtime))
         except OSError:
+            st = None
             mtime = "?"
-        if os.path.isdir(full):
-            dirs.append((name, mtime))
+        if kind == "dir":
+            items_meta.append(("dir", name, None, mtime))
         else:
-            try:
-                size = os.path.getsize(full)
-            except OSError:
-                size = None
-            files.append((name, size, mtime))
+            size = st.st_size if st is not None else None
+            items_meta.append(("file", name, size, mtime))
+        if show_progress and (i % 25 == 0 or i == total_items):
+            sys.stdout.write(f"\r\u23f3 Метаданные {i}/{total_items}...")
+            sys.stdout.flush()
+    if show_progress:
+        sys.stdout.write("\r" + " " * 60 + "\r")
+        sys.stdout.flush()
 
     out = [f"📁 {path}"]
-    out.append(f"   папок: {len(dirs)}, файлов: {len(files)}")
+    out.append(f"   папок: {len(dirs_all)}, файлов: {len(files_all)}, "
+               f"всего: {total}")
+    if total_pages > 1:
+        _to = min(end_idx, total)
+        out.append(f"   страница {page}/{total_pages}, "
+                   f"показано {start_idx + 1}–{_to}")
     out.append("")
-    for name, mtime in dirs:
-        out.append(f"  📁 {name}{os.sep}    {mtime}")
-    for name, size, mtime in files:
-        sz = f"{size:>10} Б" if size is not None else "         ?"
-        out.append(f"  📄 {name:<40} {sz}  {mtime}")
 
-    if not dirs and not files:
+    for kind, name, size, mtime in items_meta:
+        if kind == "dir":
+            out.append(f"  📁 {name}{os.sep}    {mtime}")
+        else:
+            sz = f"{size:>10} Б" if size is not None else "         ?"
+            out.append(f"  📄 {name:<40} {sz}  {mtime}")
+
+    if total == 0:
         out.append("   (пусто)")
 
-    return "\n".join(out)
+    # --- навигация ---
+    _win = str(path).replace(chr(92), chr(47))
+    _win_json = _win.replace(chr(92), chr(92) * 2)
+    nav = []
+    if page > 1:
+        nav.append('◀ Назад:  {"список_файлов": {"путь": "' + _win_json
+                   + '", "страница": ' + str(page - 1) + '}}')
+    if page < total_pages:
+        nav.append('▶ Дальше: {"список_файлов": {"путь": "' + _win_json
+                   + '", "страница": ' + str(page + 1) + '}}')
+    if nav:
+        out.append("")
+        out.extend(nav)
 
+    return chr(10).join(out)
 
 @register(["переписать", "перезаписать_файл"])
 def rewrite(args):

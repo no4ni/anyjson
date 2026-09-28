@@ -8,6 +8,8 @@
 Устанавливается один раз через install_guard() при старте anyjson.
 """
 import contextvars
+import os as _os
+import re as _re
 import subprocess
 import sys
 from pathlib import Path
@@ -34,6 +36,16 @@ _PY_EXE_NAMES = {
     "py", "py.exe", "pyw", "pyw.exe",
 }
 
+
+def _is_python_name(name):
+    """python, python.exe, python3, python3.11, python3.11.exe, py, pyw..."""
+    n = Path(str(name)).name.lower()
+    if n in _PY_EXE_NAMES:
+        return True
+    if n.startswith("python"):
+        return True
+    return False
+
 import sys as _sys
 # флаг вне модуля, чтобы переживал importlib.reload
 _installed = _sys.modules.get('_safe_subprocess_installed', False)
@@ -59,7 +71,7 @@ def allow_external_py():
 
 
 def _looks_like_python(cmd0):
-    return Path(str(cmd0)).name.lower() in _PY_EXE_NAMES
+    return _is_python_name(cmd0)
 
 
 def _extract_py_target(cmd):
@@ -81,25 +93,69 @@ def _extract_py_target(cmd):
     return None
 
 
+_SHELL_SPLIT_RE = _re.compile(r"\s*(?:&&|\|\||;|\||&|\n)\s*")
+
+_QUOTES = chr(34) + chr(39)
+
+
+def _py_targets_in_shell_string(s):
+    """Ищет вызовы python *.py внутри shell-строки (грубо).
+
+    Режет по типовым разделителям, в каждом фрагменте ищет
+    python-имя и первый .py после него.
+    """
+    if not isinstance(s, str) or not s.strip():
+        return []
+    out = []
+    for frag in _SHELL_SPLIT_RE.split(s):
+        frag = frag.strip()
+        if not frag:
+            continue
+        toks = [t.strip(_QUOTES) for t in frag.split()]
+        idx = None
+        for i, t in enumerate(toks):
+            if _is_python_name(t):
+                idx = i
+                break
+        if idx is None:
+            continue
+        for t in toks[idx + 1:]:
+            if t in ("-c", "-m"):
+                break
+            if t.startswith("-"):
+                continue
+            if t.lower().endswith(".py"):
+                out.append(Path(t))
+            break
+    return out
+
+
 def _check(cmd):
     if _ALLOW_EXTERNAL_PY.get():
         return
-    target = _extract_py_target(cmd)
-    if target is None:
-        return
-    rp = _safe_resolve(target)
-    if rp is None:
-        return
-    if any(rp.is_relative_to(r) for r in ALLOWED_PY_ROOTS):
-        return
-    raise ExternalPyBlocked(
-        f"запуск внешнего .py запрещён: {rp}\n"
-        f"разрешено только внутри:\n"
-        + "\n".join(f"  - {r}" for r in ALLOWED_PY_ROOTS)
-        + "\n"
-        "Если это команда \"питон\" — оберни вызов в "
-        "_safe_subprocess.allow_external_py()."
-    )
+    targets = []
+    if isinstance(cmd, (str, bytes)):
+        targets = _py_targets_in_shell_string(
+            cmd.decode("utf-8", "replace") if isinstance(cmd, bytes) else cmd
+        )
+    else:
+        t = _extract_py_target(cmd)
+        if t is not None:
+            targets = [t]
+    for target in targets:
+        rp = _safe_resolve(target)
+        if rp is None:
+            continue
+        if any(rp.is_relative_to(r) for r in ALLOWED_PY_ROOTS):
+            continue
+        raise ExternalPyBlocked(
+            f"запуск внешнего .py запрещён: {rp}\n"
+            f"разрешено только внутри:\n"
+            + "\n".join(f"  - {r}" for r in ALLOWED_PY_ROOTS)
+            + "\n"
+            "Если это команда \"питон\" — оберни вызов в "
+            "_safe_subprocess.allow_external_py()."
+        )
 
 
 def install_guard():
@@ -139,6 +195,20 @@ def install_guard():
     subprocess.call = call
     subprocess.check_output = check_output
     subprocess.check_call = check_call
+
+    _orig_os_system = _os.system
+    _orig_os_popen = _os.popen
+
+    def _system(cmd):
+        _check(cmd)
+        return _orig_os_system(cmd)
+
+    def _popen(cmd, *a, **kw):
+        _check(cmd)
+        return _orig_os_popen(cmd, *a, **kw)
+
+    _os.system = _system
+    _os.popen = _popen
     _sys.modules['_safe_subprocess_installed'] = True
     print(
         "[SAFE-SUBPROCESS] guard установлен; разрешено: "

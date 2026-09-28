@@ -20,6 +20,19 @@ _ps_cwd = str(BASE_DIR)
 # Принудительно включаем UTF-8 в дочернем PowerShell.
 _PS_UTF8_PREFIX = ("[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; ""$ProgressPreference='SilentlyContinue'; ""$InformationPreference='SilentlyContinue'; ""$WarningPreference='SilentlyContinue'; ")
 
+# Выбор интерпретатора: pwsh (PowerShell 7) предпочтительнее,
+# fallback — powershell.exe (Windows PowerShell 5.1).
+_PS_EXE_CACHE = None
+
+def _ps_exe() -> str:
+    """Путь к PowerShell: pwsh, если установлен; иначе powershell.exe."""
+    global _PS_EXE_CACHE
+    if _PS_EXE_CACHE:
+        return _PS_EXE_CACHE
+    from shutil import which
+    _PS_EXE_CACHE = which("pwsh") or which("pwsh.exe") or "powershell.exe"
+    return _PS_EXE_CACHE
+
 
 def _ps_hint_for_command(command: str, killed_reason: str) -> str:
     """Подсказка при таймауте/тишине — с учётом того, ЧТО именно запустили."""
@@ -137,7 +150,7 @@ def run_powershell_with_cwd(command: str, timeout: int = 30, silence_timeout: fl
     proc = None
     try:
         proc = subprocess.Popen(
-            ["powershell.exe", "-NoProfile", "-Command",
+            [_ps_exe(), "-NoProfile", "-Command",
              _PS_UTF8_PREFIX + command],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,   # раздельно, чтобы декодировать по-разному

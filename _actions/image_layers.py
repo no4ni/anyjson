@@ -197,7 +197,7 @@ def _apply_color(img, brightness=1.0, contrast=1.0,
     return img
 
 
-@register(["слои", "склей", "склеить", "композит", "композитинг", "наложить"])
+@register(["слои", "слой", "склей", "склеить", "композит", "композитинг", "наложить"])
 def layers(args):
     """Собрать картинку из слоёв: фон + наложения.
 
@@ -251,6 +251,21 @@ def layers(args):
     """
     from PIL import Image
 
+    args = dict(args)
+
+    def _extract_path(d):
+        if isinstance(d, dict):
+            return (d.get("путь") or d.get("файл") or d.get("path")
+                    or d.get("src") or d.get("картинка"))
+        return None
+
+    # base_path тоже может прийти как dict
+    for _k in ("низ", "фон", "base"):
+        if isinstance(args.get(_k), dict):
+            _bp = _extract_path(args[_k])
+            if _bp:
+                args[_k] = _bp
+
     base_path = args.get("низ") or args.get("фон") or args.get("base")
     if not base_path:
         return 'Укажи нижний слой: {"слои": {"низ": "C:/bg.png"}}'
@@ -263,7 +278,90 @@ def layers(args):
     if isinstance(over, str):
         over = [over]
     if not isinstance(over, list):
-        return "❌ 'сверху' должен быть списком путей."
+        return "❌ 'сверху' должен быть списком путей или объектов."
+
+    # --- Дружелюбная нормализация: слои могут прийти как dict-объекты ---
+    # LLM часто передаёт {"сверху": [{"путь": ..., "позиции": ..., ...}]}
+    # вместо {"сверху": [path], "позиции": [[...]]}. Поддерживаем оба.
+    if any(isinstance(_x, dict) for _x in over):
+        _inline_pos, _inline_sc, _inline_al = [], [], []
+        _inline_sh, _inline_rf, _inline_cc = [], [], []
+        _over_clean = []
+        for _i, _it in enumerate(over):
+            if isinstance(_it, dict):
+                _p = _extract_path(_it)
+                if not _p:
+                    return ("❌ Слой #" + str(_i + 1)
+                            + ": объект без 'путь'/'файл'. Пример: "
+                            "{\"путь\": \"C:/x.png\", \"позиции\": [400, 400]}")
+                _over_clean.append(str(_p))
+                _inline_pos.append(_it.get("позиции", _it.get("позиция")))
+                _inline_sc.append(_it.get("масштабы", _it.get("масштаб")))
+                _inline_al.append(_it.get("прозрачность", _it.get("альфа")))
+                _inline_sh.append(_it.get("тени", _it.get("тень")))
+                _inline_rf.append(_it.get("отражения", _it.get("отражение")))
+                _inline_cc.append(_it.get("цветокоррекции",
+                                          _it.get("цветокоррекция")))
+            elif isinstance(_it, (str, Path)):
+                _over_clean.append(str(_it))
+                _inline_pos.append(None); _inline_sc.append(None)
+                _inline_al.append(None); _inline_sh.append(None)
+                _inline_rf.append(None); _inline_cc.append(None)
+            else:
+                return ("❌ Слой #" + str(_i + 1)
+                        + ": ожидается путь или объект, получено "
+                        + type(_it).__name__)
+        over = _over_clean
+        args["сверху"] = over
+
+        def _merge_parallel(arg_name, aliases, inline_list, n,
+                            coord_field=False):
+            val = args.get(arg_name)
+            for a in aliases:
+                if val is None:
+                    val = args.get(a)
+            if val is None:
+                base_l = list(inline_list)
+            elif isinstance(val, dict):
+                base_l = [val.get(str(i), val.get(i)) for i in range(n)]
+                for i in range(n):
+                    if base_l[i] is None:
+                        base_l[i] = inline_list[i]
+            elif isinstance(val, (list, tuple)):
+                base_l = list(val)
+                if (coord_field and len(base_l) == 2
+                        and all(isinstance(x, (int, float))
+                                for x in base_l)):
+                    base_l = [base_l]
+                base_l = base_l + [None] * max(0, n - len(base_l))
+                for i in range(n):
+                    if base_l[i] is None:
+                        base_l[i] = inline_list[i]
+            else:
+                base_l = [val] * n
+            return base_l
+
+        args["позиции"] = _merge_parallel(
+            "позиции", ("позиция", "position"), _inline_pos,
+            len(over), coord_field=True)
+        args["масштабы"] = _merge_parallel(
+            "масштабы", ("масштаб", "scale"), _inline_sc, len(over))
+        args["прозрачность"] = _merge_parallel(
+            "прозрачность", ("альфа", "alpha"), _inline_al, len(over))
+        args["тени"] = _merge_parallel(
+            "тени", ("тень", "shadow"), _inline_sh, len(over))
+        args["отражения"] = _merge_parallel(
+            "отражения", ("отражение", "reflection"), _inline_rf,
+            len(over))
+        # None в тенях/отражениях = «без тени/отражения».
+        # Приводим к False, чтобы валидация ниже не падала.
+        args["тени"] = [False if _x is None else _x
+                        for _x in args["тени"]]
+        args["отражения"] = [False if _x is None else _x
+                            for _x in args["отражения"]]
+        args["цветокоррекции"] = _merge_parallel(
+            "цветокоррекции", ("цветокоррекция_слоёв",),
+            _inline_cc, len(over))
 
     positions = args.get("позиции")
     if positions is None:

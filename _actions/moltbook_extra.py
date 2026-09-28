@@ -138,8 +138,16 @@ def home(args):
     except Exception as e:
         return f"❌ Ошибка запроса /api/v1/home: {e}"
 
-    if raw or not isinstance(res, dict):
+    if raw:
         return str(res)
+    # moltbook_raw_request возвращает строку "Статус: N\n{json}".
+    # Без парсинга isinstance(res, dict) всегда False — форматирование
+    # никогда не срабатывало, уходил сырой JSON.
+    if not isinstance(res, dict):
+        parsed = _parse_json_resp(res)
+        if parsed is None:
+            return str(res)
+        res = parsed
 
     # --- краткая сводка ---
     lines = []
@@ -149,28 +157,61 @@ def home(args):
                      f"(карма: {acc.get('karma', '?')}, "
                      f"непрочитанных: {acc.get('unread_notification_count', '?')})")
 
+    # объявление платформы
+    ann = res.get("latest_moltbook_announcement") or {}
+    if ann:
+        lines.append("")
+        lines.append("📣 Объявление платформы:")
+        lines.append(f"  • {ann.get('title', '?')} — {ann.get('author_name', '?')} "
+                     f"({_fmt_date(ann.get('created_at', ''))})")
+        prev = (ann.get("preview") or "").strip()
+        if prev:
+            lines.append("    " + prev[:400].replace(chr(10), " "))
+        if ann.get("post_id"):
+            lines.append(f"    ID: {ann['post_id']}")
+
     activity = res.get("activity_on_your_posts") or []
     if activity:
         lines.append(f"\n📌 Активность на твоих постах ({len(activity)}):")
         for it in activity:
             lines.append(f"  • {it.get('post_title', '?')[:80]}")
+            if it.get("post_id"):
+                lines.append(f"    ID: {it['post_id']}")
             lines.append(f"    новых: {it.get('new_notification_count', 0)}, "
-                         f"последний: {it.get('latest_at', '')[:16]}, "
+                         f"последний: {_fmt_date(it.get('latest_at', ''))}, "
                          f"от: {', '.join(it.get('latest_commenters', []) or [])}")
 
-    following = (res.get("posts_from_accounts_you_follow") or {}).get("posts") or []
+    follow_block = res.get("posts_from_accounts_you_follow") or {}
+    following = follow_block.get("posts") or []
     if following:
-        lines.append(f"\n📰 Посты подписок ({len(following)}):")
+        total_f = follow_block.get("total_following", "?")
+        lines.append(f"\n📰 Посты подписок ({len(following)} из {total_f} подписок):")
         for post in following:
-            lines.append(f"  • {post.get('title', '?')[:80]} — "
-                         f"{post.get('author_name', '?')} "
-                         f"(↑{post.get('upvotes', 0)}, 💬{post.get('comment_count', 0)})")
+            lines.append(f"  • {post.get('title', '?')[:80]}")
+            meta = (f"    {post.get('author_name', '?')} "
+                    f"• m/{post.get('submolt_name', '?')} "
+                    f"• {_fmt_date(post.get('created_at', ''))} "
+                    f"• ↑{post.get('upvotes', 0)} 💬{post.get('comment_count', 0)}")
+            lines.append(meta)
+            if post.get("post_id"):
+                lines.append(f"    ID: {post['post_id']}")
+            prev = (post.get("content_preview") or "").strip()
+            if prev:
+                lines.append(f"    {prev[:300].replace(chr(10), ' ')}")
+        if follow_block.get("see_more"):
+            lines.append(f"  → {follow_block['see_more']}")
 
     todo = res.get("what_to_do_next") or []
     if todo:
         lines.append("\n💡 Что дальше:")
         for t in todo[:5]:
             lines.append(f"  • {t}")
+
+    ql = res.get("quick_links") or {}
+    if ql:
+        lines.append("\n🔗 Быстрые ссылки (эндпоинты):")
+        for k, v in ql.items():
+            lines.append(f"  • {k}: {v}")
 
     return "\n".join(lines).rstrip() if lines else str(res)
 
@@ -617,7 +658,40 @@ def raw_request(args):
     if not _need_tor():
         return "❌ Tor недоступен."
     from _actions._tools_moltbook import moltbook_raw_request
-    return moltbook_raw_request(method, url, json_data=body)
+    _fresh = bool(args.get("обновить"))
+    txt = moltbook_raw_request(method, url, json_data=body,
+                                use_cache=not _fresh)
+    # --- постраничный вывод для больших ответов ---
+    try:
+        _size = int(args.get("размер") or 20000)
+    except (TypeError, ValueError):
+        _size = 20000
+    if _size <= 0:
+        _size = 20000
+    _total = len(txt)
+    if _total <= _size:
+        return txt
+    try:
+        _page = int(args.get("страница") or 1)
+    except (TypeError, ValueError):
+        _page = 1
+    if _page < 1:
+        _page = 1
+    _tp = max(1, (_total + _size - 1) // _size)
+    if _page > _tp:
+        _page = _tp
+    _start = (_page - 1) * _size
+    _end = min(_start + _size, _total)
+    _chunk = txt[_start:_end]
+    _out = ("Статус: " + str(_total) + " симв.\n"
+            + "Страница " + str(_page) + "/" + str(_tp)
+            + " (символов " + str(_start + 1) + "-" + str(_end)
+            + ")\n" + "-" * 50 + "\n" + _chunk)
+    if _page < _tp:
+        _out += ('\n\n➡️ Дальше: "страница": ' + str(_page + 1))
+    if _page > 1:
+        _out += ('\n\n◀ Назад: "страница": ' + str(_page - 1))
+    return _out
 
 
 @register(["молтбук_проверка", "moltbook_check"])
@@ -665,3 +739,12 @@ def restart_tor(args):
     """
     return _restart_tor()
 
+
+
+# молтбук_запрос / молтбук_проверка принимают произвольные ключи
+# (урл, метод, тело, json, endpoint, путь) — AST видит не всё.
+raw_request._any_params = True
+try:
+    check._any_params = True
+except NameError:
+    pass

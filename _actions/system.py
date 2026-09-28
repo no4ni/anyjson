@@ -166,9 +166,9 @@ def run_python(args):
     _FORBIDDEN = [
         (re.compile(r"\bos\s*\.\s*system\b"), "os.system"),
         (re.compile(r"\bsubprocess\b"), "subprocess"),
-        (re.compile(r"\b__import__\b"), "__import__"),
         (re.compile(r"\beval\s*\("), "eval("),
         (re.compile(r"\bexec\s*\("), "exec("),
+        (re.compile(r"\bshutil\s*\.\s*rmtree\b"), "shutil.rmtree"),
     ]
     for _pat, _name in _FORBIDDEN:
         if _pat.search(script):
@@ -229,7 +229,14 @@ def run_python(args):
     env = os.environ.copy()
     env['PYTHONIOENCODING'] = 'utf-8'
     env['PYTHONUNBUFFERED'] = '1'
-    cmd = [sys.executable, '-u', str(target)] + extra_args
+    # Защитный wrapper: audit hook блокирует запись/удаление в системных
+    # папках и os.system/subprocess.Popen внутри скрипта. Regex-блок выше
+    # остаётся вторым слоем (быстрый отказ без запуска процесса).
+    _guard = Path(__file__).resolve().parent.parent / '_core' / '_py_guard.py'
+    if _guard.is_file():
+        cmd = [sys.executable, '-u', str(_guard), str(target)] + extra_args
+    else:
+        cmd = [sys.executable, '-u', str(target)] + extra_args
     try:
         # "питон" — доверенная команда: разрешаем ей запускать .py
         # из любой папки (в т.ч. C:\Temp, E:\scripts и т.д.)

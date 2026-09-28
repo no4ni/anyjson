@@ -199,6 +199,45 @@ def _run_with_progress(fn):
         poller.join(timeout=2)
 
 
+def capture_forge_pid():
+    """Если Forge жив, а pid-файла нет — найти PID по порту и записать.
+    Так anyjson «берёт шефство» над уже запущенным Forge
+    и гасит его при выходе.
+    """
+    pid_file = MY_DIR / "stabledif.pid"
+    if pid_file.exists():
+        return
+    if not _is_alive(timeout=1):
+        return
+    try:
+        import subprocess as _sp
+        r = _sp.run(
+            ["netstat", "-ano"],
+            capture_output=True, text=True, timeout=5,
+            creationflags=getattr(_sp, "CREATE_NO_WINDOW", 0),
+        )
+        needle = ":" + str(STABLEDIF_PORT)
+        for line in (r.stdout or "").splitlines():
+            parts = line.split()
+            if len(parts) < 4:
+                continue
+            if "LISTENING" not in parts[3].upper():
+                continue
+            if needle not in parts[1]:
+                continue
+            try:
+                pid = int(parts[4])
+            except (ValueError, IndexError):
+                continue
+            try:
+                pid_file.write_text(str(pid))
+            except Exception:
+                pass
+            return
+    except Exception:
+        pass
+
+
 def _ensure_forge():
     """Внутренняя: поднять Forge, если не отвечает. Не команда."""
     if _is_alive():
@@ -219,6 +258,23 @@ def _ensure_forge():
     if _wait_ready(180):
         return "Forge запущен (pid " + str(p.pid) + "), API на " + _BASE
     return "pid " + str(p.pid) + ", но API не ответил за 180с. Смотри " + str(_LOG)
+
+
+def _sd_models_list(retries=3, delay=1.0):
+    """GET /sd-models с ретраем: Forge отдаёт пустой список во время рескана."""
+    import time as _t
+    for _i in range(retries):
+        try:
+            _, _ms = _http("GET", "/sdapi/v1/sd-models", timeout=10)
+        except Exception as _e:
+            if _i == retries - 1:
+                raise
+            _t.sleep(delay)
+            continue
+        if _ms:
+            return _ms
+        _t.sleep(delay)
+    return []
 
 
 @register(["стабилдиф_статус", "форж", "forge", "стабилдиф_инфо"])
@@ -244,7 +300,7 @@ def sd_status(args):
     except Exception as e:
         return "ошибка запроса options: " + str(e)
     try:
-        _, ms = _http("GET", "/sdapi/v1/sd-models", timeout=10)
+        ms = _sd_models_list()
     except Exception as e:
         return "ошибка запроса моделей: " + str(e)
     _last = _get_last_model() or "(не задана)"
@@ -269,27 +325,118 @@ def sd_status(args):
     return "\n".join(lines)
 
 
+_MODEL_CATEGORIES = [
+    ("\u0427\u0435\u043a\u043f\u043e\u0439\u043d\u0442\u044b",  "checkpoints",  ["Stable-diffusion"]),
+    ("LoRA",          "lora",         ["Lora"]),
+    ("ControlNet",    "controlnet",   ["ControlNet"]),
+    ("VAE",           "vae",          ["VAE"]),
+    ("\u0413\u0438\u043f\u0435\u0440\u0441\u0435\u0442\u0438",     "hypernet",     ["hypernetworks"]),
+    ("\u0410\u043f\u0441\u043a\u0435\u0439\u043b\u0435\u0440\u044b",    "upscale",      ["ESRGAN", "GFPGAN", "Codeformer"]),
+    ("IP-Adapter",    "ipadapter",    ["ipadapter"]),
+    ("CLIP vision",   "clip",         ["clip_vision"]),
+    ("SVD",           "svd",          ["svd"]),
+]
+
+_MODEL_EXTS = {".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".onnx", ".th"}
+
+
 @register(["стабилдиф_модели", "модели_стабилдиф"])
 def sd_models(args):
-    """Список моделей."""
-    if not _is_alive():
-        startup = _ensure_forge()
-        if not _is_alive():
-            return "Не удалось поднять Forge: " + startup
+    """Список файлов моделей на диске (без запросов к Forge).
+
+    Параметры:
+      тип    — фильтр категории: checkpoints / lora / controlnet / vae /
+               hypernet / upscale / ipadapter / clip / svd / все (по умолч. все)
+      пути   — показывать полные пути (по умолч. false)
+    """
+    args = args or {}
+    _filter = str(args.get("\u0442\u0438\u043f") or "\u0432\u0441\u0435").strip().lower()
+    show_paths = bool(args.get("\u043f\u0443\u0442\u0438", False))
+
+    base = Path(STABLEDIF_DIR) / "webui" / "models"
+    if not base.is_dir():
+        return "\u041f\u0430\u043f\u043a\u0430 мо\u0434\u0435\u043b\u0435\u0439 н\u0435 н\u0430\u0439\u0434\u0435\u043d\u0430: " + str(base)
+
+    known = {c[1] for c in _MODEL_CATEGORIES} | {"\u0432\u0441\u0435", "all"}
+    if _filter not in known:
+        return ("\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u044b\u0439 \u0442\u0438\u043f: " + _filter
+                + "\n\u0414\u043e\u0441\u0442\u0443\u043f\u043d\u044b\u0435: "
+                + ", ".join(c[1] for c in _MODEL_CATEGORIES) + ", \u0432\u0441\u0435")
+
+    lines = []
+    total = 0
+    for label, key, subs in _MODEL_CATEGORIES:
+        if _filter not in ("\u0432\u0441\u0435", "all") and _filter != key:
+            continue
+        files = []
+        for sub in subs:
+            d = base / sub
+            if not d.is_dir():
+                continue
+            for f in d.rglob("*"):
+                if not f.is_file():
+                    continue
+                if f.suffix.lower() in _MODEL_EXTS:
+                    files.append(f)
+        files.sort(key=lambda x: str(x).lower())
+        if not files:
+            continue
+        lines.append(label + " (" + str(len(files)) + "):")
+        for f in files:
+            rel = f.relative_to(base).as_posix()
+            if show_paths:
+                lines.append("  - " + f.name + "  [" + f.suffix.lower().lstrip(".") + "]  " + str(f))
+            else:
+                lines.append("  - " + rel)
+        total += len(files)
+        lines.append("")
+
+    if not lines:
+        return "\u041c\u043e\u0434\u0435\u043b\u0435\u0439 \u043d\u0435\u0442 \u0432: " + str(base)
+    lines.insert(0, "\u0412\u0441\u0435\u0433\u043e: " + str(total) + " \u0444\u0430\u0439\u043b\u043e\u0432")
+    return chr(10).join(lines).rstrip()
+
+
+def _sd_wh(args):
+    w = int(args.get("ширина") or 512)
+    h = int(args.get("высота") or 512)
+    m = max(w, h)
+    if m > 1024:
+        k = 1024 / m
+        w = max(1, int(round(w * k)))
+        h = max(1, int(round(h * k)))
+    return {"width": w, "height": h}
+
+
+def _sd_wht(args):
+    """Ширина/высота/шаги с ограничением W*H*S <= 10M.
+
+    Если произведение больше — синхронно меньшаем всё на кубический корень
+    отношения. Пропорции W:H сохраняются (с точностью до округления).
+    """
+    d = _sd_wh(args)
+    w, h = d["width"], d["height"]
     try:
-        _http("POST", "/sdapi/v1/refresh-checkpoints", {}, timeout=30)
-    except Exception:
-        pass
-    try:
-        _, ms = _http("GET", "/sdapi/v1/sd-models", timeout=10)
-    except Exception as e:
-        return "ошибка запроса: " + str(e)
-    if not ms:
-        return "моделей нет"
-    lines = ["Моделей: " + str(len(ms))]
-    for m in ms:
-        lines.append("  - " + str(m.get("model_name", "?")) + "  [" + str(m.get("title", "?")) + "]")
-    return "\n".join(lines)
+        st = int(args.get("шаги") or 25)
+    except (TypeError, ValueError):
+        st = 25
+    st = max(1, min(st, 35))
+
+    LIMIT = 10_000_000
+    prod = w * h * st
+    if prod > LIMIT:
+        k = (LIMIT / prod) ** (1.0 / 3.0)
+        w = max(1, int(round(w * k)))
+        h = max(1, int(round(h * k)))
+        st = max(1, int(round(st * k)))
+        # страховка от округления вверх
+        while w * h * st > LIMIT and st > 1:
+            st -= 1
+        while w * h * st > LIMIT and h > 1:
+            h -= 1
+        while w * h * st > LIMIT and w > 1:
+            w -= 1
+    return {"width": w, "height": h, "steps": st}
 
 
 @register(["стабилдиф", "сгенерировать", "нарисуй", "txt2img"])
@@ -322,12 +469,21 @@ def sd_txt2img(args):
         if not _is_alive():
             return "Не удалось поднять Forge: " + startup
 
+    # Ограничение W*H*S <= 10M с диагностикой сжатия.
+    _wht = _sd_wht(args)
+    try:
+        _w0 = int(args.get("ширина") or 512)
+        _h0 = int(args.get("высота") or 512)
+    except (TypeError, ValueError):
+        _w0 = _h0 = 512
+    try:
+        _s0 = max(1, min(int(args.get("шаги") or 25), 35))
+    except (TypeError, ValueError):
+        _s0 = 25
     body = {
         "prompt": str(prompt),
         "negative_prompt": str(args.get("негатив") or ""),
-        "width": int(args.get("ширина") or 512),
-        "height": int(args.get("высота") or 512),
-        "steps": max(1, min(int(args.get("шаги") or 25), 35)),
+        **_wht,
         "cfg_scale": float(args.get("жёсткость") or args.get("cfg") or 7.0),
         "seed": int(args.get("зерно") or args.get("seed") or -1),
         "sampler_name": str(args.get("сэмплер") or "DPM++ 2M"),
@@ -394,8 +550,6 @@ def sd_txt2img(args):
 
     to_buf = args.get("в_контекст")
     if to_buf is None:
-        to_buf = args.get("в_контекст")
-    if to_buf is None:
         to_buf = args.get("в_буфер", True)
     if isinstance(to_buf, str):
         to_buf = to_buf.strip().lower() not in ("0", "false", "нет", "off", "")
@@ -408,7 +562,15 @@ def sd_txt2img(args):
         except Exception as e:
             return "PNG: " + str(out_path) + " (в буфер не попал: " + str(e) + ")"
 
-    return prefix + "OK " + str(img.size[0]) + "x" + str(img.size[1]) + " -> " + out_path.name + " -> буфер"
+    tail = " -> буфер" if to_buf else " -> диск"
+    _actual = str(img.size[0]) + "x" + str(img.size[1])
+    if (_wht["width"], _wht["height"], _wht["steps"]) != (_w0, _h0, _s0):
+        _chain = (str(_w0) + "x" + str(_h0) + "@" + str(_s0)
+                  + " → " + str(_wht["width"]) + "x" + str(_wht["height"]) + "@" + str(_wht["steps"])
+                  + " → OK " + _actual)
+    else:
+        _chain = "OK " + _actual
+    return prefix + str(out_path) + tail + " [" + _chain + "]"
 
 @register(["перерисуй", "нарисуй_по", "img2img", "стилизация", "обработка_картинки"])
 def sd_img2img(args):
@@ -500,6 +662,28 @@ def sd_img2img(args):
         h = int(src_h * k)
         w = max(64, (w // 8) * 8)
         h = max(64, (h // 8) * 8)
+
+    # Ограничение W*H*S <= 10M (синхронно, с сохранением пропорций).
+    _wht_limited = False
+    try:
+        _s0 = int(body.get("steps") or 25)
+    except (TypeError, ValueError):
+        _s0 = 25
+    _LIMIT = 10_000_000
+    _prod = w * h * _s0
+    if _prod > _LIMIT:
+        _k = (_LIMIT / _prod) ** (1.0 / 3.0)
+        w = max(64, (int(round(w * _k)) // 8) * 8)
+        h = max(64, (int(round(h * _k)) // 8) * 8)
+        _s = max(1, int(round(_s0 * _k)))
+        while w * h * _s > _LIMIT and _s > 1:
+            _s -= 1
+        while w * h * _s > _LIMIT and h > 64:
+            h -= 8
+        while w * h * _s > _LIMIT and w > 64:
+            w -= 8
+        body["steps"] = _s
+        _wht_limited = True
     body["width"] = w
     body["height"] = h
 
@@ -564,8 +748,6 @@ def sd_img2img(args):
 
     to_buf = args.get("в_контекст")
     if to_buf is None:
-        to_buf = args.get("в_контекст")
-    if to_buf is None:
         to_buf = args.get("в_буфер", True)
     if isinstance(to_buf, str):
         to_buf = to_buf.strip().lower() not in ("0", "false", "нет", "off", "")
@@ -578,7 +760,12 @@ def sd_img2img(args):
         except Exception as e:
             return "PNG: " + str(out_path) + " (в буфер не попал: " + str(e) + ")"
 
-    return prefix + "OK " + str(img.size[0]) + "x" + str(img.size[1]) + " -> " + out_path.name + " -> буфер"
+    tail = " -> буфер" if to_buf else " -> диск"
+    _note = ""
+    if _wht_limited:
+        _note = (" [сжато: " + str(w) + "x" + str(h)
+                 + "@" + str(body.get("steps")) + "]")
+    return prefix + "OK " + str(img.size[0]) + "x" + str(img.size[1]) + " -> " + str(out_path) + tail + _note
 
 def _svg_to_alpha(svg_path):
     """SVG -> PIL.Image (L mode, 255 = непрозрачно)."""
@@ -796,8 +983,6 @@ def sd_inpaint(args):
 
     to_buf = args.get("в_контекст")
     if to_buf is None:
-        to_buf = args.get("в_контекст")
-    if to_buf is None:
         to_buf = args.get("в_буфер", True)
     if isinstance(to_buf, str):
         to_buf = to_buf.strip().lower() not in ("0", "false", "нет", "off", "")
@@ -810,8 +995,9 @@ def sd_inpaint(args):
         except Exception as e:
             return "PNG: " + str(out_path) + " (в буфер не попал: " + str(e) + ")"
 
+    tail = " -> буфер" if to_buf else " -> диск"
     return (prefix + "OK " + str(img.size[0]) + "x" + str(img.size[1])
-            + " -> " + out_path.name + " -> буфер")
+            + " -> " + str(out_path) + tail)
 
 
 _pose_aliases = {
@@ -926,8 +1112,6 @@ def sd_pose(args):
             pass
         img.save(str(out_path))
     to_buf = args.get("в_контекст")
-    if to_buf is None:
-        to_buf = args.get("в_контекст")
     if to_buf is None:
         to_buf = args.get("в_буфер", True)
     if isinstance(to_buf, str):
@@ -1045,4 +1229,38 @@ def _controlnet_block(ctrl, default_prefix="openpose"):
     }
     return {"unit": unit}
 
+@register(["моя_галерея", "галерея"])
+def my_gallery(args: dict) -> str:
+    """Все сгенерированные картинки в профиле.
 
+    Параметры:
+      сортировка — "новые" (по умолч.) или "старые"
+      расширение — "png" (по умолч.) / "jpg" / "все"
+      лимит — сколько последних вернуть (0 = все)
+    """
+    order = str(args.get("сортировка") or "новые").strip().lower()
+    ext = str(args.get("расширение") or "png").strip().lower().lstrip(".")
+    limit = int(args.get("лимит") or 0)
+
+    if ext in ("все", "all", "*"):
+        pattern = "*"
+    else:
+        pattern = "*." + ext
+
+    if not _OUT.exists():
+        return "Галерея пуста: " + str(_OUT)
+
+    files = [f for f in _OUT.glob(pattern) if f.is_file()]
+    if not files:
+        return "Галерея пуста: " + str(_OUT)
+
+    reverse = order not in ("старые", "old", "asc")
+    files.sort(key=lambda f: f.stat().st_mtime, reverse=reverse)
+
+    if limit > 0:
+        files = files[:limit]
+
+    lines = ["Галерея (" + str(len(files)) + "):"]
+    for f in files:
+        lines.append(str(f))
+    return chr(10).join(lines)

@@ -59,7 +59,7 @@ def fetch_page_content(url: str, max_length: int = 100_000,
     proxies = None
     if use_tor:
         if ensure_tor():
-            proxies = {"http": "socks5://127.0.0.1:9050", "https": "socks5://127.0.0.1:9050"}
+            proxies = {"http": "socks5h://127.0.0.1:9050", "https": "socks5h://127.0.0.1:9050"}
         else:
             log("Tor \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d, \u0437\u0430\u043f\u0440\u043e\u0441 \u0431\u0435\u0437 \u043f\u0440\u043e\u043a\u0441\u0438")
 
@@ -95,6 +95,11 @@ def fetch_page_content(url: str, max_length: int = 100_000,
                 soup = BeautifulSoup(content, 'html.parser')
                 for script in soup(["script", "style"]):
                     script.decompose()
+                # Ссылки → markdown [текст](url), иначе URL теряются
+                # при get_text и агент видит только голый текст без ссылок.
+                for a in soup.find_all('a', href=True):
+                    _t = a.get_text(strip=True) or a['href']
+                    a.replace_with(f"[{_t}]({a['href']})")
                 text = soup.get_text(separator='\n', strip=True)
                 lines = [line.strip() for line in text.splitlines() if line.strip()]
                 content = '\n'.join(lines)

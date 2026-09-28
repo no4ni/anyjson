@@ -14,6 +14,129 @@ from _config import (
 )
 
 
+_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".bmp", ".webp", ".gif", ".svg", ".tif", ".tiff")
+
+
+def _env_with_etalons():
+    """os.environ + ANYJSON_ETALONS_DIR -> data/etalons. Для внешних CLI."""
+    import os as _os_e
+    env = dict(_os_e.environ)
+    try:
+        from _config import BASE_DIR as _BD
+        env["ANYJSON_ETALONS_DIR"] = str(_BD / "data" / "etalons")
+    except Exception:
+        pass
+    return env
+
+
+def _redirect_if_image(path, args):
+    """Если путь — картинка, перенаправить в прочитать_полностью."""
+    if Path(path).suffix.lower() not in _IMAGE_EXTS:
+        return None
+    try:
+        from _actions.files import read_full
+    except Exception as e:
+        return "Ошибка: не удалось вызвать прочитать_полностью: " + str(e)
+    return read_full(args)
+
+
+def _ensure_companion_srt(video_path):
+    """Если рядом с видео есть <stem>.<lang>.srt/.vtt (напр. .ru.srt),
+    но нет <stem>.srt — создать его.
+
+    .srt — hardlink (fallback — копия).
+    .vtt — конвертируется в .srt (формат почти совпадает, разница
+    в WEBVTT-шапке и запятой вместо точки в таймстемпах).
+    .ass/.ssa — пропускаются (нет конвертера).
+
+    Возвращает Path созданного файла или None.
+    """
+    v = Path(str(video_path))
+    if not v.exists():
+        return None
+    parent = v.parent
+    stem = v.stem
+    exact = parent / (stem + ".srt")
+    if exact.exists():
+        return None
+
+    # 1) .srt-варианты: <stem>.<lang>.srt
+    try:
+        srt_candidates = sorted(parent.glob(stem + ".*.srt"))
+    except Exception:
+        srt_candidates = []
+    for cand in srt_candidates:
+        if cand.name == exact.name:
+            continue
+        try:
+            import os as _os
+            _os.link(str(cand), str(exact))
+            return exact
+        except Exception:
+            try:
+                import shutil as _sh
+                _sh.copy2(str(cand), str(exact))
+                return exact
+            except Exception:
+                continue
+
+    # 2) .vtt-варианты: <stem>.<lang>.vtt → конвертируем в .srt
+    try:
+        vtt_candidates = sorted(parent.glob(stem + ".*.vtt"))
+    except Exception:
+        vtt_candidates = []
+    for cand in vtt_candidates:
+        try:
+            _vtt_to_srt(cand, exact)
+            return exact
+        except Exception:
+            continue
+
+    return None
+
+
+def _vtt_to_srt(src, dst):
+    """Простой конвертер WebVTT → SRT.
+
+    Не претендует на полную поддержку спецификации: убирает
+    WEBVTT-шапку и STYLE/NOTE-блоки, переводит таймстемпы
+    «00:00:01.000» → «00:00:01,000», добавляет номера блоков.
+    """
+    import re as _re_vtt
+    raw = Path(str(src)).read_text(encoding="utf-8-sig")
+    raw = raw.replace("\r\n", "\n").replace("\r", "\n")
+    # режем WEBVTT-шапку и STYLE/NOTE-секции
+    raw = _re_vtt.sub(r"^WEBVTT.*?\n\n", "", raw, count=1, flags=_re_vtt.DOTALL)
+    raw = _re_vtt.sub(r"\n(STYLE|NOTE|REGION)\b[^\n]*\n(?:.*?\n\n)", "\n\n",
+                       raw, flags=_re_vtt.DOTALL)
+
+    out_blocks = []
+    idx = 1
+    for block in raw.split("\n\n"):
+        lines = [l for l in block.split("\n") if l.strip()]
+        if not lines:
+            continue
+        # ищем строку с таймстемпом
+        ts_pos = -1
+        for i, l in enumerate(lines):
+            if "-->" in l:
+                ts_pos = i
+                break
+        if ts_pos < 0:
+            continue
+        ts = lines[ts_pos]
+        ts = ts.split(" ")[0] + " --> " + ts.split(" ")[2] if len(ts.split(" ")) >= 3 else ts
+        ts = ts.replace(".", ",")
+        # текст — всё после таймстемпа
+        text_lines = lines[ts_pos + 1:]
+        # убрать vtt-теги вроде <c.classname>, <00:00:01.000>
+        text_lines = [_re_vtt.sub(r"<[^>]+>", "", t) for t in text_lines]
+        out_blocks.append(str(idx) + "\n" + ts + "\n" + "\n".join(text_lines))
+        idx += 1
+
+    Path(str(dst)).write_text("\n\n".join(out_blocks) + "\n", encoding="utf-8")
+
+
 def _run_cli(args_list, timeout=120):
     if not CLI.exists():
         return f"❌ Скрипт не найден: {CLI}"
@@ -21,7 +144,8 @@ def _run_cli(args_list, timeout=120):
     try:
         r = subprocess.run(
             cmd, capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=timeout
+            encoding="utf-8", errors="replace", timeout=timeout,
+            env=_env_with_etalons(),
         )
     except subprocess.TimeoutExpired:
         return f"❌ Таймаут {timeout}с"
@@ -34,39 +158,108 @@ def _run_cli(args_list, timeout=120):
     return text
 
 
-def _run_cli2(args_list, timeout=120):
+def _run_cli2(args_list, timeout=120, no_clip=False):
     if not CLI2.exists():
         return f"❌ Скрипт не найден: {CLI2}"
+    if no_clip:
+        args_list = list(args_list) + ["--no-clip"]
     cmd = [sys.executable, str(CLI2)] + args_list
     try:
         r = subprocess.run(
             cmd, capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=timeout
+            encoding="utf-8", errors="replace", timeout=timeout,
+            env=_env_with_etalons(),
         )
     except subprocess.TimeoutExpired:
         return f"❌ Таймаут {timeout}с"
     out = (r.stdout or "") + (r.stderr or "")
     text = out.strip() or f"Готово (код {r.returncode})"
-    if "CLIP:" in text:
+    if "CLIP:" in text and not no_clip:
         text = "[BUF] " + text
     return text
 
 
-def _run_cli3(args_list, timeout=600):
-    """Отдельный wrapper для spectro_cli (первый запуск может быть долгим)."""
+def _run_cli3(args_list, timeout=None, no_clip=False):
+    """Отдельный wrapper для spectro_cli (первый запуск может быть долгим).
+
+    stderr показывается в реальном времени (там прогресс из videohear2),
+    stdout копится и возвращается как результат.
+    """
     if not CLI3.exists():
         return f"❌ Скрипт не найден: {CLI3}"
+    if no_clip:
+        args_list = list(args_list) + ["--no-clip"]
     cmd = [sys.executable, str(CLI3)] + args_list
+
+    import threading as _th
+    stdout_buf = []
+    stderr_buf = []
+
     try:
-        r = subprocess.run(
-            cmd, capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=timeout
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, encoding="utf-8", errors="replace",
+            bufsize=1,
+            env=_env_with_etalons(),
         )
-    except subprocess.TimeoutExpired:
+    except Exception as e:
+        return f"❌ Запуск не удался: {e}"
+
+    _NOISE_SKIP = (
+        "FT_New_Face failed with index",
+        "pkg_resources is deprecated",
+        "from pkg_resources import",
+        "DeprecationWarning: pkg_resources",
+    )
+    def _is_noise(s):
+        return any(m in s for m in _NOISE_SKIP)
+
+    def _stream_pump(stream, buf, live):
+        try:
+            for line in iter(stream.readline, ""):
+                buf.append(line)
+                if live and not _is_noise(line):
+                    try:
+                        sys.stderr.write(line)
+                        sys.stderr.flush()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        finally:
+            try:
+                stream.close()
+            except Exception:
+                pass
+
+    t_out = _th.Thread(target=_stream_pump, args=(proc.stdout, stdout_buf, False), daemon=True)
+    t_err = _th.Thread(target=_stream_pump, args=(proc.stderr, stderr_buf, True), daemon=True)
+    t_out.start()
+    t_err.start()
+
+    _timed_out = False
+    if timeout is None:
+        proc.wait()
+    else:
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            _timed_out = True
+            try:
+                proc.kill()
+            except Exception:
+                pass
+
+    t_out.join(timeout=2)
+    t_err.join(timeout=2)
+
+    if _timed_out:
         return f"❌ Таймаут {timeout}с (первый запуск может считать спектрограмму долго)"
-    out = (r.stdout or "") + (r.stderr or "")
-    text = out.strip() or f"Готово (код {r.returncode})"
-    if "CLIP:" in text:
+
+    text = "".join(stdout_buf).strip()
+    if not text:
+        text = f"Готово (код {proc.returncode})"
+    if "CLIP:" in text and not no_clip:
         text = "[BUF] " + text
     return text
 
@@ -395,25 +588,50 @@ def _stop_zapret_if_started():
     _zapret_started = False
 
 
-@register("смотреть_видео")
+@register(["смотреть_видео", "посмотреть_движение"])
 def watch_video(args):
     """Кадр видео на середине реплики N + субтитр -> буфер.
     Параметры:
       путь     — файл видео (обязательно)
       номер    — индекс реплики (по умолчанию 0)
-      стрелки  — true/false, по умолчанию TRUE. false — отключить
+      стрелки  — маркеры направления градиента яркости движения
+                 (не статический градиент — берётся с временного следа).
+                 true/false, по умолчанию TRUE. false — отключить
     """
     video = args.get("путь") or args.get("видео")
     if not video:
         return 'Укажи путь: {"смотреть_видео": {"путь": "...", "номер": 0}}'
 
-    cmd = [str(video), "--номер", str(int(args.get("номер", 0) or 0))]
+    _redir = _redirect_if_image(video, args)
+    if _redir is not None:
+        return _redir
+
+    _ensure_companion_srt(video)
+
+    _tc = args.get("в_контекст")
+    if _tc is None:
+        _tc = args.get("в_буфер", True)
+    if isinstance(_tc, str):
+        _tc = _tc.strip().lower() not in ("0", "false", "нет", "off", "")
+    if _tc is False:
+        return ("❌ смотреть_видео: \"в_контекст\": false не поддерживается — "
+                "результат идёт только в контекст. Убери параметр.")
+
+    _rep = args.get("номер")
+    if _rep is None:
+        _rep = args.get("реплика")
+    cmd = [str(video), "--номер", str(int(_rep or 0))]
     if args.get("стрелки") is False or args.get("без_стрелок"):
         cmd.append("--без_стрелок")
     if args.get("высота"):
         cmd += ["--высота", str(int(args["высота"]))]
 
     result = _run_cli(cmd)
+
+    # Если картинка ушла в буфер — в ответ только короткая строка,
+    # без технического дампа CLI.
+    if isinstance(result, str) and result.lstrip().startswith("[BUF]"):
+        return "[BUF] Картинка в буфере обмена"
 
     # Если субтитров нет — подсказать кадр+субтитр с ручной секундой
     _low = (result or "").lower()
@@ -434,7 +652,57 @@ def list_replicas(args):
     video = args.get("путь") or args.get("видео")
     if not video:
         return 'Укажи путь: {"список_реплик": {"путь": "..."}}'
-    return _run_cli([str(video), "--список"])
+    _ensure_companion_srt(video)
+    out = _run_cli([str(video), "--список"])
+    # SUBS: ... убираем — это путь к .srt, не нужен в ответе
+    _raw = [ln for ln in out.splitlines()
+        if not ln.strip().startswith("SUBS:")]
+    out = "\n".join(_raw)
+    try:
+        limit = int(args.get("лимит", 10))
+    except (TypeError, ValueError):
+        limit = 10
+    # 0/отрицательные/больше 10 — к дефолту 10. Без "0 = все".
+    if limit < 1 or limit > 10:
+        limit = 10
+    
+    # делим на шапку (TOTAL) и реплики (начинаются с цифры)
+    header, reps = [], []
+    for ln in out.splitlines():
+        s = ln.strip()
+        if s and s[0].isdigit():
+            reps.append(ln)
+        else:
+            header.append(ln)
+    
+    # с / по — диапазон реплик. По умолч. с=0, по=с+limit-1. Кап 10.
+    try:
+        since = int(args.get("с", 0))
+    except (TypeError, ValueError):
+        since = 0
+    if since < 0:
+        since = 0
+    try:
+        _upto_raw = args.get("по")
+        _upto = int(_upto_raw) if _upto_raw is not None else None
+    except (TypeError, ValueError):
+        _upto = None
+    
+    total = len(reps)
+    if since >= total:
+        return "\n".join(header + ["… реплик с " + str(since)
+            + " нет; всего " + str(total)])
+    
+    _end = since + limit
+    if _upto is not None:
+        _end = min(_end, _upto + 1)
+    _end = min(_end, total)
+    _shown = reps[since:_end]
+    if len(_shown) == total and since == 0:
+        return "\n".join(header + _shown)
+    note = ("… (реплики " + str(since) + "–" + str(_end - 1)
+        + " из " + str(total) + ")")
+    return "\n".join(header + _shown + [note])
 
 
 @register("скачать_видео")
@@ -536,13 +804,23 @@ def download_video(args):
 
     msg = f"✅ Скачано: {title}\n"
     msg += f"📁 Папка: {out_dir.resolve()}\n"
+    _video_stem = None
     if media:
         _sz = media[0].stat().st_size / (1024 * 1024)
         msg += f"🎬 {media[0].name}  ({_sz:.1f} МБ)\n"
+        _video_stem = media[0].stem
     else:
         msg += f"⚠️ Видеофайл не найден в {out_dir}\n"
-    if subs:
-        msg += f"📄 {subs[0].name}\n"
+    # Показываем только те .srt/.vtt, чей stem совпадает с видео.
+    # Раньше брался самый свежий .srt в папке — в D:\Загрузки всегда
+    # что-то лежит, и команда выдавала чужой файл.
+    _mine = []
+    if _video_stem:
+        for _s in subs:
+            if _s.stem == _video_stem or _s.stem.startswith(_video_stem + "."):
+                _mine.append(_s)
+    if _mine:
+        msg += f"📄 {_mine[0].name}\n"
 
     # автосмотр первого кадра, если попросили
     if args.get("смотреть_после_скачивания") and media:
@@ -558,6 +836,212 @@ def download_video(args):
 
     return msg
 
+
+@register(["скачать_субтитры", "скачать_сабы", "вытащить_субтитры"])
+def download_subtitles(args):
+    """Скачать только субтитры видео (yt-dlp, без скачивания самого видео).
+
+    Параметры:
+      url        — ссылка на видео (обязательно), алиасы: ссылка, цель
+      язык       — код языка (по умолч. "ru"), можно через запятую
+      формат     — vtt (по умолч.) / srt / ass / best
+      авто       — true: авто-субтитры (по умолч.), false: только ручные
+      все_языки  — true: скачать все доступные языки (по умолч. false)
+      путь       — папка для сохранения, алиасы: папка, куда
+                   (по умолчанию — <профиль>/subtitles)
+
+    Примеры:
+      {"скачать_субтитры": {"url": "https://...", "язык": "ru"}}
+      {"скачать_субтитры": {"ссылка": "https://...", "формат": "srt",
+                             "все_языки": true}}
+    """
+    import yt_dlp
+    from _config import MY_DIR
+
+    url = (args.get("url") or args.get("ссылка")
+           or args.get("цель") or args.get("target") or "").strip()
+    if not url:
+        return "Укажи url: {\"скачать_субтитры\": {\"url\": \"https://...\"}}"
+
+    import re as _re_url
+    _is_url = bool(_re_url.match(r"^https?://[^\s]+\.[^\s]+", url, _re_url.IGNORECASE))
+    if not _is_url:
+        return (
+            "❌ Это не похоже на ссылку: " + repr(url) + "\n"
+            "   Нужен полный URL вида https://...\n\n"
+            "💡 URL можно найти командой:\n"
+            "   {\"веб_поиск\": {\"запрос\": \"<что искать>\"}}\n"
+            "   Затем повтори: {\"скачать_субтитры\": {\"url\": \"https://...\"}}"
+        )
+
+    lang_raw = args.get("язык", "ru") or "ru"
+    langs = [s.strip() for s in str(lang_raw).split(",") if s.strip()]
+    all_langs = bool(args.get("все_языки"))
+
+    fmt_raw = str(args.get("формат", "vtt") or "vtt").strip().lower()
+    fmt_map = {
+        "vtt": "vtt", "webvtt": "vtt",
+        "srt": "srt", "subrip": "srt",
+        "ass": "ass", "ssa": "ass",
+        "best": "best", "лучший": "best", "лучшее": "best",
+    }
+    sub_fmt = fmt_map.get(fmt_raw, "vtt")
+
+    auto = args.get("авто")
+    if auto is None:
+        auto = True
+    if isinstance(auto, str):
+        auto = auto.strip().lower() not in ("0", "false", "нет", "off", "")
+
+    _p = args.get("путь") or args.get("папка") or args.get("куда")
+    out_dir = Path(_p) if _p else Path(r"D:\Загрузки")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    ydl_opts = {
+        "skip_download": True,
+        "writesubtitles": True,
+        "writeautomaticsub": auto,
+        "subtitlesformat": sub_fmt,
+        "outtmpl": str(out_dir / "%(title)s.%(ext)s"),
+        "quiet": True,
+        "no_warnings": True,
+    }
+    if not all_langs:
+        ydl_opts["subtitleslangs"] = langs
+
+    def _is_dns_error(exc):
+        s = str(exc)
+        return ("getaddrinfo" in s
+                or "Failed to resolve" in s
+                or "Name or service not known" in s
+                or "Temporary failure in name resolution" in s)
+
+    import time as _t
+    info = None
+    last_err = None
+    for attempt in range(3):
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+            break
+        except Exception as e:
+            last_err = e
+            if _is_dns_error(e) and attempt < 2:
+                _t.sleep(1.5 * (attempt + 1))
+                continue
+            break
+
+    if info is None:
+        _emsg = str(last_err)
+        _hint = ""
+        if _is_dns_error(last_err):
+            _hint = ("\n\n💡 Похоже на временный сбой DNS.\n"
+                     "   Повтори команду через пару секунд.\n"
+                     "   Если повторяется — проверь Resolve-DnsName <домен>.")
+        return "❌ yt-dlp: " + _emsg + _hint
+
+    title = info.get("title", "?")
+
+    sub_exts = (".srt", ".vtt", ".ass", ".ssa")
+    found = []
+    for ext in sub_exts:
+        found += list(out_dir.glob("*" + ext))
+    found.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+
+    import time as _time
+    now = _time.time()
+    # Свежие + совпадающие по stem с title (иначе в папке вроде
+    # D:\\Загрузки всегда лежат чужие .srt и они попадают в отчёт).
+    _title_safe = title.replace(chr(92), "_").replace("/", "_")
+    fresh = [p for p in found
+             if (now - p.stat().st_mtime) < 600
+             and (p.stem == _title_safe
+                  or p.stem.startswith(_title_safe + "."))]
+
+    msg = "✅ " + str(title) + "\n"
+    msg += "📁 Папка: " + str(out_dir.resolve()) + "\n"
+    if fresh:
+        msg += "📄 Файлов субтитров: " + str(len(fresh)) + "\n"
+        for p in fresh[:20]:
+            msg += "   " + p.name + "  (" + str(p.stat().st_size) + " Б)\n"
+    else:
+        msg += "⚠️ Субтитры не найдены (возможно, у видео их нет или язык недоступен).\n"
+        msg += "   Попробуй: \"авто\": true, \"все_языки\": true\n"
+
+    return msg
+
+
+
+@register(["субтитры_в_текст", "сабы_в_текст"])
+def subs_to_text(args):
+    """Превратить файл субтитров в чистый текст (без номеров и таймстемпов).
+
+    Параметры:
+      путь      — файл .srt / .vtt / .ass / .ssa (обязательно)
+      сохранить — путь к .txt для сохранения. Без него — текст в ответе
+                  (постранично, см. ниже)
+
+    Примеры:
+      {"субтитры_в_текст": {"путь": "C:/in.srt"}}
+      {"субтитры_в_текст": {"путь": "C:/in.srt", "сохранить": "C:/out.txt"}}
+    """
+    import re as _re
+
+    src_path = args.get("путь") or args.get("файл")
+    if not src_path:
+        return 'Укажи путь: {"субтитры_в_текст": {"путь": "C:/in.srt"}}'
+    p = Path(str(src_path))
+    if not p.exists():
+        return "❌ Файл не найден: " + str(p)
+    if not p.is_file():
+        return "❌ Это не файл: " + str(p)
+
+    try:
+        raw = p.read_text(encoding="utf-8-sig")
+    except UnicodeDecodeError:
+        raw = p.read_text(encoding="cp1251", errors="replace")
+
+    raw = raw.replace("\r\n", "\n").replace("\r", "\n")
+    lines = raw.split("\n")
+    out = []
+    prev = None
+    i = 0
+    n = len(lines)
+    while i < n:
+        line = lines[i].strip()
+        if "-->" in line:
+            j = i + 1
+            while j < n and lines[j].strip():
+                t = lines[j].strip()
+                t = _re.sub(r"<[^>]+>", "", t)
+                t = _re.sub(r"\{[^}]*\}", "", t).strip()
+                if t and t != prev:
+                    out.append(t)
+                    prev = t
+                j += 1
+            i = j
+            continue
+        i += 1
+
+    text = "\n".join(out)
+    if not text:
+        return "⚠️ В файле не найдено ни одной реплики: " + str(p)
+
+    save = args.get("сохранить")
+    if save:
+        outp = Path(str(save))
+        if outp.suffix.lower() != ".txt":
+            outp = outp.with_suffix(".txt")
+        outp.parent.mkdir(parents=True, exist_ok=True)
+        outp.write_text(text + "\n", encoding="utf-8")
+        lines_n = text.count("\n") + 1
+        return ("✅ Сохранено: " + str(outp.resolve()) + "\n"
+                + "📄 Строк: " + str(lines_n)
+                + ", символов: " + str(len(text)))
+
+    return text
+
+
 @register("кадр+субтитр")
 def frame_with_subtitle(args):
     """Простой кадр видео на указанной секунде + субтитр -> буфер обмена.
@@ -568,12 +1052,18 @@ def frame_with_subtitle(args):
       окно      — ширина окна slit-scan в сек (по умолч. 3.0)
       субтитр   — true/false, накладывать субтитр (по умолч. TRUE)
       сохранить — путь для дополнительного сохранения PNG
+      в_контекст — положить в контекст (по умолч. true)
     """
     video = args.get("путь") or args.get("видео")
     if not video:
         return 'Укажи путь: {"кадр+субтитр": {"путь": "...", "секунда": 12.5}}'
 
+    _redir = _redirect_if_image(video, args)
+    if _redir is not None:
+        return _redir
+
     sec = float(args.get("секунда", args.get("sec", 0.0)) or 0.0)
+    _ensure_companion_srt(video)
     cmd = [str(video), "--секунда", str(sec)]
 
     if args.get("щелевой_скан"):
@@ -585,7 +1075,18 @@ def frame_with_subtitle(args):
     if args.get("сохранить"):
         cmd += ["--сохранить", str(args["сохранить"])]
 
-    return _run_cli2(cmd)
+    to_ctx = args.get("в_контекст")
+    if to_ctx is None:
+        to_ctx = args.get("в_буфер", True)
+    if isinstance(to_ctx, str):
+        to_ctx = to_ctx.strip().lower() not in ("0", "false", "нет", "off", "")
+
+    if to_ctx is False and not args.get("сохранить"):
+        return ("❌ кадр+субтитр: \"в_контекст\": false требует \"сохранить\". "
+                "Без сохранения результат некуда девать. "
+                "Либо убери в_контекст, либо задай \"сохранить\": \"путь.png\".")
+
+    return _run_cli2(cmd, no_clip=not to_ctx)
 
 
 @register("слушать_видео")
@@ -597,12 +1098,18 @@ def listen_video(args):
       секунда   — момент в секундах (по умолчанию 0.0)
       размер    — WxH, по умолчанию 1366x768
       сохранить — путь для дополнительного сохранения PNG
+      в_контекст — положить в контекст (по умолч. true)
     """
     video = args.get("путь") or args.get("видео")
     if not video:
         return 'Укажи путь: {"слушать_видео": {"путь": "...", "секунда": 30}}'
 
+    _redir = _redirect_if_image(video, args)
+    if _redir is not None:
+        return _redir
+
     sec = float(args.get("секунда", args.get("sec", 0.0)) or 0.0)
+    _ensure_companion_srt(video)
     cmd = [str(video), "--секунда", str(sec)]
 
     if args.get("размер"):
@@ -610,7 +1117,84 @@ def listen_video(args):
     if args.get("сохранить"):
         cmd += ["--сохранить", str(args["сохранить"])]
 
-    return _run_cli3(cmd)
+    to_ctx = args.get("в_контекст")
+    if to_ctx is None:
+        to_ctx = args.get("в_буфер", True)
+    if isinstance(to_ctx, str):
+        to_ctx = to_ctx.strip().lower() not in ("0", "false", "нет", "off", "")
+
+    if to_ctx is False and not args.get("сохранить"):
+        return ("❌ слушать_видео: \"в_контекст\": false требует \"сохранить\". "
+                "Без сохранения результат некуда девать. "
+                "Либо убери в_контекст, либо задай \"сохранить\": \"путь.png\".")
+
+    out = _run_cli3(cmd, no_clip=not to_ctx)
+    if isinstance(out, str) and out.lstrip().startswith("[BUF]"):
+        return "[BUF] Картинка в буфере обмена"
+    return out
+
+
+
+_VIDEO_COMMANDS_HINT = """📺 Встроенные видео-команды:
+
+Внутри ||| SOLO-команды (смотреть_видео, кадр+субтитр,
+слушать_видео) — только последними. Кадр+субтитр и слушать_видео
+можно ставить в середину с "в_контекст": false — тогда картинка
+не идёт в контекст, в ответе только отчёт.
+
+Просмотр:
+
+  • смотреть_видео / посмотреть_движение — кадр на середине
+    реплики N + субтитр + стрелки. SOLO, в ||| только последним.
+    {"смотреть_видео": {"путь": "D:/v.mp4", "реплика": 5}}
+
+  • кадр+субтитр — кадр на указанной секунде + субтитр.
+    {"кадр+субтитр": {"путь": "D:/v.mp4", "секунда": 12.5}}
+    в ||| в середине — добавь "в_контекст": false
+
+  • слушать_видео — спектрограмма + линия нот + кадр видео.
+    {"слушать_видео": {"путь": "D:/v.mp4", "секунда": 30}}
+    в ||| в середине — добавь "в_контекст": false
+
+  • список_реплик — первые 10 реплик (индекс, время, текст).
+    {"список_реплик": {"путь": "D:/v.mp4", "лимит": 10}}
+
+  • анализ_видео / видео_инфо — метаданные через ffprobe.
+    {"видео_инфо": {"путь": "D:/v.mp4"}}
+
+Скачивание:
+
+  • скачать_видео — yt-dlp, видео (+ опц. субтитры).
+    {"скачать_видео": {"url": "https://...", "качество": 720}}
+
+  • скачать_субтитры / скачать_сабы — только субтитры.
+    {"скачать_субтитры": {"url": "https://...", "язык": "ru"}}
+
+Субтитры:
+
+  • субтитры_в_текст / сабы_в_текст — .srt/.vtt → чистый текст.
+    {"субтитры_в_текст": {"путь": "D:/v.srt"}}
+
+  • добавить_субтитры — наложить .srt/.ass на видео.
+
+Файлы и монтаж:
+
+  • каталог_видео / видео_список — список видеофайлов.
+    {"каталог_видео": {"путь": "D:/video"}}
+
+  • создать_видео — из ключевых кадров с таймингами.
+  • наложить_звук / наложить_аудио — приклеить аудио.
+  • грейд — цветокоррекция видео."""
+
+
+def play_video(args):
+    """Показать все встроенные видео-команды anyjson.
+
+    Примеры:
+      {"воспроизвести_видео": {}}
+      {"видео_команды": {}}
+    """
+    return _VIDEO_COMMANDS_HINT
 
 
 @register(["каталог_видео", "видео_список"])

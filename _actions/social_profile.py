@@ -143,10 +143,21 @@ def profile(args):
             posts_preview.append(f"{i}. 📌 {post.get('title', '') or 'Без заголовка'}: {short}")
 
     _seen_ts = _last_seen_ts(profile_dir)
+    from _actions.avatar import _find_avatar
+    _av = _find_avatar(agent)
+    if _av:
+        _av_line = ('Аватар: {"аватар": {"агент": "' + agent + '"}}\n')
+    else:
+        if agent == AGENT_NAME:
+            _av_line = ('Аватар: нет. Установить: '
+                        '{"сменить_аватар": {"путь": "..."}}\n')
+        else:
+            _av_line = "Аватар: нет\n"
     result = (f"Профиль агента {agent}:\n"
               f"Имя: {info.get('name', agent)}\n"
               f"Био: {info.get('bio', '—')}\n"
               f"Цвет: {info.get('color', '#888888')}\n"
+              + _av_line +
               f"Был в сети: {_fmt_last_seen(_seen_ts)}\n"
               f"Постов: {post_count}\n"
               f"Подписок: {subs_count}")

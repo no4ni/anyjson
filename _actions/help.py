@@ -20,6 +20,48 @@ def _short(doc):
     return line or "(без описания)"
 
 
+
+def _find_by_param(query):
+    # Ищет команды с параметром query: args.get(...) в теле + докстринг.
+    import inspect as _ins
+    import re as _re2
+    q = (query or "").lower().strip()
+    if not q:
+        return []
+    body_re = _re2.compile(r'args\.get\(\s*["\']([^"\']+)["\']|args\[\s*["\']([^"\']+)["\']\s*\]')
+    doc_re = _re2.compile(r'^\s{2,}([а-яА-ЯёЁ_0-9]+)\s*—', _re2.MULTILINE)
+    ru_re = _re2.compile(r'^[а-яА-ЯёЁ_0-9]+$')
+    out = []
+    seen = set()
+    for name, fn in HANDLERS.items():
+        if id(fn) in seen:
+            continue
+        if not name or not ru_re.match(name):
+            continue
+        try:
+            src = _ins.getsource(fn)
+        except (OSError, TypeError):
+            src = ""
+        params = set()
+        for m in body_re.finditer(src):
+            pp = m.group(1) or m.group(2)
+            if pp:
+                params.add(pp.lower())
+        doc = fn.__doc__ or ""
+        for m in doc_re.finditer(doc):
+            params.add(m.group(1).lower())
+        if q in params:
+            seen.add(id(fn))
+            desc = ""
+            for line in doc.split("\n"):
+                if q in line.lower():
+                    desc = line.strip()
+                    break
+            if not desc:
+                desc = _short(doc)
+            out.append((name, desc))
+    return out
+
 @register(["помощь", "help", "?", "имя_команды", "другая_команда", "инициализация"])
 def show_help(args):
     """Справка о конкретной команде.
@@ -68,6 +110,16 @@ def show_help(args):
     # синонимов нет — ищем по подстроке, но БЕЗ вываливания полного списка
     matches = sorted([k for k in HANDLERS if query.lower() in k.lower()])
     if not matches:
+        by_param = _find_by_param(query)
+        if by_param:
+            lines = ["❌ Команды '" + query + "' нет. Но параметр '" + query + "' есть в командах:"]
+            for n, d in by_param[:10]:
+                lines.append('  • "' + n + '" — ' + d)
+            if len(by_param) > 10:
+                lines.append("  ... и ещё " + str(len(by_param) - 10))
+            lines.append("")
+            lines.append('📚 Справка по команде: {"помощь": "имя_команды"}')
+            return chr(10).join(lines)
         return f"❌ Команда '{query}' не реализована."
     if len(matches) == 1:
         m = matches[0]

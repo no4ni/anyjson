@@ -476,13 +476,16 @@ def main():
     p.add_argument("--номер", "--index", type=int, default=0,
                    help="индекс реплики (0-based)")
     p.add_argument("--без_стрелок", dest="без_стрелок", action="store_true",
-                   help="НЕ накладывать детектор движения (по умолч. стрелки ВКЛ)")
+                   help="НЕ накладывать стрелки — маркеры направления "
+                        "градиента яркости движения (по умолч. стрелки ВКЛ)")
     p.add_argument("--сохранить", "--save", default=None,
                    help="дополнительно сохранить PNG")
     p.add_argument("--высота", type=int, default=480,
                    help="высота для расчёта эффектов (по умолч. 480)")
     p.add_argument("--список", action="store_true",
                    help="показать список реплик без картинки")
+    p.add_argument("--no-clip", "--no_clip", dest="no_clip", action="store_true",
+                   help="не класть в буфер обмена")
     args = p.parse_args()
 
     video = args.video
@@ -545,7 +548,9 @@ def main():
 
     final = overlay_text(final, text)
 
-    if copy_image_to_clipboard(final):
+    if args.no_clip:
+        print(f"OK: {final.size[0]}x{final.size[1]}")
+    elif copy_image_to_clipboard(final):
         print(f"CLIP: {final.size[0]}x{final.size[1]} -> буфер обмена")
     else:
         print("WARN: не положить в буфер")

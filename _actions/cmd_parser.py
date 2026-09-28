@@ -130,6 +130,30 @@ def _fill_bare_keys(text: str) -> str:
     return _BARE_KEY_RE.sub(r'{"\1": null}', text)
 
 
+# Общие алиасы параметров: если команда ждёт одно, а пришло
+# другое — продублировать значение. Работает для всех команд.
+_PARAM_ALIAS_PAIRS = [
+    ("лимит", "количество"),
+    ("url", "адрес"),
+    ("урл", "адрес"),
+    ("ссылка", "адрес"),
+    ("количество", "limit"),
+    ("запрос", "query"),
+]
+
+
+def _apply_param_aliases(params):
+    if not isinstance(params, dict):
+        return params
+    out = dict(params)
+    for _a, _b in _PARAM_ALIAS_PAIRS:
+        if _a in out and _b not in out:
+            out[_b] = out[_a]
+        elif _b in out and _a not in out:
+            out[_a] = out[_b]
+    return out
+
+
 def _normalize_params(action: str, params) -> Dict[str, Any]:
     if params is None:
         return {}
@@ -150,7 +174,7 @@ def _normalize_params(action: str, params) -> Dict[str, Any]:
             return {"агент": params}
         return {"запрос": params}
     if isinstance(params, dict):
-        return params
+        return _apply_param_aliases(params)
     return {"значение": params}
 
 
@@ -397,6 +421,72 @@ def _wrap_error(action, result):
     return wrap_json_hints(msg)
 
 
+_KNOWN_PARAMS_CACHE = {}
+
+_UNKNOWN_PARAM_SKIP = {
+    "в_контекст", "в_буфер", "сохранить", "параллельно",
+    "action", "params", "reasoning", "actions", "commands",
+}
+
+
+def _known_params(fn):
+    """Кешированные имена параметров функции (по id объекта)."""
+    key = id(fn)
+    if key in _KNOWN_PARAMS_CACHE:
+        return _KNOWN_PARAMS_CACHE[key]
+    try:
+        params = set(_extract_params_ast(fn))
+    except Exception:
+        params = set()
+    _KNOWN_PARAMS_CACHE[key] = params
+    return params
+
+
+def _check_unknown_params(action, params):
+    """Текст предупреждения о неизвестных параметрах или пустая строка.
+
+    Срабатывает только если params — dict. Для строк/чисел (короткая
+    форма ввода) возвращает "" — там _normalize_params сам решает.
+    """
+    if not isinstance(params, dict) or not params:
+        return ""
+    try:
+        from _actions import HANDLERS
+        fn = HANDLERS.get(action)
+        if fn is None:
+            return ""
+        # Команды с динамическими параметрами (предсказать_продолжение,
+        # сим_команда, ...) помечают себя атрибутом _any_params — для них
+        # любой ключ допустим, AST их не видит.
+        if getattr(fn, "_any_params", False):
+            return ""
+        known = _known_params(fn)
+        if not known:
+            return ""
+    except Exception:
+        return ""
+    _alias_to = {"лимит": "количество", "url": "адрес",
+                 "урл": "адрес", "ссылка": "адрес",
+                 "количество": "limit", "запрос": "query"}
+    def _is_known_alias(k):
+        _c = _alias_to.get(k)
+        return bool(_c and _c in known)
+    unknown = [k for k in params
+               if k not in known and k not in _UNKNOWN_PARAM_SKIP
+               and not _is_known_alias(k)]
+    if not unknown:
+        return ""
+    msg = ("⚠️ " + action + ": неизвестные параметры: "
+           + ", ".join(unknown))
+    try:
+        _doc = _doc_for(action)
+    except Exception:
+        _doc = ""
+    if _doc:
+        msg += "\n\n📖 Справка:\n" + _doc
+    return msg
+
+
 def _process_single_command(cmd) -> List[str]:
     """Обрабатывает одну команду (строка/словарь/список)."""
     res = []
@@ -418,8 +508,12 @@ def _process_single_command(cmd) -> List[str]:
             res.extend(_process_single_command(item))
     elif isinstance(cmd, dict):
         for action, params in cmd.items():
+            _warn = _check_unknown_params(action, params)
             r = execute_tool_safe(action, _normalize_params(action, params))
-            res.append(_mask(_wrap_error(action, r)))
+            r = _wrap_error(action, r)
+            if _warn and isinstance(r, str) and r.strip():
+                r = r + "\n\n" + _warn
+            res.append(_mask(r))
     else:
         r = execute_tool_safe("запуск", {"команда": str(cmd)})
         res.append(_mask(_wrap_error("запуск", r)))
@@ -582,33 +676,81 @@ SOLO_COMMANDS = {
     "осталось_сессии", "осталось_контекста", "до_лимита",
 }
 
+# Команды, которые НЕ принимают в_контекст:false — результат только в контекст.
+# Для них подсказка не должна советовать в_контекст:false.
+NO_CTX_FALSE = {
+    "смотреть_видео", "посмотреть_движение",
+}
 
-def _solo_is_safe(cmd, action):
-    """True если SOLO-команда не переписывает контекст.
+# Команды, у которых в_контекст:false допустим ТОЛЬКО с "сохранить".
+# Тогда результат уходит на диск, буфер не трогаем.
+NO_CTX_FALSE_NEEDS_SAVE = {
+    "слушать_видео",
+}
 
-    Проверяет `в_контекст: false` (или старое `в_буфер: false`).
-    Такие команды не перезаписывают финальный ответ и их можно
-    ставить в середину |||.
-    """
-    if not isinstance(cmd, dict):
+
+def _params_are_safe(params, name=None):
+    """True если в params стоит в_контекст:false (или в_буфер:false)."""
+    if name in NO_CTX_FALSE:
         return False
-    _params = cmd.get(action)
-    if not isinstance(_params, dict):
+    if name in NO_CTX_FALSE_NEEDS_SAVE:
+        # нужен "сохранить" — иначе некуда девать результат
+        if not isinstance(params, dict) or not params.get("сохранить"):
+            return False
+    if not isinstance(params, dict):
         return False
     for _k in ("в_контекст", "в_буфер"):
-        if _k in _params:
-            _v = _params[_k]
+        if _k in params:
+            _v = params[_k]
             if isinstance(_v, str):
                 return _v.strip().lower() in ("0", "false", "нет", "off", "no", "")
             return _v is False
     return False
 
 
+def _iter_solo_checks(cmd, inside_parallel=False):
+    """Yield (name, params, inside_parallel) для всех команд в cmd.
+
+    Заходит внутрь "параллельно" (рекурсивно), помечает такие команды
+    inside_parallel=True. Верхний уровень — inside_parallel=False.
+    """
+    if isinstance(cmd, str):
+        yield (cmd, {}, inside_parallel)
+        return
+    if isinstance(cmd, list):
+        for item in cmd:
+            yield from _iter_solo_checks(item, inside_parallel)
+        return
+    if isinstance(cmd, dict):
+        if isinstance(cmd.get("параллельно"), list):
+            for item in cmd["параллельно"]:
+                yield from _iter_solo_checks(item, True)
+            return
+        act = cmd.get("action")
+        if isinstance(act, str):
+            _p = cmd.get("params")
+            yield (act, _p if isinstance(_p, dict) else {}, inside_parallel)
+            return
+        if isinstance(cmd.get("actions"), list):
+            yield from _iter_solo_checks(cmd["actions"], inside_parallel)
+            return
+        if isinstance(cmd.get("commands"), list):
+            yield from _iter_solo_checks(cmd["commands"], inside_parallel)
+            return
+        for k, v in cmd.items():
+            if isinstance(k, str):
+                yield (k, v if isinstance(v, dict) else {}, inside_parallel)
+        return
+    return
+
+
 def _collect_all_actions(parsed):
     """Собирает имена команд и позиции SOLO-команд.
 
-    SOLO-команды пропускаются, если у них `в_контекст: false` —
-    такие не переписывают контекст, можно ставить в середину |||.
+    Внутри "параллельно" SOLO-команды разрешены только с
+    `в_контекст: false` (или старым `в_буфер: false`) — строгий режим.
+    На верхнем уровне SOLO разрешена последней, а с `в_контекст: false`
+    — в любой позиции.
     Возвращает (total, solo_positions).
     """
     total = 0
@@ -616,14 +758,30 @@ def _collect_all_actions(parsed):
     for _idx, _part, cmd, err in parsed:
         if err or cmd is None:
             continue
-        for a in _extract_actions(cmd):
+        for name, params, inside_parallel in _iter_solo_checks(cmd):
             total += 1
-            if a in SOLO_COMMANDS and not _solo_is_safe(cmd, a):
-                solo_positions.append((total, a))
+            if name not in SOLO_COMMANDS:
+                continue
+            if _params_are_safe(params, name):
+                continue
+            tag = name
+            solo_positions.append((total, tag, inside_parallel))
     return total, solo_positions
 
 
 def process_command_input(input_str: str) -> None:
+    try:
+        _process_command_input_inner(input_str)
+    except Exception as _e:
+        import traceback as _tb
+        _tb.print_exc()
+        try:
+            print("\u274c \u0412\u043d\u0443\u0442\u0440\u0435\u043d\u043d\u044f\u044f \u043e\u0448\u0438\u0431\u043a\u0430 \u043f\u0430\u0440\u0441\u0435\u0440\u0430: " + str(_e))
+        except Exception:
+            pass
+
+
+def _process_command_input_inner(input_str: str) -> None:
     """Обрабатывает строку ввода — возможно несколько команд через |||.
 
     Валидация имён всех команд ДО выполнения: если хоть одна неизвестна,
@@ -644,6 +802,33 @@ def process_command_input(input_str: str) -> None:
             except Exception:
                 pass
             return
+
+    # --- системные однословные команды (искз) ---
+    _single = input_str.strip()
+    _is_single_word = (
+        bool(_single)
+        and "\n" not in input_str
+        and " " not in _single
+        and "\t" not in _single
+        and "{" not in _single
+        and "[" not in _single
+        and "|" not in _single
+    )
+    if _is_single_word:
+        try:
+            from _actions import system_cmd as _sc
+            _sc_res = _sc.handle(_single)
+            if _sc_res is not None:
+                print(_sc_res)
+                return
+        except Exception as _e:
+            print("[SYSCMD] " + str(_e))
+    # любой другой ввод (в т.ч. JSON и неизвестное слово) — сброс счётчиков
+    try:
+        from _actions import system_cmd as _sc2
+        _sc2.reset()
+    except Exception:
+        pass
 
     # --- авто-перезагрузка _actions/*.py при изменениях ---
     _self_before = process_command_input
@@ -723,16 +908,75 @@ def process_command_input(input_str: str) -> None:
             pass
         return
 
-    # === Проверка: SOLO-команды можно ставить только последними ===
+    # === Проверка: SOLO-команды ===
     total_actions, solo_positions = _collect_all_actions(parsed)
-    # SOLO на последней позиции — можно. На любой другой — блок.
-    bad_solos = [name for pos, name in solo_positions if pos < total_actions]
-    if bad_solos:
-        msg = ("Всего команд: " + str(total_actions)
-               + ", ⛔ " + ", ".join(bad_solos)
-               + " нельзя ставить в середину ||| — они переписывают контекст.\n"
-               + "   Перенеси в конец, выполни отдельной командой, "
-               + "или добавь \"в_контекст\": false — тогда можно.")
+
+    def _dedup_labels(names):
+        _c = {}
+        for _n in names:
+            _c[_n] = _c.get(_n, 0) + 1
+        _out = []
+        for _n, _k in _c.items():
+            _out.append(_n if _k == 1 else (_n + " \u00d7" + str(_k)))
+        return _out
+
+    # SOLO в ||| запрещён при total>1. Раньше разрешалось "последней",
+    # но результат всё равно затирает всё, что было до неё.
+    bad_pipe = [name for pos, name, inside in solo_positions
+                if (not inside) and total_actions > 1]
+    # SOLO внутри параллельно: порядок не гарантирован, нужен в_контекст:false.
+    bad_par = [name for pos, name, inside in solo_positions if inside]
+
+    if bad_pipe or bad_par:
+        _parts = []
+        if bad_pipe:
+            _need_save = [n for n in bad_pipe if n in NO_CTX_FALSE_NEEDS_SAVE]
+            _hard = [n for n in bad_pipe if n in NO_CTX_FALSE]
+            if _need_save and not _hard:
+                _parts.append("⛔ SOLO в ||| только с \"в_контекст\": false + "
+                              + "\"сохранить\": "
+                              + ", ".join(_dedup_labels(_need_save))
+                              + ".\n"
+                              + "   Без сохранения результат идёт в контекст "
+                              + "и затирает всё до себя.\n"
+                              + "   Выполни отдельным запросом.")
+                _no_false = True
+                _hard_only = True
+            else:
+                _hard_only = False
+            _no_false = _hard_only if _hard_only else all(_n in NO_CTX_FALSE for _n in bad_pipe)
+            if _no_false and not _hard_only:
+                _parts.append("⛔ SOLO нельзя в ||| ни в каком месте: "
+                              + ", ".join(_dedup_labels(bad_pipe))
+                              + ".\n"
+                              + "   Результат идёт только в контекст — "
+                              + "если их несколько, они затрут друг друга.\n"
+                              + "   Выполни отдельным запросом.")
+            else:
+                _parts.append("⛔ SOLO нельзя в ||| ни в каком месте: "
+                              + ", ".join(_dedup_labels(bad_pipe))
+                              + ".\n"
+                              + "   Они переписывают контекст — если их "
+                              + "несколько, они затрут друг друга.\n"
+                              + "   Выполни отдельным запросом или добавь "
+                              + "\"в_контекст\": false "
+                              + "(тогда SOLO перестаёт переписывать контекст).")
+        if bad_par:
+            _no_false = all(_n in NO_CTX_FALSE for _n in bad_par)
+            if _no_false:
+                _parts.append("⛔ Эти команды нельзя в параллельно: "
+                              + ", ".join(_dedup_labels(bad_par))
+                              + ".\n"
+                              + "   Они пишут результат только в контекст. "
+                              + "Выполни отдельно.")
+            else:
+                _parts.append("⛔ Внутри параллельно только с \"в_контекст\": false: "
+                              + ", ".join(_dedup_labels(bad_par))
+                              + ".\n"
+                              + "   Порядок выполнения не гарантирован — результат "
+                              + "может быть перезаписан.\n"
+                              + "   Добавь \"в_контекст\": false каждой такой команде.")
+        msg = "Всего команд: " + str(total_actions) + "\n" + "\n".join(_parts)
         print(color_red("\n" + msg))
         try:
             pyperclip.copy(msg)

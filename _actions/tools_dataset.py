@@ -270,6 +270,9 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
     deadline = (time.perf_counter() + float(timeout)) if timeout and timeout > 0 else None
     start_time = time.perf_counter()
     target_num = max(1, int(target_num))
+    _MAX_FOUND = 10000
+    _CONTENT_GRACE = 5.0  # сек: сколько ещё искать содержание после первого матча
+    _content_deadline = None
 
     skip_dirs = {
         "__pycache__", "node_modules", ".git", ".vs", "site-packages",
@@ -348,10 +351,10 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
                 m = True
             if m and _mask_match(dirname):
                 found_entries.append((dir_full, "directory"))
-                if len(found_entries) >= target_num:
+                if len(found_entries) >= _MAX_FOUND:
                     break
 
-    if len(found_entries) < target_num:
+    if len(found_entries) < _MAX_FOUND:
         for file_path in state["files"]:
             file = os.path.basename(file_path)
             ext = os.path.splitext(file)[1].lower()
@@ -395,8 +398,13 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
                 _final_match = True
             if _final_match:
                 found_entries.append((file_path, "file"))
-                if len(found_entries) >= target_num:
+                if check_content and _content_deadline is None:
+                    _content_deadline = time.perf_counter() + _CONTENT_GRACE
+                if len(found_entries) >= _MAX_FOUND:
                     break
+            if (check_content and _content_deadline is not None
+                    and time.perf_counter() > _content_deadline):
+                break
 
     elapsed = time.perf_counter() - start_time
     _mm = int(elapsed // 60)
@@ -408,13 +416,15 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
 
     if _found == 0:
         _progress_line = f"❌ Ничего не найдено{_cache_mark}"
-    elif _found >= target_num:
-        # Остановились на target_num: возможно, есть ещё.
+    elif _found >= _MAX_FOUND:
         _progress_line = (f"✅ Найдено ≥{_found} "
-                          f"(показан #{target_num}){_cache_mark}")
-    else:
+                          f"(достигнут потолок {_MAX_FOUND}){_cache_mark}")
+    elif complete:
         _word = "совпадение" if _found == 1 else "совпадений"
         _progress_line = f"✅ Найдено {_found} {_word} (все){_cache_mark}"
+    else:
+        _progress_line = (f"✅ Найдено ≥{_found} "
+                          f"(в обойдённых){_cache_mark}")
 
     prefix = ""
     if not complete and deadline:

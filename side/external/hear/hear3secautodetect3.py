@@ -468,7 +468,7 @@ class AudioPlayer(QMainWindow):
 					})
 				except Exception as e:
 					print(f"Ошибка загрузки {fpath}: {e}")
-		print(f"Загружено эталонов: {len(self.etalons)}")
+		# print(f"Загружено эталонов: {len(self.etalons)}")  # заглушено
 
 	def compute_etalon_lists(self, rgb_slice, pad_left=0, valid_width=None):
 		if rgb_slice is None or self.etalons is None:

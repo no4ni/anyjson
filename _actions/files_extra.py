@@ -243,6 +243,25 @@ def inspect(args):
     if not file_path:
         return "Ошибка: необходимо указать 'путь'"
 
+    # Бинарные/специальные форматы — перенаправляем на прочитать_полностью.
+    # Текстовые (.txt/.log/.py/...) — НЕ перенаправляем: для них смысл
+    # осмотра в поиске по содержимому, а read_full кладёт файл в буфер
+    # как CF_HDROP и поиска не делает. Раньше сюда уходили все .txt.
+    _TEXT_EXTS = {".txt", ".log", ".md", ".py", ".js", ".html",
+                  ".css", ".json", ".xml", ".csv", ".ini", ".cfg",
+                  ".yaml", ".yml", ".toml", ".rst", ".tex", ".sql",
+                  ".sh", ".bat", ".ps1", ".tsv", ".env"}
+    if not file_path.startswith(("http://", "https://")) and os.path.isfile(file_path):
+        _ext = os.path.splitext(file_path)[1].lower()
+        if _ext and _ext not in _TEXT_EXTS:
+            try:
+                from _actions.files import _SUPPORTED_EXT as _SX
+            except Exception:
+                _SX = set()
+            if _ext and _ext in _SX:
+                from _actions.files import read_full
+                return read_full({"путь": file_path})
+
     if keywords is None or (isinstance(keywords, (str, list)) and not keywords):
         kw_list = [" "]
     elif isinstance(keywords, str):
@@ -268,31 +287,56 @@ def inspect(args):
         start_time = time.time()
         all_matches = []
         timed_out = False
+        scanned = 0
+        last_tick = 0.0
+        _cap_limit = (target_count * 10) if target_count > 0 else 10000
         text_exts = {'.txt', '.log', '.py', '.js', '.html', '.css', '.json', '.xml', '.csv', '.md'}
-        for root, dirs, files in os.walk(file_path):
-            if timeout and (time.time() - start_time) > timeout:
-                timed_out = True
-                break
-            for f in files:
+        try:
+            for root, dirs, files in os.walk(file_path):
                 if timeout and (time.time() - start_time) > timeout:
                     timed_out = True
                     break
-                if os.path.splitext(f)[1].lower() not in text_exts:
-                    continue
-                full_path = os.path.join(root, f)
-                try:
-                    with open(full_path, 'r', encoding=encoding) as fp:
-                        for line in fp:
-                            if any(kw in line for kw in kw_list):
-                                all_matches.append((full_path, line.strip()))
-                                if len(all_matches) > 10000:
-                                    break
-                    if len(all_matches) > 10000:
+                for f in files:
+                    if timeout and (time.time() - start_time) > timeout:
+                        timed_out = True
                         break
-                except Exception:
-                    continue
-            if timed_out:
-                break
+                    scanned += 1
+                    _fname_low = f.lower()
+                    _name_hit = any(kw.lower() in _fname_low for kw in kw_list)
+                    if _name_hit:
+                        full_path = os.path.join(root, f)
+                        all_matches.append((full_path, "[имя файла: " + f + "]"))
+                        if len(all_matches) >= _cap_limit:
+                            break
+                        continue
+                    if os.path.splitext(f)[1].lower() not in text_exts:
+                        continue
+                    now = time.time()
+                    if now - last_tick >= 0.5:
+                        elapsed = int(now - start_time)
+                        sys.stdout.write("\r\u23f3 осмотр... " + str(elapsed)
+                                         + "/" + str(timeout)
+                                         + " сек, файлов: " + str(scanned)
+                                         + ", найдено: " + str(len(all_matches)))
+                        sys.stdout.flush()
+                        last_tick = now
+                    full_path = os.path.join(root, f)
+                    try:
+                        with open(full_path, 'r', encoding=encoding) as fp:
+                            for line in fp:
+                                if any(kw in line for kw in kw_list):
+                                    all_matches.append((full_path, line.strip()))
+                                    if len(all_matches) >= _cap_limit:
+                                        break
+                        if len(all_matches) >= _cap_limit:
+                            break
+                    except Exception:
+                        continue
+                if timed_out or len(all_matches) >= _cap_limit:
+                    break
+        finally:
+            sys.stdout.write("\r" + " " * 80 + "\r")
+            sys.stdout.flush()
         if not all_matches:
             if timed_out:
                 return (f"⏱ Превышен таймаут ({timeout} с). "

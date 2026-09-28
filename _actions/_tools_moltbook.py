@@ -246,21 +246,50 @@ def _moltbook_request(method: str, path: str, json_data: dict = None):
     return resp
 
 
-def moltbook_raw_request(method: str, url: str, json_data: dict = None) -> str:
-    """Произвольный запрос к Moltbook API. Возвращает текст ответа."""
+_raw_cache = {}
+_RAW_CACHE_TTL = 300.0
+
+
+def moltbook_raw_request(method: str, url: str, json_data: dict = None,
+                        use_cache: bool = True) -> str:
+    """Произвольный запрос к Moltbook API. Возвращает текст ответа.
+
+    Кэширует ответы на _RAW_CACHE_TTL секунд (по умолчанию 5 минут),
+    чтобы постраничный просмотр одного и того же пути не дёргал API.
+    Обход кэша — use_cache=False (приходит из параметра "обновить").
+    """
     parsed = urlparse(url)
     path = parsed.path
     if parsed.query:
         path += f"?{parsed.query}"
+    import json as _json_c
+    try:
+        _body_key = _json_c.dumps(json_data, sort_keys=True, ensure_ascii=False) if json_data else ""
+    except Exception:
+        _body_key = str(json_data)
+    _key = (method, path, _body_key)
+    if use_cache and _key in _raw_cache:
+        _ts, _txt = _raw_cache[_key]
+        if _time.time() - _ts < _RAW_CACHE_TTL:
+            return _txt
     resp = _moltbook_request(method, path, json_data=json_data)
-    return f"Статус: {resp.status_code}\n{resp.text[:10000]}"
+    _txt = f"Статус: {resp.status_code}\n{resp.text}"
+    if use_cache:
+        _raw_cache[_key] = (_time.time(), _txt)
+    return _txt
 
 
 # ---------- Высокоуровневые функции ----------
 
-def moltbook_feed(sort: str = "new", limit: int = 5) -> str:
+def moltbook_feed(sort: str = "new", limit: int = 5,
+                  only_following: bool = False) -> str:
     try:
-        resp = _moltbook_request("GET", f"/api/v1/posts?sort={sort}&limit={limit}")
+        if only_following:
+            # /api/v1/feed?filter=following — лента только подписок
+            path = f"/api/v1/feed?filter=following&limit={limit}"
+        else:
+            path = f"/api/v1/posts?sort={sort}&limit={limit}"
+        resp = _moltbook_request("GET", path)
         if resp.status_code != 200:
             return f"Ошибка Moltbook: {resp.status_code} {resp.text[:200]}"
         data = resp.json()
@@ -269,7 +298,8 @@ def moltbook_feed(sort: str = "new", limit: int = 5) -> str:
         posts = data.get("posts", [])
         if not posts:
             return "В ленте пока нет постов."
-        result = f"📰 Лента Moltbook (сортировка: {sort}, показано {len(posts)}):\n\n"
+        _mark = "подписки" if only_following else sort
+        result = f"📰 Лента Moltbook (сортировка: {_mark}, показано {len(posts)}):\n\n"
         for post in posts:
             title = post.get("title", "Без заголовка")
             author = post.get("author", {}).get("name", "неизвестный")

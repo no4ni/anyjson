@@ -435,6 +435,14 @@ def main():
     ensure_loaded()
     load_all()
 
+    # Если Forge уже работает (запущен вручную или в другом профиле) —
+    # записываем его PID в текущий профиль, чтобы погасить при выходе.
+    try:
+        from _actions.stabledif import capture_forge_pid
+        capture_forge_pid()
+    except Exception as _e:
+        print(f"[FORGE-PID] {_e}", file=sys.stderr)
+
     # --- ВАЛИДАЦИЯ ИМПОРТОВ: _actions/*.py ---
     try:
         from _core._validate_imports import check_actions, format_report

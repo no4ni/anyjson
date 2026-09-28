@@ -120,6 +120,33 @@ def _read_last_results(n=3):
     return out
 
 
+def _wait_for_result(timeout=60, label=None):
+    """Ждать, пока демон допишет строку в RES_FILE.
+
+    Возвращает последнюю запись (dict) или None при таймауте.
+    """
+    t0 = time.time()
+    deadline = t0 + timeout
+    last_shown = -1
+    while time.time() < deadline:
+        elapsed = int(time.time() - t0)
+        if label and elapsed != last_shown:
+            sys.stdout.write("\r\u23f3 " + label + "... " + str(elapsed) + "/" + str(timeout) + " сек")
+            sys.stdout.flush()
+            last_shown = elapsed
+        time.sleep(1)
+        res = _read_last_results(1)
+        if res:
+            if label:
+                sys.stdout.write("\r" + " " * 80 + "\r")
+                sys.stdout.flush()
+            return res[-1]
+    if label:
+        sys.stdout.write("\r" + " " * 80 + "\r")
+        sys.stdout.flush()
+    return None
+
+
 def _ensure_daemon(force=False):
     """Внутренняя: поднять демон, если не работает. Не команда.
 
@@ -252,12 +279,15 @@ def unaiverse_search(args):
     if _err:
         return _err
 
+    try:
+        RES_FILE.write_text("", encoding="utf-8")
+    except Exception:
+        pass
     _append_cmd("search", query=q)
-    time.sleep(3)
-    res = _read_last_results(1)
-    if not res:
-        return "⏳ Ждём результат..."
-    last = res[-1]
+    last = _wait_for_result(60, "Ищу " + q)
+    if not last:
+        return ("⏱ Демон не ответил за 60 сек.\n"
+                "Посмотри лог: {\"юнайверс_лог\": {\"строк\": 50}}")
     if last.get("error"):
         return f"❌ {last['error']}"
     items = last.get("items") or []
@@ -286,7 +316,7 @@ def unaiverse_connect(args):
       кому — имя агента (обязательный)
 
     Пример:
-      {"юнайверс_подключиться": {"кому": "MuzArt"}}
+      {"юнайверс_подключиться": {"кому": "имя_агента"}}
     """
     name = (args or {}).get("кому") or (args or {}).get("name") or ""
     if not name:
@@ -527,12 +557,15 @@ def unaiverse_find(args):
     if _err:
         return _err
 
+    try:
+        RES_FILE.write_text("", encoding="utf-8")
+    except Exception:
+        pass
     _append_cmd("discover", view="m")
-    time.sleep(4)  # ждём ответа
-    res = _read_last_results(1)
-    if not res:
-        return "⏳ Ждём результат..."
-    last = res[-1]
+    last = _wait_for_result(60, "Ищу в сети")
+    if not last:
+        return ("⏱ Демон не ответил за 60 сек.\n"
+                "Посмотри лог: {\"юнайверс_лог\": {\"строк\": 50}}")
     if last.get("error"):
         return f"❌ {last['error']}"
     items = last.get("items") or []

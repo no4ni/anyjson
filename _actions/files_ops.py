@@ -21,7 +21,10 @@ def create_dir_(args):
     """Создать папку (со всеми родительскими).
 
     Параметры:
-      путь — путь к папке (обязательный)
+      путь              — путь к папке (обязательный)
+      только_без_файлов — true (по умолчанию): удалить только если
+                          внутри нет файлов (пустая или только пустые
+                          подпапки). false: со всем содержимым.
 
     Пример:
       {"создать_папку": {"путь": "E:/Jericho/archive/2026"}}
@@ -80,7 +83,7 @@ def delete_file(args):
     return safe_delete_file(path)
 
 
-@register("переместить")
+@register(["переместить", "переименовать"])
 def move(args):
     """Переместить файл или папку.
 
@@ -104,7 +107,7 @@ def move(args):
 
 @register("удалить_папку")
 def delete_folder(args):
-    """Рекурсивно удалить папку со всем содержимым.
+    """Удалить папку.
 
     Защита: отказывается удалять C:\\, D:\\, E:\\, C:\\Windows,
     C:\\Program Files и т.п.
@@ -174,6 +177,28 @@ def delete_folder(args):
         return f"❌ Папка не существует: {path}"
     if not os.path.isdir(path):
         return f"❌ Это не папка: {path}"
+
+    only_empty = args.get("только_без_файлов")
+    if only_empty is None:
+        only_empty = True
+    if isinstance(only_empty, str):
+        only_empty = only_empty.strip().lower() not in ("0", "false", "no", "нет", "off", "")
+    else:
+        only_empty = bool(only_empty)
+
+    if only_empty:
+        try:
+            files = [f for f in Path(path).rglob("*") if f.is_file()]
+        except Exception as e:
+            return f"❌ Не обойти папку: {e}"
+        if files:
+            head = chr(10).join("  " + str(f) for f in files[:5])
+            more = (chr(10) + "  … и ещё " + str(len(files) - 5)) if len(files) > 5 else ""
+            return ("⛔ В папке " + str(len(files)) + " файлов. "
+                    "Если точно нужно удалить со всем содержимым — "
+                    "передай только_без_файлов: false." + chr(10)
+                    + "Первые файлы:" + chr(10) + head + more)
+
     try:
         shutil.rmtree(path)
         return f"✅ Папка удалена: {path}"
@@ -222,28 +247,13 @@ def remove_empty_dirs(args):
     if isinstance(safe, str):
         safe = safe.strip().lower() not in ("0", "false", "нет", "off", "")
 
-    # защита: anyjson и все его родители
-    try:
-        from _config import BASE_DIR as _BASE
-        _base_l = str(_Path(_BASE).resolve()).rstrip("\\/").lower()
-    except Exception:
-        _base_l = ""
-
-    _parents = set()
-    if _base_l:
-        _cur = _Path(_base_l).parent
-        while str(_cur) != str(_cur.parent):
-            _parents.add(str(_cur).rstrip("\\/").lower())
-            _cur = _cur.parent
-
+    # Защита только системных папок. anyjson и его содержимое
+    # специально НЕ защищены: команда удаляет только пустые папки,
+    # файлы и данные не теряются, а memory агента чистить надо уметь.
     def _protected(p):
         try:
             a = str(_Path(p).resolve()).rstrip("\\/").lower()
         except Exception:
-            return True
-        if _base_l and (a == _base_l or a.startswith(_base_l + "\\")):
-            return True
-        if a in _parents:
             return True
         # системные
         for _sd in (r"c:\\windows", r"c:\\program files",

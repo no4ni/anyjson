@@ -8,6 +8,11 @@ import argparse
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 os.environ.setdefault("QT_QPA_FONTDIR", r"C:\Windows\Fonts")
+os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
+os.environ.setdefault("QT_LOGGING_RULES", "qt.qpa.fonts=false;*.debug=false")
+
+import warnings as _warnings
+_warnings.filterwarnings("ignore", message=".*pkg_resources is deprecated.*")
 
 try:
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
@@ -76,6 +81,8 @@ def main():
     p.add_argument("--секунда", "--sec", dest="sec", type=float, required=True)
     p.add_argument("--сохранить", "--save", dest="save", default=None)
     p.add_argument("--размер", "--size", dest="size", default="1370x675")
+    p.add_argument("--no-clip", "--no_clip", dest="no_clip", action="store_true",
+                   help="не класть в буфер обмена")
     args = p.parse_args()
 
     audio = args.audio
@@ -85,10 +92,8 @@ def main():
 
     sec = args.sec
     W, H = parse_size(args.size)
-    print(f"REQ: {W}x{H} @ {sec:.2f}s")
 
     app = QApplication.instance() or QApplication(sys.argv)
-    app.setFont(QFont("Arial", 10))
 
     QFileDialog.getOpenFileName = staticmethod(lambda *a, **kw: (audio, ""))
 
@@ -99,7 +104,10 @@ def main():
     player.show()
     QApplication.processEvents()
 
-    player.load_file()
+    import contextlib as _ctx
+    _sink = io.StringIO()
+    with _ctx.redirect_stdout(_sink):
+        player.load_file()
     QApplication.processEvents()
 
     if player.spec_r is None:
@@ -124,9 +132,10 @@ def main():
         return 3
 
     img = qpixmap_to_pil(pixmap)
-    print(f"SIZE: {img.size[0]}x{img.size[1]}")
 
-    if copy_image_to_clipboard(img):
+    if args.no_clip:
+        print(f"OK: {img.size[0]}x{img.size[1]}")
+    elif copy_image_to_clipboard(img):
         print(f"CLIP: {img.size[0]}x{img.size[1]} -> буфер обмена")
     else:
         print("WARN: не положить в буфер")

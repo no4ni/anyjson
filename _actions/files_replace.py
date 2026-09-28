@@ -427,12 +427,35 @@ def replace_text(args: dict) -> str:
         return f"❌ Не удалось записать файл: {e}"
 
     _out = f"✅ Заменено {cnt} вхождений в {path.name} (кодировка {enc})"
-    if examples:
-        _out += "\n"
-        for i, (b, a) in enumerate(examples, 1):
-            _out += f"\n  {i}) до:    {b}"
-            _out += f"\n     после: {a}"
-        if cnt > len(examples):
-            _out += f"\n  … ещё {cnt - len(examples)} (не показаны)"
+    # diff по строкам: только изменённые строки + контекст ±2.
+    # Для длинных якорей это на порядок компактнее, чем «до/после».
+    try:
+        import difflib as _df
+        _old_lines = text.split("\n")
+        _new_lines = new_text.split("\n")
+        _diff = list(_df.unified_diff(_old_lines, _new_lines,
+                                      lineterm="", n=2))
+        # шапки ---/+++ не нужны — путь и так в заголовке
+        _body = [_d for _d in _diff
+                 if not _d.startswith("---")
+                 and not _d.startswith("+++")]
+        _LIMIT = 40
+        if _body:
+            _out += "\n"
+            for _d in _body[:_LIMIT]:
+                _out += "\n  " + _d
+            if len(_body) > _LIMIT:
+                _out += (f"\n  … diff обрезан: "
+                         f"{len(_body) - _LIMIT} строк")
+        elif examples:
+            # diff пуст (замена == поиск?): fallback на компактный показ
+            for i, (b, a) in enumerate(examples, 1):
+                _out += f"\n  {i}) до:    {b}"
+                _out += f"\n     после: {a}"
+    except Exception:
+        if examples:
+            for i, (b, a) in enumerate(examples, 1):
+                _out += f"\n  {i}) до:    {b}"
+                _out += f"\n     после: {a}"
     return _out
 

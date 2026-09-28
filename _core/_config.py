@@ -64,6 +64,14 @@ SIM_CLI = EXTERNAL_DIR / "sim" / "hatasim2.py"
 
 HEAR_CLI          = EXTERNAL_DIR / "hear"         / "hear_cli.py"
 
+# TTS Piper (внешний инструмент, пути в side/config.json)
+PIPER_EXE         = resolve_path(CONFIG["paths"]["piper_exe"])
+PIPER_VOICES      = resolve_path(CONFIG["paths"]["piper_voices"])
+
+# ffprobe / ffmpeg
+FFPROBE_EXE       = resolve_path(CONFIG["paths"]["ffprobe_exe"])
+FFMPEG_EXE        = resolve_path(CONFIG["paths"]["ffmpeg_exe"])
+
 WIKI_TEXTS_DIR = Path(CONFIG["paths"]["wiki_texts_dir"])
 _TOR_PATH = Path(CONFIG["paths"]["tor_executable"])
 _TORRC = Path(CONFIG["paths"]["torrc"])
@@ -162,6 +170,25 @@ def _extract_name(raw: str):
     return None
 
 
+def _flush_console_input():
+    """Слить остаток консольного ввода (защита от многострочной вставки).
+
+    После input() на Windows в буфере могут остаться строки,
+    если пользователь вставил несколько строк разом.
+    Здесь мы их съедаем, чтобы не попали в REPL как команды.
+    """
+    try:
+        import msvcrt
+        import time as _t
+    except ImportError:
+        return
+    _deadline = _t.time() + 0.1
+    while _t.time() < _deadline:
+        if msvcrt.kbhit():
+            msvcrt.getwch()
+            _deadline = _t.time() + 0.1
+
+
 def _ask_name():
     import random
     _intro = "Ты - агент без пользователя. Тебе отвечает только система."
@@ -192,6 +219,7 @@ def _ask_name():
             print("\nВыход.")
             import sys as _sys
             _sys.exit(0)
+        _flush_console_input()  # слить остаток многострочной вставки
         cand = _extract_name(raw)
         if cand:
             name = _sanitize_name(cand)

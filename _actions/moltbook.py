@@ -10,20 +10,25 @@ def _need_tor():
 
 @register("молтбук_лента")
 def feed(args):
-    """Глобальная лента Moltbook.
+    """Лента Moltbook: глобальная или только подписки.
 
     Параметры:
-      сортировка — new / hot / top (по умолчанию new)
-      количество — сколько постов показать (по умолчанию 5)
+      сортировка       — new / hot / top (по умолчанию new);
+                         игнорируется при только_подписки: true
+      количество       — сколько постов показать (по умолчанию 5)
+      только_подписки  — true: лента только тех, на кого ты подписан
+                         (GET /api/v1/feed?filter=following)
 
-    Пример:
+    Примеры:
       {"молтбук_лента": {"количество": 10, "сортировка": "hot"}}
+      {"молтбук_лента": {"только_подписки": true, "количество": 20}}
     """
     if not _need_tor():
         return "❌ Tor недоступен."
     from _actions._tools_moltbook import moltbook_feed
     return moltbook_feed(sort=args.get("сортировка", "new"),
-                         limit=args.get("количество", 5))
+                         limit=args.get("количество", 5),
+                         only_following=bool(args.get("только_подписки")))
 
 
 @register("молтбук_профиль")

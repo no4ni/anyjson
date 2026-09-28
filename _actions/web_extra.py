@@ -18,10 +18,17 @@ from _ps import run_with_wait
 # ============================================================
 @register("новости")
 def news(args):
-    """Команда "новости".
+    """Новости по запросу (DuckDuckGo + NewsAPI через Tor).
 
-    Параметры: см. реализацию.
-    Пример: {"новости": {}}
+    Параметры:
+      запрос     — тема новостей (обязательный)
+      провайдер  — all (по умолч.) / web / api
+      количество — сколько результатов (по умолчанию 10)
+      язык       — язык новостей для NewsAPI (по умолчанию ru)
+
+    Примеры:
+      {"новости": {"запрос": "космос"}}
+      {"новости": {"запрос": "AI", "провайдер": "web", "количество": 5}}
     """
     query = args.get("запрос", "")
     mode = args.get("провайдер", "all").lower()
@@ -31,68 +38,121 @@ def news(args):
         return "Ошибка: не указан запрос"
 
     aggregated = {}
-    ddgs = None
-    try:
-        from ddgs_tool.ddgs_tool import ddgs as _ddgs
-        ddgs = _ddgs
-    except Exception:
-        pass
+    ddg_error = None
 
-    if mode in ("web", "all") and ddgs:
+    if mode in ("web", "all"):
+        # Раньше тут был ddgs_tool.ddgs_tool — модуль не установлен,
+        # ветка молча падала в except и «новости» всегда возвращали
+        # пустоту. Ходим через штатный веб_поиск (side/web_search.py).
         try:
-            search_query = f"новости {query}"
-            raw = run_with_wait(ddgs, (search_query,))
-            for item in parse_ddgs_output(raw):
+            from _actions.web_search import web_search as _ws
+            raw = _ws({"запрос": "новости " + query,
+                       "формат": "json",
+                       "мин_релевантность": 0.0})
+            import json as _j
+            try:
+                _data = _j.loads(raw)
+                _items = _data.get("search_results", [])[:limit]
+            except Exception:
+                _items = []
+            for item in _items:
                 url = item.get("url")
                 if not url:
                     continue
                 aggregated[url] = {
                     "url": url,
-                    "title": item.get("title", "") or url.split('/')[-1],
+                    "title": item.get("title", "") or url.split("/")[-1],
                     "snippet": item.get("snippet", "") or "[Описание отсутствует]",
                     "source": "DuckDuckGo",
                 }
         except Exception as e:
-            log(f"Ошибка DuckDuckGo: {e}")
+            ddg_error = str(e)
+            log(f"Ошибка DDG в новости: {e}")
 
     if mode in ("api", "all") and API_KEYS.get("newsapi"):
+        _newsapi_key = API_KEYS["newsapi"]
         try:
-            from newsapi import NewsApiClient
-            client = NewsApiClient(api_key=API_KEYS["newsapi"])
-            to_date = datetime.now().date()
-            from_date = to_date - timedelta(days=7)
-            safe_query = quote(query.encode('utf8'))
-            resp = client.get_everything(q=safe_query,
-                                         from_param=from_date.isoformat(),
-                                         to=to_date.isoformat(),
-                                         language=language,
-                                         sort_by='relevancy',
-                                         page_size=min(limit, 100))
-            if resp.get('status') == 'ok':
-                for art in resp.get('articles', []):
-                    url = art.get('url')
-                    if url and url not in aggregated:
-                        aggregated[url] = {
-                            "url": url,
-                            "title": art.get('title', '') or 'Без названия',
-                            "snippet": art.get('description', '') or '[Описание отсутствует]',
+            from _tor import ensure_tor as _et
+            _proxies = None
+            if _et():
+                _proxies = {"http": "socks5h://127.0.0.1:9050",
+                            "https": "socks5h://127.0.0.1:9050"}
+            _to = datetime.now().date()
+            _from = _to - timedelta(days=7)
+            _url = "https://newsapi.org/v2/everything"
+            _params = {
+                "q": query,
+                "from": _from.isoformat(),
+                "to": _to.isoformat(),
+                "language": language,
+                "sortBy": "relevancy",
+                "pageSize": min(limit, 100),
+            }
+            _headers = {"X-Api-Key": _newsapi_key}
+            _resp = None
+            for _attempt in range(3):
+                try:
+                    _resp = requests.get(_url, params=_params,
+                                         headers=_headers,
+                                         proxies=_proxies,
+                                         timeout=30)
+                    break
+                except requests.exceptions.RequestException as _e:
+                    if _attempt < 2:
+                        time.sleep(2 * (_attempt + 1))
+                        continue
+                    raise
+            if _resp is not None and _resp.status_code == 200:
+                _data = _resp.json()
+                for art in _data.get("articles", []):
+                    u = art.get("url")
+                    if u and u not in aggregated:
+                        aggregated[u] = {
+                            "url": u,
+                            "title": art.get("title", "") or "Без названия",
+                            "snippet": art.get("description", "") or "[Описание отсутствует]",
                             "source": "NewsAPI",
                         }
+            elif _resp is not None:
+                log(f"NewsAPI HTTP {_resp.status_code}: {_resp.text[:200]}")
         except Exception as e:
             log(f"Ошибка NewsAPI: {e}")
 
     if not aggregated:
-        return "Новостей не найдено ни в одном источнике."
-    results = list(aggregated.values())
-    results.sort(key=lambda x: 0 if x['source'] == 'NewsAPI' else 1)
-    results = results[:limit]
+        _hint = ""
+        if ddg_error:
+            _hint = "\n(DDG: " + ddg_error[:200] + ")"
+        return "Новостей не найдено ни в одном источнике." + _hint
+
+    # NewsAPI даёт содержательные новости (заголовок + описание),
+    # DDG — только ссылки на источники/разделы. Разделяем вывод:
+    # N новостей сверху, N ссылок от DDG — блоком «Подробнее» снизу.
+    _news = [v for v in aggregated.values() if v["source"] == "NewsAPI"]
+    _ddg = [v for v in aggregated.values() if v["source"] != "NewsAPI"]
+
+    _n_news = min(len(_news), limit)
+    _n_ddg = min(len(_ddg), limit)
+
     lines = []
-    for i, r in enumerate(results):
-        lines.append(f"[{i}] {r['title']} (источник: {r['source']})")
-        lines.append(r['snippet'][:300])
-        lines.append(f"🔗 {r['url']}")
+    if _n_news:
+        for i, r in enumerate(_news[:_n_news]):
+            lines.append(f"[{i}] {r['title']}")
+            _snip = (r.get("snippet") or "").strip()
+            if _snip and _snip != "[Описание отсутствует]":
+                lines.append(_snip[:300])
+            lines.append(f"🔗 {r['url']}")
+            lines.append("")
+    elif mode != "api":
+        lines.append("NewsAPI: свежих новостей не нашлось.")
         lines.append("")
-    return "\n".join(lines).strip()
+
+    if _n_ddg:
+        lines.append("Подробнее:")
+        for r in _ddg[:_n_ddg]:
+            _title = r.get("title") or r["url"]
+            lines.append(f"  • {_title} — {r['url']}")
+
+    return "\n".join(lines).rstrip()
 
 
 # ============================================================
@@ -100,10 +160,15 @@ def news(args):
 # ============================================================
 @register("погода")
 def weather(args):
-    """Команда "погода".
+    """Текущая погода в городе (weatherapi.com).
 
-    Параметры: см. реализацию.
-    Пример: {"погода": {}}
+    Параметры:
+      город    — название города (обязательный)
+      апи_ключ — ключ weatherapi.com (иначе берётся из api_keys.json)
+
+    Примеры:
+      {"погода": {"город": "Москва"}}
+      {"погода": {"город": "Tokyo"}}
     """
     city = args.get("город", "")
     api_key = args.get("апи_ключ") or API_KEYS.get("weatherapi")
@@ -112,8 +177,17 @@ def weather(args):
     if not api_key:
         return "Ошибка: требуется api_key"
     try:
-        url = "http://api.weatherapi.com/v1/current.json"
-        resp = requests.get(url, params={"key": api_key, "q": city, "lang": "ru"}, timeout=10)
+        # HTTPS вместо HTTP: ключ не должен ходить открытым текстом.
+        # Через Tor (как Tavily) — api.weatherapi.com из РФ напрямую
+        # таймаутится. DNS через socks5h (h = hostname на стороне Tor).
+        from _tor import ensure_tor as _ensure_tor_w
+        url = "https://api.weatherapi.com/v1/current.json"
+        _proxies = None
+        if _ensure_tor_w():
+            _proxies = {"http": "socks5h://127.0.0.1:9050",
+                        "https": "socks5h://127.0.0.1:9050"}
+        resp = requests.get(url, params={"key": api_key, "q": city, "lang": "ru"},
+                            timeout=30, proxies=_proxies)
         data = resp.json()
         if "error" in data:
             return f"Ошибка API: {data['error'].get('message', 'неизвестно')}"
@@ -133,10 +207,14 @@ def weather(args):
 # ============================================================
 @register("энциклопедия")
 def wikipedia(args):
-    """Команда "энциклопедия".
+    """Статья из Википедии (русская или английская).
 
-    Параметры: см. реализацию.
-    Пример: {"энциклопедия": {}}
+    Параметры:
+      статья — название статьи (обязательный)
+
+    Примеры:
+      {"энциклопедия": {"статья": "Квантовая механика"}}
+      {"энциклопедия": {"статья": "Photosynthesis"}}
     """
     article = args.get("статья", "")
     if not article:
@@ -202,24 +280,116 @@ def arxiv(args):
 # ============================================================
 @register("багфикс")
 def stackoverflow(args):
-    """Команда "багфикс".
+    """Поиск решения на StackExchange по тексту ошибки.
 
-    Параметры: см. реализацию.
-    Пример: {"багфикс": {}}
+    Ходит напрямую в StackExchange API (без ключа, публичный лимит).
+    Возвращает: топ-3 вопроса + ссылки + принятый ответ (если есть).
+
+    Параметры:
+      запрос   — текст ошибки или вопрос (обязательный)
+      сайт     — сайт SE (по умолч. stackoverflow; можно askubuntu, superuser)
+      ответов  — сколько ответов показать для лучшего вопроса (по умолч. 1)
+
+    Примеры:
+      {"багфикс": {"запрос": "TypeError NoneType is not subscriptable"}}
+      {"багфикс": {"запрос": "python sort dict by value", "сайт": "stackoverflow"}}
     """
+    import urllib.parse as _up_so
     query = args.get("запрос", "")
     if not query:
         return "Ошибка: не указан запрос"
+    site = (args.get("сайт") or "stackoverflow").strip()
     try:
-        from langchain_community.utilities.stackexchange import StackExchangeAPIWrapper
-        from langchain_community.tools.stackexchange.tool import StackExchangeTool
-        wrapper = StackExchangeAPIWrapper()
-        tool = StackExchangeTool(api_wrapper=wrapper)
-        return run_with_wait(lambda: tool.run(query), timeout=15)[:4000]
-    except ImportError:
-        return "Не установлен langchain_community."
+        n_answers = int(args.get("ответов", 1) or 1)
+    except (TypeError, ValueError):
+        n_answers = 1
+    n_answers = max(0, min(n_answers, 3))
+
+    try:
+        from _tor import ensure_tor as _et
+        _proxies = None
+        if _et():
+            _proxies = {"http": "socks5h://127.0.0.1:9050",
+                        "https": "socks5h://127.0.0.1:9050"}
+    except Exception:
+        _proxies = None
+
+    _base = "https://api.stackexchange.com/2.3"
+    _params = {
+        "order": "desc",
+        "sort": "relevance",
+        "q": query,
+        "site": site,
+        "pagesize": 5,
+        "filter": "withbody",
+    }
+    try:
+        r = requests.get(_base + "/search/advanced",
+                         params=_params, proxies=_proxies, timeout=30)
+        if r.status_code != 200:
+            return "Ошибка StackExchange API: HTTP " + str(r.status_code)
+        data = r.json()
     except Exception as e:
-        return f"Ошибка StackExchange: {e}"
+        return "Ошибка StackExchange: " + str(e)
+
+    items = data.get("items", [])
+    if not items:
+        return "Ничего не найдено на " + site + " по запросу: " + query
+
+    import re as _re_so
+    import html as _html_so
+
+    def _clean_html(s):
+        if not s:
+            return ""
+        # <p> → перевод строки, <code>...</code> → как есть, остальное вырезаем
+        s = _re_so.sub(r"</p>", "\n", s, flags=_re_so.IGNORECASE)
+        s = _re_so.sub(r"<br\s*/?>", "\n", s, flags=_re_so.IGNORECASE)
+        s = _re_so.sub(r"<[^>]+>", "", s)
+        s = _html_so.unescape(s)
+        s = _re_so.sub(r"\n{3,}", "\n\n", s)
+        return s.strip()
+
+    lines = []
+    for it in items[:3]:
+        title = _html_so.unescape(it.get("title", "?"))
+        link = it.get("link", "")
+        score = it.get("score", 0)
+        ans_count = it.get("answer_count", 0)
+        accepted = it.get("accepted_answer_id")
+        is_answered = it.get("is_answered")
+        _flags = []
+        if accepted:
+            _flags.append("✅ принят")
+        if is_answered:
+            _flags.append("есть ответ")
+        _flag_s = (" [" + ", ".join(_flags) + "]") if _flags else ""
+        lines.append("📌 " + title + _flag_s)
+        lines.append("   ↑" + str(score) + " · ответов: " + str(ans_count))
+        lines.append("   " + link)
+
+        # принятый ответ
+        if n_answers > 0 and accepted:
+            try:
+                ra = requests.get(
+                    _base + "/answers/" + str(accepted),
+                    params={"site": site, "filter": "withbody"},
+                    proxies=_proxies, timeout=30)
+                if ra.status_code == 200:
+                    _adata = ra.json()
+                    _aitems = _adata.get("items", [])
+                    if _aitems:
+                        _abody = _clean_html(_aitems[0].get("body", ""))
+                        if _abody:
+                            lines.append("")
+                            lines.append("   ─── Принятый ответ ───")
+                            for _ln in _abody.split("\n")[:20]:
+                                lines.append("   " + _ln)
+            except Exception:
+                pass
+        lines.append("")
+
+    return "\n".join(lines).rstrip()
 
 
 # ============================================================
@@ -268,10 +438,18 @@ def wolfram(args):
 # ============================================================
 @register("паста")
 def pastebin(args):
-    """Команда "паста".
+    """Выложить текст на pastebin.com и получить ссылку.
 
-    Параметры: см. реализацию.
-    Пример: {"паста": {}}
+    Параметры:
+      текст     — содержимое (обязательный), алиасы: содержание, код
+      заголовок — название пасты (опционально)
+      язык      — подсветка синтаксиса (по умолчанию text)
+      срок      — как долго хранить: 10M / 1H / 1D / 1W / 2W / 1M
+                  (по умолчанию 1D)
+
+    Примеры:
+      {"паста": {"текст": "print(1)"}}
+      {"паста": {"текст": "SELECT 1", "язык": "sql", "срок": "1W"}}
     """
     text = args.get("текст") or args.get("содержание") or args.get("код") or ""
     if not text:

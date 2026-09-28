@@ -243,6 +243,8 @@ def main():
     p.add_argument("--без-субтитра", dest="no_subs", action="store_true",
                    help="НЕ накладывать субтитр")
     p.add_argument("--сохранить", "--save", dest="save", default=None)
+    p.add_argument("--no-clip", "--no_clip", dest="no_clip", action="store_true",
+                   help="не класть в буфер обмена")
     args = p.parse_args()
 
     video = args.video
@@ -266,7 +268,9 @@ def main():
             img = overlay_text(img, text)
             print(f"SUB: {text}")
 
-    if copy_image_to_clipboard(img):
+    if args.no_clip:
+        print(f"OK: {img.size[0]}x{img.size[1]}")
+    elif copy_image_to_clipboard(img):
         print(f"CLIP: {img.size[0]}x{img.size[1]} -> буфер обмена")
     else:
         print("WARN: не положить в буфер")

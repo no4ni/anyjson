@@ -60,6 +60,7 @@ ALLOWED_STDLIB = {
     "site", "smtplib", "ssl", "stat", "tabnanny", "tarfile",
     "telnetlib", "this", "timeit", "token", "tokenize", "trace",
     "tracemalloc", "types", "typing", "zipapp", "zoneinfo",
+    "wave", "audioop",
 }
 
 

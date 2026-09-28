@@ -86,6 +86,8 @@ def main():
     p.add_argument("--секунда", "--sec", dest="sec", type=float, required=True)
     p.add_argument("--сохранить", "--save", dest="save", default=None)
     p.add_argument("--размер", "--size", dest="size", default="1366x768")
+    p.add_argument("--no-clip", "--no_clip", dest="no_clip", action="store_true",
+                   help="не класть в буфер обмена")
     args = p.parse_args()
 
     video = args.video
@@ -149,7 +151,9 @@ def main():
     img = qpixmap_to_pil(pixmap)
     print(f"SIZE: {img.size[0]}x{img.size[1]}")
 
-    if copy_image_to_clipboard(img):
+    if args.no_clip:
+        print(f"OK: {img.size[0]}x{img.size[1]}")
+    elif copy_image_to_clipboard(img):
         print(f"CLIP: {img.size[0]}x{img.size[1]} -> буфер обмена")
     else:
         print("WARN: не положить в буфер")

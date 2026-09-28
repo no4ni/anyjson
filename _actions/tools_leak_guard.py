@@ -20,7 +20,8 @@ _TOKEN_PATTERNS = [
     re.compile(r"\bxoxb-[A-Za-z0-9\-]{20,}\b"),
     re.compile(r"\bghp_[A-Za-z0-9]{20,}\b"),
     re.compile(r"\bBearer\s+[A-Za-z0-9\-_.~+/=]{20,}", re.IGNORECASE),
-    re.compile(r"\b[a-fA-F0-9]{40,}\b"),
+    # hex-строки (sha256, git-хеши) специально НЕ маскируются:
+    # это не секрет, они публично вычислимы.
 ]
 
 # Длинные строки вида base64url: MEGA-ключи, JWT-сегменты, API-секреты.
@@ -33,6 +34,34 @@ _EMAIL_PATTERN = re.compile(
 _SECRET_LONG_PATTERN = re.compile(
     r"(?<![A-Za-z0-9_\-])([A-Za-z0-9_\-]{40,})(?![A-Za-z0-9_\-])"
 )
+
+
+# URL-квери с секретом: ?key=..., &token=..., ?api_key=...
+# Именно здесь ключ обычно короткий (32 символа у weatherapi, а не 40+).
+# Работает независимо от длины значения.
+_URL_KV_PATTERN = re.compile(
+    r"(?i)([?&](?:key|api[_\s\-]?key|apikey|token|access[_\s\-]?token"
+    r"|secret|password|passwd|pwd|пароль|ключ|секрет|токен)=)([^&\s\"'<>]{6,})"
+)
+
+
+# "пароль=значение", "password: значение", "token: "abc"", "api_key = xyz"
+# Маскируем само значение, оставляя ключ и разделитель.
+_KV_PATTERN = re.compile(
+    r"(?i)(\b(?:password|passwd|pwd|passphrase"
+    r"|api[_\s\-]?key|apikey"
+    r"|private[_\s\-]?key|secret[_\s\-]?key"
+    r"|token|secret|bearer|authorization"
+    r"|пароль|ключ|секрет|токен)\b[\"']?\s*[=:]\s*)"
+    r"(\"[^\"]*\"|'[^']*'|[^\s,;]+)"
+)
+
+
+def _mask_kv(m):
+    val = m.group(2)
+    if len(val) >= 2 and val[0] in ("\"", "'") and val[-1] == val[0]:
+        return m.group(1) + val[0] + "***" + val[-1]
+    return m.group(1) + "***"
 
 
 def _looks_like_secret(s):
@@ -86,6 +115,9 @@ def mask_secrets(text):
     if not isinstance(text, str) or not text:
         return text
     out = text
+    out = _KV_PATTERN.sub(_mask_kv, out)
+    # URL-квери: ?key=... / &token=... — независимо от длины значения.
+    out = _URL_KV_PATTERN.sub(lambda m: m.group(1) + "***", out)
     out = _EMAIL_PATTERN.sub("***", out)
     for pat in _TOKEN_PATTERNS:
         out = pat.sub("***", out)

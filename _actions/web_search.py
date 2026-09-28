@@ -510,6 +510,27 @@ def tor_request(args):
         return "⏹ Запрос прерван."
 
 
+@register(["тор_страница", "tor_страница", "tor_page"])
+def tor_page(args):
+    """Загрузить веб-страницу через Tor (авто_прокси всегда true).
+
+    Полный аналог «страница», но без опции ходить напрямую.
+    Параметры — те же, кроме «авто_прокси» (игнорируется).
+
+    Примеры:
+      {"тор_страница": {"адрес": "http://example.com/"}}
+      {"тор_страница": {"адрес": "http://www.insecam.org/en/bycountry/RU/"}}
+    """
+    if not isinstance(args, dict):
+        args = {}
+    args = dict(args)
+    args["авто_прокси"] = True
+    try:
+        return web_page(args)
+    except KeyboardInterrupt:
+        return "⏹ Запрос прерван."
+
+
 @register(["страница", "веб_страница"])
 def web_page(args):
     """Загрузить веб-страницу и вернуть её текст.
@@ -812,22 +833,47 @@ def web_page(args):
         _page = 1
 
     _from_cache = False
-    if url in _open_pages_cache and not args.get("обновить"):
-        content = _open_pages_cache[url]["content"]
+    # В кэше на один URL хранятся ДВА независимых варианта:
+    #   content_clean — очищенный текст,
+    #   content_raw   — сырой HTML (исходник).
+    # Запросы с разным view_source не портят друг другу кэш.
+    _cache_entry = _open_pages_cache.get(url)
+    _want_key = "content_raw" if view_source else "content_clean"
+    if (_cache_entry is not None
+            and not args.get("обновить")
+            and _want_key in _cache_entry):
+        content = _cache_entry[_want_key]
         _from_cache = True
     else:
-        content = fetch_page_content(url, use_tor=auto_proxy,
-                                     clean_html=not view_source)
+        _label = "📄 загрузка через Tor" if auto_proxy else "📄 загрузка страницы"
+        try:
+            content = _with_progress(
+                lambda: fetch_page_content(url, use_tor=auto_proxy,
+                                           clean_html=not view_source),
+                45, label=_label)
+        except TimeoutError:
+            return "Ошибка: превышен таймаут (45 сек)"
         if content.startswith("Ошибка"):
             return content
         if not content.strip() and not view_source:
-            content = fetch_page_content(url, use_tor=auto_proxy,
-                                         clean_html=False)
+            try:
+                content = _with_progress(
+                    lambda: fetch_page_content(url, use_tor=auto_proxy,
+                                               clean_html=False),
+                    45, label=_label)
+            except TimeoutError:
+                return "Ошибка: превышен таймаут (45 сек)"
         _lines = content.splitlines()
-        _open_pages_cache[url] = {
-            "url": url, "content": content, "lines": _lines,
-            "fetched_at": time.time(), "cookies": {}, "source": "http",
-        }
+        if _cache_entry is None:
+            _cache_entry = {"url": url, "fetched_at": time.time(),
+                            "cookies": {}, "source": "http"}
+            _open_pages_cache[url] = _cache_entry
+        _cache_entry[_want_key] = content
+        # content/lines — последний запрошенный вариант (совместимость
+        # с open_list и найти_в_списке, которые читают их напрямую).
+        _cache_entry["content"] = content
+        _cache_entry["lines"] = _lines
+        _cache_entry["fetched_at"] = time.time()
 
     total = len(content)
     if total == 0:

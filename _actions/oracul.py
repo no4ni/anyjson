@@ -95,9 +95,52 @@ def train_oracul(args):
     """
     data = args.get("данные") or args.get("файл") or args.get("путь")
     if not data:
-        return ('Укажи файл данных: {"обучить_оракула": {"данные": "C:/path/data.json"}}')
+        return ('Укажи файл данных: {"обучить_оракула": {"данные": "C:/path/data.json"}}\n'
+                'Либо inline: {"обучить_оракула": {"данные": '
+                '{"t": [1,2,3], "need": "t"}}}')
 
-    data_path = Path(data)
+    # Дружелюбие: если пришёл dict/list, а не путь — пишем во временный
+    # JSON в MY_DIR и работаем с ним. LLM часто передаёт данные inline.
+    if isinstance(data, (dict, list)):
+        # Проверяем формат до запуска CLI: без 'need' оракул не знает,
+        # что предсказывать, и падает AttributeError из глубины скрипта.
+        if isinstance(data, list):
+            return (
+                "❌ Нужен словарь с ключом 'need', а не список значений.\n"
+                "Формат: {\"t\": [вход1, вход2, ...], "
+                "\"x\": [цель1, цель2, ...], \"need\": \"x\"}\n\n"
+                "Пример:\n"
+                "```text\n"
+                '{"обучить_оракула": {"данные": '
+                '{"t": [0, 1, 2, 3, 4], "x": [0, 1, 4, 9, 16], '
+                '"need": "x"}}}\n'
+                "```")
+        if not data.get("need"):
+            _keys = ", ".join(data.keys()) or "(пусто)"
+            return (
+                "❌ В данных нет ключа 'need' — оракул не знает, "
+                "что предсказывать.\n"
+                "Добавь \"need\": \"<имя столбца-цели>\".\n"
+                "Сейчас в данных ключи: " + _keys + "\n\n"
+                "Пример:\n"
+                "```text\n"
+                '{"обучить_оракула": {"данные": '
+                '{"t": [0, 1, 2, 3, 4], "x": [0, 1, 4, 9, 16], '
+                '"need": "x"}}}\n'
+                "```")
+        import json as _json_inline
+        import time as _t_inline
+        _tmp = MY_DIR / ("oracul_in_"
+                         + str(int(_t_inline.time())) + ".json")
+        try:
+            _tmp.write_text(_json_inline.dumps(data, ensure_ascii=False),
+                            encoding="utf-8")
+        except Exception as e:
+            return "❌ Не удалось сохранить inline-данные: " + str(e)
+        data_path = _tmp
+    else:
+        data_path = Path(str(data))
+
     if not data_path.is_file():
         return f"❌ Файл данных не найден: {data_path}"
 
@@ -197,3 +240,9 @@ def predict_continuation(args):
     if code != 0:
         return f"❌ Предсказание упало (код {code}):\n{out[-2000:]}"
     return out
+
+
+# предсказать_продолжение принимает ЛЮБЫЕ именованные признаки
+# (t, x, y, ...). AST их не видит — помечаем функцию флагом,
+# чтобы _check_unknown_params не ругался на «t».
+predict_continuation._any_params = True

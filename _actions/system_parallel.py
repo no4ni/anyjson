@@ -154,12 +154,45 @@ def parallel(args):
         except Exception as e:
             return {"index": i + 1, "action": action, "result": None, "error": str(e)}
 
-    executor = concurrent.futures.ThreadPoolExecutor(max_workers=len(normalized))
+    _quiet = False
+    if isinstance(args, dict):
+        _t = args.get("тихо")
+        if isinstance(_t, str):
+            _quiet = _t.strip().lower() in ("1", "true", "да", "on")
+        else:
+            _quiet = bool(_t)
+
+    _print_lock = threading.Lock()
+    def _say(msg):
+        if _quiet:
+            return
+        with _print_lock:
+            try:
+                print(msg, flush=True)
+            except Exception:
+                pass
+
+    _n = len(normalized)
+    _start_ts = time.monotonic()
+    _started = {}
+    _say("\U0001F680 Параллельно: " + str(_n) + " задач (таймаут "
+         + str(TIMEOUT) + "s). Ctrl+C \u2014 прервать.")
+    for _i, (_a, _p) in enumerate(normalized, 1):
+        _started[_i] = time.monotonic()
+        _say("   \u25B6 [" + str(_i) + "/" + str(_n) + "] " + _a)
+
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=_n)
     futures = [executor.submit(run_single, i, a, p) for i, (a, p) in enumerate(normalized)]
     results = []
+    _interrupted = False
     try:
         for fut in concurrent.futures.as_completed(futures, timeout=TIMEOUT):
-            results.append(fut.result())
+            r = fut.result()
+            _el = time.monotonic() - _started.get(r["index"], time.monotonic())
+            _mark = "\u2705" if r["error"] is None else "\u274C"
+            _say("   " + _mark + " [" + str(r["index"]) + "/" + str(_n) + "] "
+                 + r["action"] + " \u2014 " + format(_el, ".1f") + "s")
+            results.append(r)
     except concurrent.futures.TimeoutError:
         for i, fut in enumerate(futures):
             if not fut.done():
@@ -167,8 +200,30 @@ def parallel(args):
                                 "result": None,
                                 "error": f"Таймаут {TIMEOUT} сек "
                                          f"(задача оставлена в фоне)"})
+    except KeyboardInterrupt:
+        _interrupted = True
+        for i, fut in enumerate(futures):
+            if fut.done():
+                try:
+                    results.append(fut.result())
+                except Exception:
+                    pass
+            else:
+                fut.cancel()
+        _say("")
+        _say("\u26D4 Прервано пользователем (Ctrl+C). Завершено "
+             + str(len(results)) + " из " + str(_n) + ".")
     finally:
         executor.shutdown(wait=False)
+
+    if _interrupted:
+        _el_total = time.monotonic() - _start_ts
+        return ("\u26D4 Параллельно прервано пользователем.\n"
+                + "Завершено " + str(len(results)) + " из " + str(_n)
+                + " задач за " + format(_el_total, ".1f") + "s.\n"
+                + "Незавершённые задачи могут продолжить работу в фоне "
+                + "(их не остановить из Python).")
+
     results.sort(key=lambda x: x["index"])
     max_len = max(500, 2048 // len(results)) if results else 500
     lines = []

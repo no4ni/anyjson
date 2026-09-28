@@ -19,6 +19,16 @@ import re
 import win32clipboard
 import pysubs2
 
+def _get_etalons_dir():
+    """Папка эталонов: env ANYJSON_ETALONS_DIR, иначе локальная."""
+    env = os.environ.get("ANYJSON_ETALONS_DIR")
+    if env:
+        return env
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "etalons")
+
+import os as _os_progress
+_PROGRESS_TO_STDERR = _os_progress.environ.get("QT_QPA_PLATFORM") == "offscreen"
+
 from spectrogram_video import SpectrogramCalculator
 from spectrumrgbvideo import MultiChannelTransformer, get_default_points, enhance_mid_frequencies
 from video8 import VideoProcessor
@@ -599,7 +609,7 @@ class AudioPlayer(QMainWindow):
 		min_arr, max_arr = self.get_vertical_color_extremes(region_rgb, n_bins=100)
 
 		# Папка для эталонов региона
-		base_dir = os.path.join(os.path.dirname(__file__), "etalons", region)
+		base_dir = os.path.join(_get_etalons_dir(), region)
 		os.makedirs(base_dir, exist_ok=True)
 
 		# Цикл для получения уникального имени
@@ -669,7 +679,7 @@ class AudioPlayer(QMainWindow):
 		win32clipboard.CloseClipboard()
 
 	def load_etalons(self):
-		base_dir = os.path.join(os.path.dirname(__file__), "etalons")
+		base_dir = _get_etalons_dir()
 		if not os.path.exists(base_dir):
 			print("Папка etalons не найдена")
 			return
@@ -855,7 +865,7 @@ class AudioPlayer(QMainWindow):
 			pygame.mixer.music.load(self.playback_audio_path)
 		except Exception as e:
 			print(f"Ошибка загрузки аудио: {e}")
-		self.file_label.setText(f"Пауза на {seconds:.1f} сек")
+		self._set_status(f"Пауза на {seconds:.1f} сек")
 
 	def again_audio(self):
 		if self.audio_file is None:
@@ -921,6 +931,23 @@ class AudioPlayer(QMainWindow):
 			with open(os.path.join(cache_dir, 'subtitles.json'), 'w', encoding='utf-8') as f:
 				json.dump(self.subtitles, f, ensure_ascii=False, indent=2)
 
+	def _set_status(self, text):
+		"""Обновить file_label; в offscreen-режиме (spectro_cli) —
+		продублировать в stderr, чтобы anyjson видел прогресс."""
+		try:
+			self._set_status(text)
+		except Exception:
+			pass
+		if _PROGRESS_TO_STDERR:
+			try:
+				_s = str(text)
+				if getattr(self, "_last_status", None) != _s:
+					self._last_status = _s
+					sys.stderr.write(chr(0x1F3BC) + " " + _s + chr(10))
+					sys.stderr.flush()
+			except Exception:
+				pass
+
 	def load_file(self):
 		path, _ = QFileDialog.getOpenFileName(
 			self, "Выберите аудиофайл", "", "Audio/Video Files (*.wav *.mp3 *.flac *.mp4 *.avi *.mkv *.mov *.flv *.webm)"
@@ -971,15 +998,15 @@ class AudioPlayer(QMainWindow):
 
 		if loaded_from_cache:
 			self.playback_audio_path = audio_path if audio_path else path
-			self.file_label.setText(f"Загружено из кэша ({duration_sec:.1f} сек)")
+			self._set_status(f"Загружено из кэша ({duration_sec:.1f} сек)")
 			mins = int(duration_sec // 60)
 			secs = int(duration_sec % 60)
 			if duration_sec >= 3600:
 				hours = int(duration_sec // 3600)
 				mins = int((duration_sec % 3600) // 60)
-				self.file_label.setText(f"Конец на {hours:02d}:{mins:02d}:{secs:02d}")
+				self._set_status(f"Конец на {hours:02d}:{mins:02d}:{secs:02d}")
 			else:
-				self.file_label.setText(f"Конец на {mins:02d}:{secs:02d}")
+				self._set_status(f"Конец на {mins:02d}:{secs:02d}")
 			self.spec_widget.clear()
 			self.rgb_slice = None
 			if 0 in self.subtitles:
@@ -992,14 +1019,14 @@ class AudioPlayer(QMainWindow):
 				self.play_btn.setEnabled(True)
 			return
 
-		self.file_label.setText("Вычисление спектрограммы...")
+		self._set_status("Вычисление спектрограммы...")
 		QApplication.processEvents()
 
 		ext = os.path.splitext(path)[1].lower()
 		if ext in ['.mp4', '.avi', '.mkv', '.mov', '.flv', '.webm']:
 			success, audio_path, video_clip = self.calculator.load_video(path)
 			if not success:
-				self.file_label.setText("Ошибка загрузки видео/аудио")
+				self._set_status("Ошибка загрузки видео/аудио")
 				return
 			self.playback_audio_path = audio_path
 			self.video_processor.load_video(path)
@@ -1008,7 +1035,7 @@ class AudioPlayer(QMainWindow):
 		else:
 			success = self.calculator.load_audio(path)
 			if not success:
-				self.file_label.setText("Ошибка загрузки аудио")
+				self._set_status("Ошибка загрузки аудио")
 				return
 			self.playback_audio_path = path
 			self.video_processor.close()
@@ -1016,14 +1043,34 @@ class AudioPlayer(QMainWindow):
 
 		sr = self.calculator.sr
 
+		# Адаптивный STFT fps:
+		#   <= 15 мин  -> 200 fps
+		#   >= 2 часа  -> 100 fps (минимум)
+		#   между ними — линейная интерполяция 200 -> 100
+		_sec_total = len(self.calculator.samples) / sr
+		_FPS_MAX = 200.0
+		_FPS_MIN = 100.0
+		_T_FAST = 15 * 60.0   # до 15 мин — максимум
+		_T_SLOW = 2 * 3600.0  # 2 часа — минимум
+		if _sec_total <= _T_FAST:
+			_stft_fps = _FPS_MAX
+		elif _sec_total >= _T_SLOW:
+			_stft_fps = _FPS_MIN
+		else:
+			_t = (_sec_total - _T_FAST) / (_T_SLOW - _T_FAST)
+			_stft_fps = _FPS_MAX - (_FPS_MAX - _FPS_MIN) * _t
+		self.calculator.target_fps = float(_stft_fps)
+		self._set_status(f"STFT {_stft_fps:.0f} fps (длительность {_sec_total:.0f} с)")
+		QApplication.processEvents()
+
 		def progress(pct, msg=""):
-			self.file_label.setText(f"{msg} {pct}%")
+			self._set_status(f"{msg} {pct}%")
 			QApplication.processEvents()
 
 		try:
 			spec_data, idx_200, idx_300, idx_3400, total_frames_orig = self.calculator.compute_spectrogram(progress_callback=progress)
 		except Exception as e:
-			self.file_label.setText(f"Ошибка: {e}")
+			self._set_status(f"Ошибка: {e}")
 			return
 
 		spec_data = spec_data.astype(np.float32, copy=False)
@@ -1041,13 +1088,13 @@ class AudioPlayer(QMainWindow):
 		weights_b_path = os.path.join(weights_dir, 'weights_b.npy')
 
 		if all(os.path.exists(p) for p in [weights_r_path, weights_g_path, weights_b_path]):
-			self.file_label.setText("Загрузка весов из кэша (по частоте дискретизации)...")
+			self._set_status("Загрузка весов из кэша (по частоте дискретизации)...")
 			QApplication.processEvents()
 			weights_r = np.load(weights_r_path).astype(np.float32)
 			weights_g = np.load(weights_g_path).astype(np.float32)
 			weights_b = np.load(weights_b_path).astype(np.float32)
 		else:
-			self.file_label.setText("Построение весовых матриц...")
+			self._set_status("Построение весовых матриц...")
 			QApplication.processEvents()
 			weights_r, weights_g, weights_b = self.transformer.build_weights(
 				freq_centers, freq_widths,
@@ -1058,7 +1105,7 @@ class AudioPlayer(QMainWindow):
 			np.save(weights_g_path, weights_g)
 			np.save(weights_b_path, weights_b)
 
-		self.file_label.setText("Преобразование в RGB... 0%")
+		self._set_status("Преобразование в RGB... 0%")
 		QApplication.processEvents()
 
 		F, T_orig = spec_data.shape
@@ -1067,19 +1114,19 @@ class AudioPlayer(QMainWindow):
 		spec_interp = np.zeros((F, self.total_frames_260), dtype=np.float32)
 		for f in range(F):
 			spec_interp[f, :] = np.interp(time_target, time_orig, spec_data[f, :])
-		self.file_label.setText("Преобразование в RGB... 25%")
+		self._set_status("Преобразование в RGB... 25%")
 		QApplication.processEvents()
 
 		r = weights_r @ spec_interp
-		self.file_label.setText("Преобразование в RGB... 50%")
+		self._set_status("Преобразование в RGB... 50%")
 		QApplication.processEvents()
 
 		g = weights_g @ spec_interp
-		self.file_label.setText("Преобразование в RGB... 75%")
+		self._set_status("Преобразование в RGB... 75%")
 		QApplication.processEvents()
 
 		b = weights_b @ spec_interp
-		self.file_label.setText("Преобразование в RGB... 100%")
+		self._set_status("Преобразование в RGB... 100%")
 		QApplication.processEvents()
 
 		del spec_interp, spec_data
@@ -1103,9 +1150,9 @@ class AudioPlayer(QMainWindow):
 		if duration_sec >= 3600:
 			hours = int(duration_sec // 3600)
 			mins = int((duration_sec % 3600) // 60)
-			self.file_label.setText(f"Конец на {hours:02d}:{mins:02d}:{secs:02d}")
+			self._set_status(f"Конец на {hours:02d}:{mins:02d}:{secs:02d}")
 		else:
-			self.file_label.setText(f"Конец на {mins:02d}:{secs:02d}")
+			self._set_status(f"Конец на {mins:02d}:{secs:02d}")
 
 		if 0 in self.subtitles:
 			self.sub_edit.setText(self.subtitles[0])

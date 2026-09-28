@@ -142,3 +142,9 @@ def sim_raw(args):
         return "нужен ключ action"
     _send_command(body)
     return "отправлено: " + json.dumps(body, ensure_ascii=False)
+
+
+# сим_команда / сим_json принимает ЛЮБЫЕ ключи (action, speed,
+# angle, ...) и передаёт их как есть. AST их не видит — флаг
+# отключает предупреждение «неизвестные параметры».
+sim_raw._any_params = True

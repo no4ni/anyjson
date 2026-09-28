@@ -65,7 +65,58 @@ def _f(args, *keys, default=1.0):
     return default
 
 
-@register(["цветокоррекция", "цветокор", "цвет"])
+_NAMED_COLORS = {
+    "красный": (255, 0, 0),
+    "зелёный": (0, 200, 0),
+    "зеленый": (0, 200, 0),
+    "синий": (30, 60, 220),
+    "голубой": (80, 180, 230),
+    "жёлтый": (255, 220, 0),
+    "желтый": (255, 220, 0),
+    "оранжевый": (255, 140, 0),
+    "фиолетовый": (150, 60, 200),
+    "розовый": (255, 130, 180),
+    "белый": (255, 255, 255),
+    "чёрный": (0, 0, 0),
+    "черный": (0, 0, 0),
+    "серый": (128, 128, 128),
+    "коричневый": (140, 90, 50),
+    "бирюзовый": (60, 200, 200),
+}
+
+
+def _parse_color(v):
+    """#RRGGBB / [r,g,b] / имя -> (r, g, b) или None."""
+    if v is None:
+        return None
+    if isinstance(v, (list, tuple)) and len(v) >= 3:
+        try:
+            return (max(0, min(255, int(v[0]))),
+                    max(0, min(255, int(v[1]))),
+                    max(0, min(255, int(v[2]))))
+        except (TypeError, ValueError):
+            return None
+    if isinstance(v, str):
+        t = v.strip().lower()
+        if t in _NAMED_COLORS:
+            return _NAMED_COLORS[t]
+        if t.startswith("#"):
+            h = t[1:]
+            if len(h) == 3:
+                h = h[0] * 2 + h[1] * 2 + h[2] * 2
+            if len(h) == 6:
+                try:
+                    return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+                except ValueError:
+                    return None
+        try:
+            return (int(t), int(t), int(t))
+        except ValueError:
+            return None
+    return None
+
+
+@register(["цветокоррекция", "цветокор", "цвет", "тонирование"])
 def color_correct(args):
     """Цветокоррекция одной картинки.
 
@@ -77,6 +128,9 @@ def color_correct(args):
       резкость      — множитель, 1.0 = как есть (алиас: sharpness)
       тон           — сдвиг в градусах -180..180, 0 = как есть
                       (алиасы: оттенок, hue)
+      плюс_цвет  — примешать цвет: #RRGGBB / [r,g,b] / имя
+                      (имена: красный, жёлтый, синий, ...)
+      доля         — 0..1, доля цвета в смеси (по умолч. 0.2)
       сохранить     — путь для PNG (иначе MY_DIR/effects_out/)
       в_контекст    — положить в контекст (по умолч. true)
 
@@ -105,6 +159,22 @@ def color_correct(args):
         sharpness=_f(args, "резкость", "sharpness"),
         hue=_f(args, "тон", "оттенок", "hue", default=0.0),
     )
+
+    # Примесь сплошного цвета (линейное alpha-смешение).
+    plus_color = _parse_color(args.get("плюс_цвет") or args.get("plus_color"))
+    if plus_color is not None:
+        try:
+            share = float(args.get("доля", args.get("share", 0.2)) or 0.0)
+        except (TypeError, ValueError):
+            share = 0.0
+        if share < 0.0:
+            share = 0.0
+        if share > 1.0:
+            share = 1.0
+        if share > 0.0:
+            from PIL import Image
+            solid = Image.new("RGB", corrected.size, plus_color)
+            corrected = Image.blend(corrected.convert("RGB"), solid, share)
 
     from PIL import Image
     if has_alpha and alpha is not None:
