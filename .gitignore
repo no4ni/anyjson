@@ -62,3 +62,21 @@ desktop.ini
 *.bak_*
 *.bak.*
 *.orig
+
+# Модели и большие бинарники
+*.safetensors
+*.gguf
+*.ckpt
+*.pt
+*.pth
+*.onnx
+*.bin
+
+# Бэкапы и мусор
+*.bak
+*.bak_*
+__pycache__/
+*.pyc
+# Эталонные прогоны (генерируются)
+_refactor/lottie/_etalon/_v*
+_refactor/lottie/_etalon/_new_*
