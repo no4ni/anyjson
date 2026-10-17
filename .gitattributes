@@ -1,10 +1,16 @@
+# Автоматически нормализовать текстовые файлы в LF при коммите
 * text=auto
 *.py text
 *.py eol=lf
 *.md text eol=lf
 *.json text eol=lf
+
+# Батники и скрипты Windows — оставить в CRLF
 *.bat text eol=crlf
+*.cmd text eol=crlf
 *.ps1 text eol=crlf
+
+# Бинарные файлы (не трогать line endings!)
 *.png binary
 *.jpg binary
 *.ico binary
