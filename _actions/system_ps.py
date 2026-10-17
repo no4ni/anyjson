@@ -118,7 +118,7 @@ def _split_ps_links(command):
     return [x.strip() for x in parts if x.strip()]
 
 
-@register(["запуск", "терминал", "шелл"])
+@register(["запуск", "запустить", "терминал", "шелл"])
 def run_ps(args):
     """PowerShell с БЕЛЫМ списком.
 
@@ -305,7 +305,7 @@ def run_ps(args):
                     ("del", "удалить_файл"),
                     ("erase", "удалить_файл"),
                     ("rmdir", "удалить_папку"),
-                    ("copy_item", "переместить"),
+                    ("copy_item", "копировать"),
                     ("move_item", "переместить"),
                     ("move", "переместить"),
                     ("set_content", "переписать"),

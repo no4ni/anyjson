@@ -4,7 +4,7 @@ import random
 import re
 from typing import Any, Dict
 
-from _actions import HANDLERS, load_all
+from _actions import HANDLERS, PRIMARY_HANDLERS, load_all
 from _utils import log, truncate_output
 
 _loaded = False
@@ -181,8 +181,30 @@ _SYNONYMS = {
 
 def _suggest_commands(action: str, n: int = 3) -> str:
     # только русские имена: латинские алиасы заблокированы,
-    # нечего их подсказывать
-    names = [x for x in HANDLERS.keys() if x and _is_russian_name(x)]
+    # нечего их подсказывать. Дедуп по id(fn): канон из PRIMARY_HANDLERS
+    # идёт первым, алиасы (заменить_в_тексте и т.п.) отфильтровываются.
+    _seen_fns = set()
+    names = []
+    for _n in HANDLERS.keys():
+        if not _n or not _is_russian_name(_n):
+            continue
+        if _n not in PRIMARY_HANDLERS:
+            continue
+        _fn = HANDLERS[_n]
+        if id(_fn) in _seen_fns:
+            continue
+        _seen_fns.add(id(_fn))
+        names.append(_n)
+    for _n in HANDLERS.keys():
+        if not _n or not _is_russian_name(_n):
+            continue
+        if _n in PRIMARY_HANDLERS:
+            continue
+        _fn = HANDLERS[_n]
+        if id(_fn) in _seen_fns:
+            continue
+        _seen_fns.add(id(_fn))
+        names.append(_n)
     if not names:
         return ""
 

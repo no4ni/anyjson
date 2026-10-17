@@ -25,7 +25,8 @@ def _find_common(args, only_files):
         root_path=(args.get("корень") or args.get("где")
                    or args.get("путь") or os.getcwd()),
         search_name=args.get("имя", ""),
-        search_content=args.get("содержание") or args.get("содержимое", ""),
+        search_content=(args.get("содержание") or args.get("содержимое")
+                        or args.get("подстрока", "")),
         search_all=args.get("всё", ""),
         encoding=args.get("кодировка", "utf-8"),
         max_file_size=args.get("макс_размер", 1_000_000),
@@ -37,7 +38,7 @@ def _find_common(args, only_files):
     )
 
 
-@register("найти_файл")
+@register(["найти_файл", "поиск_в_файлах"])
 def find_file_cmd(args):
     """Поиск ФАЙЛА по имени и/или содержимому.
 
@@ -46,7 +47,8 @@ def find_file_cmd(args):
     Параметры:
       корень      — папка старта (по умолчанию текущая), алиасы: где, путь
       имя         — подстрока в имени файла
-      содержание  — подстрока в тексте (поддерживает "a|b" для ИЛИ)
+      содержание  — подстрока в тексте (поддерживает "a|b" для ИЛИ),
+                    алиас: подстрока
       всё         — искать и по имени, и по содержимому
       маска       — glob по имени (например "*mega*", "*.py")
       кодировка   — для чтения (по умолчанию utf-8)
@@ -99,6 +101,13 @@ def analyze_folder(args):
     if not target_path:
         return "Ошибка: не указан путь"
     target_path = target_path.strip().strip('"').strip("'")
+    if os.path.isfile(target_path):
+        _sz = os.path.getsize(target_path)
+        return (f"Это файл, а не папка: {target_path} ({_sz} Б)\n"
+                f"Анализ папки неприменим. Для файла — читать / читать_по_кб / "
+                f"анализ_изображения / анализ_видео / анализ_аудио.")
+    if not os.path.isdir(target_path):
+        return f"❌ Папка не существует: {target_path}"
     script = PUBLIC_TOOLS_DIR / "cleanDrive.py"
     if not script.exists():
         return f"Ошибка: {script} не найден"
@@ -207,6 +216,31 @@ def cleanup_drive(args):
         return f"Ошибка cleanDrive.py: {e}"
 
 
+# Кэш результатов «осмотреть» — чтобы пагинация не гоняла PS заново.
+_INSPECT_CACHE = {}
+_INSPECT_CACHE_TTL = 300
+_INSPECT_CACHE_MAX = 5
+
+
+def _inspect_cache_get(key):
+    import time as _t
+    e = _INSPECT_CACHE.get(key)
+    if not e:
+        return None
+    if _t.time() - e[0] > _INSPECT_CACHE_TTL:
+        del _INSPECT_CACHE[key]
+        return None
+    return e[1]
+
+
+def _inspect_cache_set(key, value):
+    import time as _t
+    _INSPECT_CACHE[key] = (_t.time(), value)
+    if len(_INSPECT_CACHE) > _INSPECT_CACHE_MAX:
+        oldest = min(_INSPECT_CACHE.items(), key=lambda kv: kv[1][0])
+        del _INSPECT_CACHE[oldest[0]]
+
+
 @register("осмотреть")
 def inspect(args):
     """Осмотр файла или URL: поиск по ключевым словам.
@@ -219,6 +253,11 @@ def inspect(args):
       кодировка      — utf8 / cp1251 (по умолчанию utf8)
       вокруг         — контекстных строк вокруг совпадения
       таймаут        — секунд (по умолчанию 30)
+      страница       — номер страницы вывода (1-based, по умолчанию 1)
+      размер         — символов на страницу (по умолчанию 4000, мин 500)
+      обновить       — true: обойти кэш (заново запустить inspect.ps1)
+      регулярка      — true: трактовать ключевые_слова как regex
+                       (по умолчанию false, обычная подстрока)
 
     Примеры:
       {"осмотреть": {"путь": "E:/log.txt", "ключевые_слова": "error,warning"}}
@@ -234,6 +273,7 @@ def inspect(args):
         target_count = 0
     probability = args.get("вероятность", 0.5)
     encoding = args.get("кодировка", "utf8")
+    use_regex = bool(args.get("регулярка", False))
     context = args.get("вокруг", 3)
     try:
         timeout = int(args.get("таймаут", 30) or 0)
@@ -243,6 +283,18 @@ def inspect(args):
     if not file_path:
         return "Ошибка: необходимо указать 'путь'"
 
+    # Pre-flight: если это не URL и файла нет — говорим об этом сразу.
+    # Иначе идём в inspect.ps1, он возвращает пусто — и команда молчит.
+    if not file_path.startswith(("http://", "https://")) and not os.path.exists(file_path):
+        _parent = os.path.dirname(file_path) or "."
+        return (
+            "❌ Файл не найден: " + file_path + chr(10)
+            + "💡 Проверь путь. Листинг папки:" + chr(10)
+            + "```text" + chr(10)
+            + '{"список_файлов": {"путь": "' + _parent.replace(chr(92), "/") + '"}}' + chr(10)
+            + "```"
+        )
+
     # Бинарные/специальные форматы — перенаправляем на прочитать_полностью.
     # Текстовые (.txt/.log/.py/...) — НЕ перенаправляем: для них смысл
     # осмотра в поиске по содержимому, а read_full кладёт файл в буфер
@@ -250,7 +302,8 @@ def inspect(args):
     _TEXT_EXTS = {".txt", ".log", ".md", ".py", ".js", ".html",
                   ".css", ".json", ".xml", ".csv", ".ini", ".cfg",
                   ".yaml", ".yml", ".toml", ".rst", ".tex", ".sql",
-                  ".sh", ".bat", ".ps1", ".tsv", ".env"}
+                  ".sh", ".bat", ".ps1", ".tsv", ".env",
+                  ".svg", ".vtt", ".srt", ".ass", ".reg", ".m3u"}
     if not file_path.startswith(("http://", "https://")) and os.path.isfile(file_path):
         _ext = os.path.splitext(file_path)[1].lower()
         if _ext and _ext not in _TEXT_EXTS:
@@ -338,10 +391,10 @@ def inspect(args):
             sys.stdout.write("\r" + " " * 80 + "\r")
             sys.stdout.flush()
         if not all_matches:
+            _kw_str = ", ".join(kw_list) if isinstance(kw_list, (list, tuple)) else str(kw_list)
             if timed_out:
-                return (f"⏱ Превышен таймаут ({timeout} с). "
-                        "Совпадений не найдено.")
-            return "Не найдено строк с ключевыми словами."
+                return f"⏱ Таймаут ({timeout} с). В {file_path} не нашлось: {_kw_str}"
+            return f"В {file_path} не нашлось: {_kw_str}"
         selected = all_matches if (target_count <= 0 or target_count > len(all_matches)) else random.sample(all_matches, target_count)
         body = "\n".join(f"{p}:\n{l[:1024]}{'…' if len(l) > 1024 else ''}" for p, l in selected)
         if timed_out:
@@ -357,13 +410,112 @@ def inspect(args):
     ps_array = "@('" + "','".join(kw_esc) + "')"
     fp_esc = file_path.replace("'", "''")
     inspect_script = PUBLIC_TOOLS_DIR / "inspect.ps1"
-    ps_command = f'& "{inspect_script}" -FilePath \'{fp_esc}\' -Keywords {ps_array} -TargetCount {target_count} -Probability {probability} -Encoding \'{encoding}\' -Context {context}'
-    result = run_with_wait(execute_command, (ps_command,), timeout)
-    # PS 5.1 сериализует Progress/Information в CLIXML и пихает в stderr.
-    # Режем здесь — это последняя точка перед выводом.
-    import re as _re
-    result = _re.sub(r"#<\s*CLIXML.*", "", result, flags=_re.S).rstrip()
-    return result[:2048] + ("… (обрезано)" if len(result) > 2048 else "")
+    _regex_flag = " -Regex" if use_regex else ""
+    ps_command = f'& "{inspect_script}" -FilePath \'{fp_esc}\' -Keywords {ps_array} -TargetCount {target_count} -Probability {probability} -Encoding \'{encoding}\' -Context {context}{_regex_flag}'
+    # Кэш: одинаковые параметры — не гоняем inspect.ps1 повторно.
+    _cache_key = (
+        str(file_path),
+        "|".join(str(x) for x in kw_list),
+        "regex" if use_regex else "substr",
+        str(encoding),
+        str(context),
+        str(target_count),
+        str(probability),
+    )
+    _refresh_raw = args.get("обновить", args.get("свежий"))
+    if isinstance(_refresh_raw, bool):
+        _refresh = _refresh_raw
+    elif isinstance(_refresh_raw, (int, float)):
+        _refresh = bool(_refresh_raw)
+    elif isinstance(_refresh_raw, str):
+        _refresh = _refresh_raw.strip().lower() in (
+            "1", "true", "yes", "да", "on")
+    else:
+        _refresh = False
+
+    _cached = None if _refresh else _inspect_cache_get(_cache_key)
+    if _cached is not None:
+        result = _cached
+        _from_cache = True
+    else:
+        result = run_with_wait(execute_command, (ps_command, timeout, True), timeout)
+        # PS 5.1 сериализует Progress/Information в CLIXML и пихает в stderr.
+        # Режем здесь — это последняя точка перед выводом.
+        import re as _re
+        result = _re.sub(r"#<\s*CLIXML.*", "", result, flags=_re.S).rstrip()
+        _from_cache = False
+        if result.strip():
+            _inspect_cache_set(_cache_key, result)
+    # Если PS-скрипт не вернул ничего — не молчим, а сообщаем.
+    if not result.strip():
+        return (
+            "⚠️ inspect.ps1 вернул пустой результат." + chr(10)
+            + "  путь: " + str(file_path) + chr(10)
+            + "  ключевые_слова: " + repr(kw_list) + chr(10)
+            + "  кодировка: " + str(encoding) + chr(10)
+            + "  таймаут: " + str(timeout) + " с" + chr(10)
+            + "💡 Проверь: файл читается? ключевые слова есть в тексте? "
+            + "таймаут не мал?"
+        )
+
+    # --- пагинация результата ---
+    try:
+        _page = int(args.get("страница", 1) or 1)
+    except (TypeError, ValueError):
+        _page = 1
+    if _page < 1:
+        _page = 1
+    try:
+        _page_size = int(args.get("размер", 4000) or 4000)
+    except (TypeError, ValueError):
+        _page_size = 4000
+    if _page_size < 500:
+        _page_size = 500
+    if _page_size > 200000:
+        _page_size = 200000
+
+    _total = len(result)
+    _total_pages = max(1, (_total + _page_size - 1) // _page_size)
+    if _page > _total_pages:
+        _page = _total_pages
+    _start = (_page - 1) * _page_size
+    _end = min(_start + _page_size, _total)
+    _body = result[_start:_end]
+
+    _header = ""
+    if _total_pages > 1:
+        _cache_mark = " (кэш)" if _from_cache else ""
+        _header = (
+            "📄 Страница " + str(_page) + "/" + str(_total_pages)
+            + " (симв. " + str(_start + 1) + ".." + str(_end)
+            + " из " + str(_total) + ")" + _cache_mark
+            + chr(10) + chr(10)
+        )
+
+    _nav = ""
+    if _total_pages > 1:
+        import json as _json_pg
+        _base = {k: v for k, v in args.items()
+                 if k not in ("страница", "размер")}
+        _nav_lines = []
+        if _page < _total_pages:
+            _nx = dict(_base)
+            _nx["страница"] = _page + 1
+            _nx["размер"] = _page_size
+            _nav_lines.append(
+                "▶ Дальше: " + _json_pg.dumps({"осмотреть": _nx},
+                                              ensure_ascii=False))
+        if _page > 1:
+            _pv = dict(_base)
+            _pv["страница"] = _page - 1
+            _pv["размер"] = _page_size
+            _nav_lines.append(
+                "◀ Назад: " + _json_pg.dumps({"осмотреть": _pv},
+                                             ensure_ascii=False))
+        if _nav_lines:
+            _nav = chr(10) + chr(10) + chr(10).join(_nav_lines)
+
+    return _header + _body + _nav
 
 
 @register("формат")
@@ -822,6 +974,83 @@ def _find_function_range(src, name):
     return None
 
 
+def _find_class_range(src, name):
+    """Границы класса по имени (включая декораторы). (start, end) или None."""
+    import ast as _ast
+    try:
+        tree = _ast.parse(src)
+    except SyntaxError as e:
+        raise ValueError(f"синтаксическая ошибка в файле: {e}")
+    for node in _ast.walk(tree):
+        if isinstance(node, _ast.ClassDef) and node.name == name:
+            start = node.lineno - 1
+            if node.decorator_list:
+                start = min(d.lineno for d in node.decorator_list) - 1
+            end = node.end_lineno
+            return start, end
+    return None
+
+
+@register(["прочитать_класс", "read_class"])
+def read_class_cmd(args):
+    """Прочитать класс из .py-файла по имени — целиком, со всеми методами.
+
+    Параметры:
+      имя  — имя класса (обязательный)
+      путь — путь к .py-файлу (опционально; без него — поиск по _actions/*.py)
+
+    Примеры:
+      {"прочитать_класс": {"имя": "ContextBuilder", "путь": "E:/project/example.py"}}
+      {"прочитать_класс": {"имя": "ContextBuilder"}}
+    """
+    import pathlib as _pl
+    args = args or {}
+    name = (args.get("имя") or args.get("класс") or "").strip()
+    path = (args.get("путь") or args.get("файл") or "").strip()
+    if not name:
+        return "Укажите имя класса."
+    if not path:
+        _here = _pl.Path(__file__).parent
+        _candidates = sorted(_here.glob("*.py"))
+        _found = []
+        for _f in _candidates:
+            try:
+                _src = _f.read_text(encoding="utf-8")
+            except Exception:
+                continue
+            try:
+                if _find_class_range(_src, name) is not None:
+                    _found.append(str(_f))
+            except Exception:
+                continue
+        if not _found:
+            return "❌ Класс '" + name + "' не найден в _actions/*.py"
+        if len(_found) > 1:
+            _nl = chr(10)
+            return ("🤔 Класс '" + name + "' найден в нескольких файлах:"
+                    + _nl + "  • " + (_nl + "  • ").join(_found)
+                    + _nl + "Уточни путь.")
+        path = _found[0]
+    if not os.path.isfile(path):
+        return "❌ Файл не найден: " + path
+    try:
+        src = open(path, "r", encoding="utf-8").read()
+    except Exception as e:
+        return "❌ Ошибка чтения: " + str(e)
+    try:
+        rng = _find_class_range(src, name)
+    except ValueError as e:
+        return "❌ " + str(e)
+    if rng is None:
+        return "❌ Класс '" + name + "' не найден в " + path
+    start, end = rng
+    lines = src.splitlines(keepends=True)
+    block_text = "".join(lines[start:end])
+    _nl = chr(10)
+    header = "📄 " + path + " [" + name + "] — строки " + str(start + 1) + ".." + str(end)
+    return header + _nl + _nl + block_text
+
+
 @register(["прочитать_функцию", "read_function"])
 def read_function_cmd(args):
     """Прочитать одну функцию из .py-файла по имени.
@@ -878,7 +1107,7 @@ def read_function_cmd(args):
     start, end = rng
     lines = src.splitlines(keepends=True)
     block_text = "".join(lines[start:end])
-    header = f"📍 {path} [{name}] — строки {start + 1}..{end}"
+    header = f"📄 {path} [{name}] — строки {start + 1}..{end}"
     return f"{header}{chr(10)}{chr(10)}{block_text}"
 
 
@@ -983,5 +1212,7 @@ def replace_function_cmd(args):
         return f"❌ Ошибка записи: {e}"
 
     return (f"✅ Функция '{name}' в {path} заменена. "
-            f"Было строк {end - start}, стало {len(indented)}. Бэкап: {bak}")
+            f"Синтаксис проверен (ast.parse). "
+            f"Было строк {end - start}, стало {len(indented)}. "
+            f"Бэкап: {bak}")
 

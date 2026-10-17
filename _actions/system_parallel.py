@@ -133,6 +133,23 @@ def parallel(args):
 
     if not normalized:
         return "Нет корректных команд"
+    # Слияние: если ВСЕ подзадачи — прочитать_полностью, кладём все файлы
+    # в буфер одним Ctrl+C (CF_HDROP с несколькими файлами, как в проводнике).
+    _READ_FULL_NAMES = {"прочитать_полностью", "читать_полностью", "открыть"}
+    if all(_a in _READ_FULL_NAMES for _a, _ in normalized):
+        _paths = []
+        _all_have_paths = True
+        for _a, _p in normalized:
+            _pv = _p.get("путь") or _p.get("файл") or ""
+            if isinstance(_pv, list):
+                _paths.extend(str(x).strip() for x in _pv if str(x).strip())
+            elif isinstance(_pv, str) and _pv.strip():
+                _paths.append(_pv.strip())
+            else:
+                _all_have_paths = False
+                break
+        if _all_have_paths and len(_paths) > 1:
+            return execute_tool_safe("прочитать_полностью", {"путь": _paths})
 
     # Таймаут всей группы. По умолчанию 30 минут.
     # Можно переопределить в самом вызове: {"параллельно": [...], "таймаут": 3600}

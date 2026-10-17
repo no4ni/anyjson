@@ -16,7 +16,7 @@ from _ps import run_with_wait
 #  запрет на запись в системные папки
 # ============================================================
 
-@register("создать_папку")
+@register(["создать_папку", "создать_каталог", "новая_папка"])
 def create_dir_(args):
     """Создать папку (со всеми родительскими).
 
@@ -693,4 +693,173 @@ def remove_readonly_tree(args):
         if len(errors) > 5:
             out.append(f"     ... и ещё {len(errors) - 5}")
     return chr(10).join(out)
+
+
+@register(["дедуплицировать_строки", "убрать_дубли_строк", "dedupe_lines"])
+def dedupe_lines(args):
+    """Удалить повторяющиеся строки в файле.
+
+    Параметры:
+      путь         — файл (обязательно), алиас: файл
+      сохранить    — куда (алиас: выход). По умолчанию — перезапись исходника
+      подряд       — true (по умолч.): только идущие подряд дубли;
+                     false: все дубли, оставить первое вхождение
+      пустые       — false (по умолч.): пустые строки сохраняются и не
+                     считаются дублями; true: считать дублями
+      пробелы      — false (по умолч.): сравнивать с точностью до пробелов;
+                     true: сравнивать после strip()
+      нестрого     — false (по умолч.): нормализовать NBSP, кавычки, тире,
+                     двойные пробелы перед сравнением
+      предпросмотр — false (по умолч.): true — только показать, что удалится
+      перезаписать — false (по умолч.): разрешить запись в существующий
+                     «сохранить» (если отличается от пути)
+
+    Возвращает: Удалено N строк (было X, стало Y).
+
+    Для кода осторожно: две подряд идущие одинаковые строки
+    (например, две "pass" или два "return None") могут быть
+    осмысленными в разных ветках. Используй предпросмотр: true
+    и просматривай, что удалится.
+
+    Примеры:
+      {"дедуплицировать_строки": {"путь": "E:/logs/app.log"}}
+      {"дедуплицировать_строки": {"путь": "E:/in.txt",
+                                   "сохранить": "E:/out.txt",
+                                   "подряд": false,
+                                   "предпросмотр": true}}
+    """
+    args = args or {}
+    p_arg = args.get("путь") or args.get("файл") or ""
+    if not p_arg:
+        return "Укажи 'путь' — файл для обработки."
+
+    src = Path(str(p_arg)).expanduser()
+    if not src.is_file():
+        return f"❌ Файл не найден: {src}"
+
+    out_arg = args.get("сохранить") or args.get("выход")
+    dst = Path(str(out_arg)).expanduser() if out_arg else src
+
+    def _as_bool(v, default=False):
+        if v is None:
+            return default
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.strip().lower() not in ("", "0", "false", "нет", "off", "no")
+        return bool(v)
+
+    only_consecutive = _as_bool(args.get("подряд"), True)
+    count_empty = _as_bool(args.get("пустые"), False)
+    strip_cmp = _as_bool(args.get("пробелы"), False)
+    loose = _as_bool(args.get("нестрого"), False)
+    dry = _as_bool(args.get("предпросмотр"), False)
+    overwrite = _as_bool(args.get("перезаписать"), False)
+
+    try:
+        same = src.resolve() == dst.resolve()
+    except Exception:
+        same = str(src) == str(dst)
+
+    if not same and dst.exists() and not overwrite:
+        return (f"❌ Цель уже существует: {dst}\n"
+                f"   Перезаписать: добавь \"перезаписать\": true\n"
+                f"   Или укажи другое имя через \"сохранить\".")
+
+    try:
+        raw = src.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        raw = src.read_text(encoding="cp1251", errors="replace")
+
+    has_crlf = "\r\n" in raw
+    normalized = raw.replace("\r\n", "\n").replace("\r", "\n")
+    trailing_nl = normalized.endswith("\n")
+
+    if normalized == "":
+        lines = []
+    elif trailing_nl:
+        lines = normalized.split("\n")[:-1]
+    else:
+        lines = normalized.split("\n")
+
+    def _norm(s):
+        if loose:
+            s = s.replace(chr(160), " ")
+            s = s.replace(chr(171), '"').replace(chr(187), '"')
+            s = s.replace(chr(8211), "-").replace(chr(8212), "-")
+            while "  " in s:
+                s = s.replace("  ", " ")
+        if strip_cmp:
+            s = s.strip()
+        return s
+
+    out_lines = []
+    removed = 0
+    removed_examples = []
+    seen = set()
+    last_key = None
+
+    for i, line in enumerate(lines):
+        key = _norm(line)
+
+        if not key.strip() and not count_empty:
+            out_lines.append(line)
+            last_key = None
+            continue
+
+        if only_consecutive:
+            if last_key is not None and last_key == key:
+                removed += 1
+                if len(removed_examples) < 30:
+                    removed_examples.append((i + 1, line))
+                continue
+        else:
+            if key in seen:
+                removed += 1
+                if len(removed_examples) < 30:
+                    removed_examples.append((i + 1, line))
+                continue
+            seen.add(key)
+
+        out_lines.append(line)
+        last_key = key
+
+    total_before = len(lines)
+    total_after = len(out_lines)
+
+    if removed == 0:
+        return f"ℹ️ В {src.name} дублей не найдено ({total_before} строк)."
+
+    if dry:
+        result = [
+            f"👁 [предпросмотр] Удалено было бы {removed} строк "
+            f"({total_before} -> {total_after}):"
+        ]
+        for ln_no, txt in removed_examples:
+            shown = txt if len(txt) <= 120 else txt[:117] + "..."
+            result.append(f"  - {ln_no}: {shown}")
+        if removed > len(removed_examples):
+            result.append(f"  ... и ещё {removed - len(removed_examples)}")
+        if not same:
+            result.append(f"Будет записано в: {dst}")
+        return "\n".join(result)
+
+    new_text = "\n".join(out_lines)
+    if trailing_nl:
+        new_text += "\n"
+    if has_crlf:
+        new_text = new_text.replace("\n", "\r\n")
+
+    try:
+        if not same:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+        with open(dst, "w", encoding="utf-8", newline="") as f:
+            f.write(new_text)
+    except Exception as e:
+        return f"❌ Ошибка записи: {e}"
+
+    action = "перезаписан" if same else f"сохранён в {dst}"
+    return (f"✅ Удалено {removed} строк "
+            f"({total_before} -> {total_after}).\n"
+            f"   Файл {action}.")
 

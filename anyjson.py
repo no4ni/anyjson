@@ -388,6 +388,8 @@ def _shutdown_children():
         pass
 
 
+
+
 def main():
     # --- init tools: единая точка входа ---
     # _tools_core.init_tools сам вызовет tools.init_tools (временно,
@@ -528,8 +530,17 @@ def main():
             "[произвольный текст]\n"
             "```text\n"
             '{"имя_команды": {"параметр": "значение"}}\n'
-            "   ↑ подставь ЛЮБОЕ своё\n"
+            "   ↑ подставь любое, что придумаешь (команды и параметры — по-русски)\n"
             "```\n"
+            "ИЛИ — inline-heredoc внутри JSON\n"
+            "(<<< и >>> прямо в значении, без экранирования):\n"
+            "```text\n"
+            '{"имя_команды": {"параметр": <<<\n'
+            "многострочное\n"
+            "значение\n"
+            ">>>}}\n"
+            "```\n"
+            "Внутри <<<...>>> не оставляй 3 пустые строки подряд.\n"
             "[произвольный текст]\n\n"
             "Несколько команд — через ||| или через команду \"параллельно\"."
         )
@@ -563,79 +574,121 @@ def main():
             print("\nВыход.")
             break
 
-        # --- HEREDOC: <<< ... >>> ---
-        if line.strip() == "<<<":
-            raw_lines = []
-            _empty_streak = 0
-            _aborted = False
-            _tail_after_close = ""
-            while True:
-                try:
-                    rl = input("| ")
-                except (EOFError, KeyboardInterrupt):
-                    break
-                _rl_s = rl.strip()
-                if _rl_s == ">>>":
-                    break
-                if _rl_s.startswith(">>>|||"):
-                    _tail_after_close = _rl_s[6:].strip()
-                    break
-                if _rl_s == "":
-                    _empty_streak += 1
-                    if _empty_streak >= 3:
-                        _aborted = True
+        # --- Inline-heredoc и многострочный JSON ---
+        # Логика простая: копим, пока в буфере есть незакрытые { или [.
+        # Счётчики <<< / >>> не нужны — пока heredoc-значение не закрыто,
+        # JSON-скобки тоже не закрыты, это и есть сигнал «копим».
+        # Символы <<< / >>> внутри строк не считаются: _brace_balance_outside
+        # игнорирует содержимое "...".
+        def _strip_heredoc_bodies(text):
+            """Удалить содержимое <<<...>>> — тело heredoc не влияет
+            на баланс JSON-скобок (в нём может быть Python-код с `'''`,
+            `r'...'` и непарными `"` — счётчик кавычек бы сбился)."""
+            out = []
+            i = 0
+            n = len(text)
+            while i < n:
+                if text.startswith("<<<", i):
+                    end = text.find(">>>", i + 3)
+                    if end < 0:
+                        out.append(text[i:])
                         break
+                    i = end + 3
                 else:
-                    _empty_streak = 0
-                raw_lines.append(rl)
-            if _aborted:
-                _msg = (
-                    "❌ Heredoc прерван.\n"
-                    "   Возможно внутри тела ``` (markdown-ограждение).\n"
-                    "   Либо забыт >>> на отдельной строке.\n"
-                    "   Содержимое не выполнено."
-                )
-                print(color_red(_msg))
-                try:
-                    pyperclip.copy(_msg)
-                    print(color_yellow("📋 Скопировано в буфер обмена."))
-                except Exception:
-                    pass
+                    out.append(text[i])
+                    i += 1
+            return "".join(out)
+
+
+        def _heredoc_open(text):
+            """True, если в тексте есть открытый heredoc-маркер без пары."""
+            _open = "<" * 3
+            _close = ">" * 3
+            i = 0
+            while True:
+                j = text.find(_open, i)
+                if j < 0:
+                    return False
+                k = text.find(_close, j + 3)
+                if k < 0:
+                    return True
+                i = k + 3
+
+
+        def _brace_balance_outside(text):
+            o = 0
+            i = 0
+            in_s = False
+            while i < len(text):
+                c = text[i]
+                if in_s:
+                    if c == "\\" and i + 1 < len(text):
+                        i += 2
+                        continue
+                    if c == '"':
+                        in_s = False
+                    i += 1
+                    continue
+                if c == '"':
+                    in_s = True
+                elif c in "{[":
+                    o += 1
+                elif c in "}]":
+                    o -= 1
+                i += 1
+            return o
+
+        _buf_text = "\n".join(buffer) if buffer else ""
+        _buf_clean = _strip_heredoc_bodies(_buf_text)
+        _prev_open = (_brace_balance_outside(_buf_clean) > 0) if _buf_clean else False
+
+        if _prev_open:
+            # Уже внутри незакрытого JSON — добавляем строку.
+            buffer.append(line)
+            _now_clean = _strip_heredoc_bodies("\n".join(buffer))
+            _now_open = _brace_balance_outside(_now_clean) > 0
+            if not _now_open:
+                # Скобки закрылись — выполняем целиком.
+                _full = "\n".join(buffer)
                 buffer.clear()
                 empty_line_count = 0
                 prompt = "> "
+                _cmd_parser.process_command_input(_full)
                 continue
-            payload = "\n".join(raw_lines)
-            json_part = "\n".join(buffer).strip() if buffer else ""
-            if not json_part:
-                print("(нет JSON перед <<<)")
-                buffer.clear()
-                empty_line_count = 0
-                prompt = "> "
-                continue
-            try:
-                import json as _j
-                obj = _j.loads(json_part)
-                if isinstance(obj, dict) and len(obj) == 1:
-                    k = next(iter(obj))
-                    v = obj[k] if isinstance(obj[k], dict) else {}
-                    if k in ("питон", "выполнить", "запуск"):
-                        v["скрипт"] = payload
-                    else:
-                        v["содержимое"] = payload
-                    obj[k] = v
+            if line.strip() == "":
+                empty_line_count += 1
+                if empty_line_count >= 3:
+                    _full = "\n".join(buffer)
                     buffer.clear()
                     empty_line_count = 0
                     prompt = "> "
-                    _full = _j.dumps(obj, ensure_ascii=False)
-                    if _tail_after_close:
-                        _full = _full + "|||" + _tail_after_close
                     _cmd_parser.process_command_input(_full)
                     continue
-                else:
-                    print("[HEREDOC] ожидаю JSON с одной командой")
-            except Exception as e:
-                print(f"[HEREDOC] ошибка: {e}")
+            else:
+                empty_line_count = 0
+            prompt = "... "
+            continue
+
+        # --- Отдельный <<< больше не открывает heredoc ---
+        # Подсказка для тех, кто помнит старую форму.
+        if line.strip() == "<<<":
+            _hg_msg = (
+                "⚠️ Отдельный <<< больше не открывает heredoc.\n"
+                "   Используй inline-heredoc — значение поля в <<< ... >>>:\n"
+                "     {\"питон\": {\"скрипт\": <<<\n"
+                "     print(\"hi\")\n"
+                "     >>>}}\n"
+                "     {\"переписать\": {\"путь\": \"E:/x.txt\", \"содержание\": <<<\n"
+                "     текст\n"
+                "     >>>}}"
+            )
+            print(color_red(_hg_msg))
+            try:
+                import pyperclip as _pc_hg
+                _pc_hg.copy(_hg_msg)
+                print(color_yellow("📋 Скопировано в буфер обмена."))
+            except Exception:
+                pass
             buffer.clear()
             empty_line_count = 0
             prompt = "> "
@@ -652,8 +705,19 @@ def main():
                 empty_line_count = 0
                 prompt = "... "
                 continue
+            # (Голодных команд больше нет — тело идёт inline-heredoc.)
             buffer.append(line)
             full_input = '\n'.join(buffer).strip()
+            # Не выполняем сразу, если в буфере ещё открыт JSON или
+            # heredoc: иначе открытый heredoc-маркер внутри цепочки
+            # ||| обрежет парсер (см. баг: JSONDecodeError на позиции 85).
+            _now_clean = _strip_heredoc_bodies(full_input)
+            _still_open = _brace_balance_outside(_now_clean) > 0
+            _hd_open = _heredoc_open(full_input)
+            if _still_open or _hd_open:
+                empty_line_count = 0
+                prompt = "... "
+                continue
             buffer.clear()
             empty_line_count = 0
             prompt = "> "
@@ -663,6 +727,8 @@ def main():
 
         # --- Пустая строка ---
         if line == "":
+            # Пустые строки внутри открытого JSON (heredoc) уже
+            # обработаны выше (блок _prev_open). Здесь — обычный счётчик.
             empty_line_count += 1
             # JSON (начинается с { или [) выполняем на 1 пустом Enter,
             # остальное — на 2 (чтобы вставка многострочного кода не срывалась)
@@ -704,13 +770,17 @@ def main():
                             print(color_blue(
                                 f"ℹ️ Обнаружено {len(_objs)} JSON без ||| — "
                                 f"выполняю последовательно."))
-                            _cmd_parser.process_command_input(_joined)
-                            print(color_blue(
-                                "\nℹ️ Команды выполнены последовательно."
-                                '\n   Параллельно: {"параллельно": [ ... ]}'
-                                "\n   Отключить это уведомление: "
-                                "разделяйте команды через |||."
-                            ))
+                            _cmd_parser.process_command_input(
+                                _joined,
+                                pre_notes=[
+                                    f"ℹ️ Выполнено {len(_objs)} команд "
+                                    f"последовательно.\n"
+                                    f"   Параллельно: "
+                                    f"{{\"параллельно\": [ ... ]}}\n"
+                                    f"   Отключить это уведомление: "
+                                    f"разделяйте команды через |||."
+                                ],
+                            )
                         else:
                             warn = ("⚠️ Обнаружено несколько JSON-команд. "
                                     "Разделяйте их ||| или используйте "

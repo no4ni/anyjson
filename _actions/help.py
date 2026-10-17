@@ -62,7 +62,7 @@ def _find_by_param(query):
             out.append((name, desc))
     return out
 
-@register(["помощь", "help", "?", "имя_команды", "другая_команда", "инициализация"])
+@register(["помощь", "справка", "help", "?", "имя_команды", "другая_команда", "инициализация"])
 def show_help(args):
     """Справка о конкретной команде.
     Параметры:
@@ -84,6 +84,9 @@ def show_help(args):
         names = [n for n in HANDLERS if n and _ru_only.match(n)]
         picks = _rnd.sample(names, min(3, len(names))) if names else []
         lines = ['Укажи имя команды: {"помощь": "имя_команды"}']
+        lines.append("")
+        lines.append("Имя не обязательно точное — если такого нет, "
+                     "найдутся похожие и предложатся варианты.")
         if picks:
             lines.append("")
             lines.append("Возможно, тебя интересует:")
@@ -118,9 +121,14 @@ def show_help(args):
             if len(by_param) > 10:
                 lines.append("  ... и ещё " + str(len(by_param) - 10))
             lines.append("")
+            lines.append("💡 Имя не обязательно точное — можно искать "
+                         "по подстроке или по параметру.")
             lines.append('📚 Справка по команде: {"помощь": "имя_команды"}')
             return chr(10).join(lines)
-        return f"❌ Команда '{query}' не реализована."
+        return (f"❌ Команда '{query}' не реализована.\n"
+                f"💡 Имя не обязательно точное — попробуй похожие "
+                f"слова (короткую подстроку), и anyjson покажет "
+                f"варианты.")
     if len(matches) == 1:
         m = matches[0]
         doc = (HANDLERS[m].__doc__ or "(без описания)").strip()

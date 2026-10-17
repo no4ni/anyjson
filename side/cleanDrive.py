@@ -316,6 +316,24 @@ def run_fast_scan(drive_letter="D", top=15):
 	except Exception as e:
 		print(f"Ошибка быстрого анализа: {e}", flush=True)
 
+def _should_show_top(drive=None, path_arg=None):
+	"""Показывать топ-10 Downloads только для C: (буква) и C:\\Downloads (папка)."""
+	if drive == 'C':
+		return True
+	if path_arg:
+		try:
+			_p = Path(path_arg).resolve()
+			_targets = {
+				Path("C:/").resolve(),
+				Path("C:/Downloads").resolve(),
+				(Path.home() / "Downloads").resolve(),
+			}
+			return _p in _targets
+		except Exception:
+			return False
+	return False
+
+
 def main():
 	parser = argparse.ArgumentParser(description="Очистка временных файлов и анализ диска/папки.")
 	parser.add_argument('--drive', type=str, default='C', help='Буква диска для анализа/очистки (по умолчанию C)')
@@ -331,6 +349,8 @@ def main():
 
 	# Если передан --path, работаем с папкой
 	if args.path:
+		if _should_show_top(path_arg=args.path):
+			print_top_downloads()
 		analyze_folder(args.path, top=args.top, fast=args.fast)
 		return
 
@@ -368,8 +388,9 @@ def main():
 	else:
 		print(f"\nℹ️ Диск {drive}: не является системным, очистка временных файлов не применяется.", flush=True)
 
-	# 2. Анализ папки Downloads (актуальна для любого диска, если она там)
-	print_top_downloads()
+	# 2. Анализ папки Downloads — только для системного диска C
+	if _should_show_top(drive=drive):
+		print_top_downloads()
 	
 	# 3. Очистка диска (cleanmgr) только для C, если не указан --nodelete
 	if drive == 'C' and not args.nocleanmgr and not args.nodelete:

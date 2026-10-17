@@ -89,11 +89,21 @@ def split_preserving_quotes(text: str) -> List[str]:
     current = []
     in_double = False
     in_single = False
+    in_heredoc = False
     escape = False
     i = 0
     n = len(text)
     while i < n:
         ch = text[i]
+        if in_heredoc:
+            if text.startswith(chr(62) * 3, i):
+                current.append(chr(62) * 3)
+                in_heredoc = False
+                i += 3
+                continue
+            current.append(ch)
+            i += 1
+            continue
         if escape:
             current.append(ch)
             escape = False
@@ -103,6 +113,11 @@ def split_preserving_quotes(text: str) -> List[str]:
             current.append(ch)
             escape = True
             i += 1
+            continue
+        if not in_double and not in_single and text.startswith("<<<", i):
+            current.append("<<<")
+            in_heredoc = True
+            i += 3
             continue
         if ch == '"' and not in_single:
             in_double = not in_double
@@ -127,29 +142,81 @@ def split_preserving_quotes(text: str) -> List[str]:
 
 
 def strip_trailing_comments(text: str) -> str:
-    lines = text.splitlines()
-    cleaned = []
-    for line in lines:
-        in_string = False
-        escape = False
-        comment_pos = -1
-        for i, ch in enumerate(line):
+    """Убирает // и # комментарии ПОСЛЕ закрытия JSON-объекта.
+
+    Правила:
+      • внутри JSON-строк ничего не трогает (ни //, ни #, ни URL);
+      • внутри JSON-скобок ({ } [ ]) ничего не трогает — глубина > 0;
+      • режет // и # только когда JSON уже открылся и все скобки закрыты;
+      • вне JSON (до первой { или [) ничего не трогает.
+
+    Текст не обязан быть валидным JSON — функция просто идёт
+    посимвольно и следит за состоянием.
+    """
+    out = []
+    i = 0
+    n = len(text)
+    depth = 0
+    started = False
+    in_string = False
+    escape = False
+    in_comment = False
+
+    while i < n:
+        ch = text[i]
+
+        if in_comment:
+            if ch == '\n':
+                in_comment = False
+                out.append(ch)
+            i += 1
+            continue
+
+        if in_string:
+            out.append(ch)
             if escape:
                 escape = False
-                continue
-            if ch == '\\':
+            elif ch == '\\':
                 escape = True
+            elif ch == '"':
+                in_string = False
+            i += 1
+            continue
+
+        if ch == '"':
+            in_string = True
+            out.append(ch)
+            i += 1
+            continue
+
+        if ch in '{[':
+            depth += 1
+            started = True
+            out.append(ch)
+            i += 1
+            continue
+
+        if ch in '}]':
+            if depth > 0:
+                depth -= 1
+            out.append(ch)
+            i += 1
+            continue
+
+        if started and depth == 0:
+            if ch == '/' and i + 1 < n and text[i + 1] == '/':
+                in_comment = True
+                i += 2
                 continue
-            if ch == '"' and not escape:
-                in_string = not in_string
+            if ch == '#':
+                in_comment = True
+                i += 1
                 continue
-            if not in_string and ch == '/' and i+1 < len(line) and line[i+1] == '/':
-                comment_pos = i
-                break
-        if comment_pos != -1:
-            line = line[:comment_pos].rstrip()
-        cleaned.append(line)
-    return '\n'.join(cleaned)
+
+        out.append(ch)
+        i += 1
+
+    return ''.join(out)
 
 
 def safe_json_parse(s: str):

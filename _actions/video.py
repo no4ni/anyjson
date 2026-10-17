@@ -137,6 +137,61 @@ def _vtt_to_srt(src, dst):
     Path(str(dst)).write_text("\n\n".join(out_blocks) + "\n", encoding="utf-8")
 
 
+def _probe_video_duration(video_path):
+    """(duration_sec, fps) через ffprobe. (None, None) при неудаче."""
+    import subprocess as _sp
+    try:
+        from _config import FFPROBE_EXE as _FP
+    except Exception:
+        return None, None
+    _fp = str(_FP) if _FP else ""
+    if not _fp or not Path(_fp).exists():
+        return None, None
+    try:
+        r = _sp.run(
+            [_fp, "-v", "error",
+             "-select_streams", "v:0",
+             "-show_entries", "format=duration:stream=r_frame_rate",
+             "-of", "default=noprint_wrappers=1",
+             str(video_path)],
+            capture_output=True, text=True, timeout=15,
+        )
+    except Exception:
+        return None, None
+    _dur = None
+    _fps = None
+    for line in (r.stdout or "").splitlines():
+        line = line.strip()
+        if line.startswith("duration="):
+            try:
+                _dur = float(line.split("=", 1)[1])
+            except Exception:
+                pass
+        elif line.startswith("r_frame_rate="):
+            try:
+                _num, _den = line.split("=", 1)[1].split("/")
+                _fps = float(_num) / float(_den)
+            except Exception:
+                pass
+    return _dur, _fps
+
+
+def _check_sec_in_range(video, sec, action_label):
+    """Текст ошибки, если sec за пределами длительности. Иначе None."""
+    _dur, _fps = _probe_video_duration(video)
+    if _dur is None:
+        return None
+    if sec < _dur:
+        return None
+    _last = _dur - 0.1
+    if _fps and _fps > 0:
+        _last = _dur - (1.0 / _fps) - 0.001
+    if _last < 0:
+        _last = 0.0
+    return (f"❌ {action_label}: секунда {sec} за пределами длительности "
+            f"({_dur:.2f} с). Возьми 0..{_last:.2f}.")
+
+
 def _run_cli(args_list, timeout=120):
     if not CLI.exists():
         return f"❌ Скрипт не найден: {CLI}"
@@ -1042,7 +1097,7 @@ def subs_to_text(args):
     return text
 
 
-@register("кадр+субтитр")
+@register(["кадр+субтитр", "кадр"])
 def frame_with_subtitle(args):
     """Простой кадр видео на указанной секунде + субтитр -> буфер обмена.
     Параметры:
@@ -1050,9 +1105,13 @@ def frame_with_subtitle(args):
       секунда   — момент в секундах (по умолчанию 0.0)
       slit_scan — true/false, применить slit-scan (по умолч. FALSE)
       окно      — ширина окна slit-scan в сек (по умолч. 3.0)
-      субтитр   — true/false, накладывать субтитр (по умолч. TRUE)
-      сохранить — путь для дополнительного сохранения PNG
-      в_контекст — положить в контекст (по умолч. true)
+      субтитр   — true/false, накладывать субтитр (по умолч. TRUE
+                  для "кадр+субтитр" / FALSE для алиаса "кадр")
+      сохранить — путь для сохранения PNG. Если задан и "в_контекст"
+                  не указан явно — буфер не трогаем, результат только
+                  в файле.
+      в_контекст — положить в контекст (по умолч. true, если "сохранить"
+                   не задан; иначе false). Явное true — и файл, и буфер.
     """
     video = args.get("путь") or args.get("видео")
     if not video:
@@ -1064,6 +1123,9 @@ def frame_with_subtitle(args):
 
     sec = float(args.get("секунда", args.get("sec", 0.0)) or 0.0)
     _ensure_companion_srt(video)
+    _sec_err = _check_sec_in_range(video, sec, "кадр+субтитр")
+    if _sec_err:
+        return _sec_err
     cmd = [str(video), "--секунда", str(sec)]
 
     if args.get("щелевой_скан"):
@@ -1077,7 +1139,11 @@ def frame_with_subtitle(args):
 
     to_ctx = args.get("в_контекст")
     if to_ctx is None:
-        to_ctx = args.get("в_буфер", True)
+        to_ctx = args.get("в_буфер")
+    if to_ctx is None:
+        # есть "сохранить" — по умолчанию не трогаем буфер,
+        # только файл. Явный в_контекст: true — и то, и другое.
+        to_ctx = not bool(args.get("сохранить"))
     if isinstance(to_ctx, str):
         to_ctx = to_ctx.strip().lower() not in ("0", "false", "нет", "off", "")
 
@@ -1097,8 +1163,11 @@ def listen_video(args):
       путь      — файл видео (обязательно)
       секунда   — момент в секундах (по умолчанию 0.0)
       размер    — WxH, по умолчанию 1366x768
-      сохранить — путь для дополнительного сохранения PNG
-      в_контекст — положить в контекст (по умолч. true)
+      сохранить — путь для сохранения PNG. Если задан и "в_контекст"
+                  не указан явно — буфер не трогаем, результат только
+                  в файле.
+      в_контекст — положить в контекст (по умолч. true, если "сохранить"
+                   не задан; иначе false). Явное true — и файл, и буфер.
     """
     video = args.get("путь") or args.get("видео")
     if not video:
@@ -1110,6 +1179,9 @@ def listen_video(args):
 
     sec = float(args.get("секунда", args.get("sec", 0.0)) or 0.0)
     _ensure_companion_srt(video)
+    _sec_err = _check_sec_in_range(video, sec, "слушать_видео")
+    if _sec_err:
+        return _sec_err
     cmd = [str(video), "--секунда", str(sec)]
 
     if args.get("размер"):
@@ -1119,7 +1191,10 @@ def listen_video(args):
 
     to_ctx = args.get("в_контекст")
     if to_ctx is None:
-        to_ctx = args.get("в_буфер", True)
+        to_ctx = args.get("в_буфер")
+    if to_ctx is None:
+        # есть "сохранить" — по умолчанию только файл, без буфера.
+        to_ctx = not bool(args.get("сохранить"))
     if isinstance(to_ctx, str):
         to_ctx = to_ctx.strip().lower() not in ("0", "false", "нет", "off", "")
 

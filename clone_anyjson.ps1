@@ -1,179 +1,180 @@
-# clone_anyjson.ps1 — клонирование anyjson в другое место (полный переезд)
-# profiles НЕ копируются — создаётся пустая папка.
-# api_keys спрашиваются по каждому ключу.
-# Запуск:  .\clone_anyjson.ps1
+# clone_anyjson.ps1 — клонирование anyjson в другое место
+# =====================================================
+# Параметры:
+#   -Src <path>        Где лежит anyjson. По умолчанию: родитель $PSScriptRoot
+#   -Dst <path>        Куда клонировать. Если не задан — спросит интерактивно.
+#   -OldPath <path>    Старый путь anyjson для обновления config.json (иначе = $SRC)
+#   -Force             Не спрашивать при перезаписи $Dst.
+#   -WithKeys          Копировать api_keys.json как есть.
+#   -SkipKeys          [по умолчанию] Не копировать ключи, положить заглушку.
+#   -KeepBak           Копировать .bak_* и *.bak файлы (по умолчанию — нет).
+#
+# Примеры неинтерактивного запуска:
+#   .\clone_anyjson.ps1 -Src "E:/Jericho/Private" -Dst "E:/Jericho/рабочее/anyjson" -Force
+#   .\clone_anyjson.ps1 -Src "E:/Jericho/Private/anyjson" -Dst "E:/backup/anyjson" -Force -WithKeys
 
-$ErrorActionPreference = "Stop"
+param(
+    [string]$Src,
+    [string]$Dst,
+    [string]$OldPath,
+    [switch]$Force,
+    [switch]$WithKeys,
+    [switch]$SkipKeys,
+    [switch]$KeepBak
+)
 
-# исходная папка = где лежит сам скрипт
-$SRC = $PSScriptRoot
-if ([string]::IsNullOrWhiteSpace($SRC)) {
-    $SRC = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ErrorActionPreference = 'Stop'
+
+# ---- 1. Определяем источник ----
+if ([string]::IsNullOrWhiteSpace($Src)) {
+    $Src = $PSScriptRoot
+    if ([string]::IsNullOrWhiteSpace($Src)) {
+        $Src = Split-Path -Parent $MyInvocation.MyCommand.Path
+    }
 }
-if (-not (Test-Path "$SRC\anyjson\anyjson.py")) {
-    Write-Host "❌ В папке скрипта нет anyjson\anyjson.py: $SRC" -ForegroundColor Red
-    Write-Host "   Скрипт должен лежать рядом с папкой anyjson\." -ForegroundColor Yellow
+
+# Скрипт может лежать ВНУТРИ anyjson (тогда $Src\anyjson.py) либо в РОДИТЕЛЕ (тогда $Src\anyjson\anyjson.py)
+$AnyjsonDir = $null
+if (Test-Path (Join-Path $Src "anyjson.py")) {
+    $AnyjsonDir = $Src
+} elseif (Test-Path (Join-Path $Src "anyjson\anyjson.py")) {
+    $AnyjsonDir = Join-Path $Src "anyjson"
+} else {
+    Write-Host "Не найден anyjson.py ни в $Src, ни в $Src\anyjson" -ForegroundColor Red
     exit 1
 }
-Write-Host "Источник: $SRC" -ForegroundColor Cyan
 
-Write-Host ""
-Write-Host "=== Клонирование anyjson (полный переезд) ===" -ForegroundColor Cyan
-Write-Host ""
+Write-Host "Источник anyjson: $AnyjsonDir" -ForegroundColor Cyan
 
-# ---- 1. Куда клонировать ----
-Write-Host "Куда клонировать (полный путь к НОВОЙ папке)?" -ForegroundColor Yellow
-Write-Host "  Пример: H:\anyjson_clone" -ForegroundColor Gray
-$DST = (Read-Host "> ").Trim().TrimEnd('\', '/')
-if ([string]::IsNullOrWhiteSpace($DST)) {
-    Write-Host "Отмена." -ForegroundColor Yellow
-    exit 0
+# ---- 2. Определяем приёмник ----
+if ([string]::IsNullOrWhiteSpace($Dst)) {
+    Write-Host ""
+    $Dst = (Read-Host "Куда клонировать (полный путь)").Trim()
+    if ([string]::IsNullOrWhiteSpace($Dst)) {
+        Write-Host "Путь не задан — отмена." -ForegroundColor Red
+        exit 1
+    }
 }
-if (Test-Path $DST) {
-    Write-Host "⚠️ Папка $DST уже существует." -ForegroundColor Yellow
-    $ans = (Read-Host "Перезаписать? (y/N)").Trim().ToLower()
-    if ($ans -ne 'y') {
-        Write-Host "Отмена." -ForegroundColor Yellow
-        exit 0
+
+if (Test-Path $Dst) {
+    if ($Force) {
+        Write-Host "Папка $Dst существует. -Force: перезаписываем." -ForegroundColor Yellow
+    } else {
+        Write-Host "Папка $Dst уже существует." -ForegroundColor Yellow
+        $ans = (Read-Host "Перезаписать? (y/N)").Trim().ToLower()
+        if ($ans -ne 'y') {
+            Write-Host "Отменено." -ForegroundColor Red
+            exit 0
+        }
     }
 } else {
-    New-Item -ItemType Directory -Path $DST -Force | Out-Null
-    Write-Host "✅ Создана папка: $DST" -ForegroundColor Green
+    New-Item -ItemType Directory -Path $Dst -Force | Out-Null
+    Write-Host "Создана папка: $Dst" -ForegroundColor Green
 }
 
-# ---- 2. Копирование кода ----
-Write-Host ""
-Write-Host "=== Копирование кода ===" -ForegroundColor Cyan
+if ([string]::IsNullOrWhiteSpace($OldPath)) {
+    $OldPath = $AnyjsonDir
+}
 
-# корневые файлы (anyjson.py внутри папки anyjson\)
+# ---- 3. Копирование ----
+function ShouldSkip([string]$name) {
+    if (-not $KeepBak) {
+        if ($name -like "*.bak" -or $name -like "*.bak2" -or $name -like "*_bak_*" -or $name -like "*.bak_*") { return $true }
+    }
+    if ($name -eq "__pycache__") { return $true }
+    return $false
+}
+
+# 3.1 корневые файлы
 foreach ($f in @("anyjson.py", "Readme.txt", "clone_anyjson.ps1")) {
-    if (Test-Path "$SRC\$f") {
-        Copy-Item "$SRC\$f" "$DST\$f" -Force
+    $sp = Join-Path $AnyjsonDir $f
+    if (Test-Path $sp) {
+        Copy-Item $sp (Join-Path $Dst $f) -Force
         Write-Host "  $f"
     }
 }
 
-# _core и _actions — рекурсивно
-foreach ($d in @("_core", "_actions")) {
-    if (Test-Path "$SRC\$d") {
-        Copy-Item "$SRC\$d" "$DST\$d" -Recurse -Force
-        Write-Host "  $d\"
+# 3.2 папки рекурсивно
+foreach ($d in @("_core", "_actions", "side", "data", "proxy")) {
+    $sp = Join-Path $AnyjsonDir $d
+    if (-not (Test-Path $sp)) {
+        New-Item -ItemType Directory -Path (Join-Path $Dst $d) -Force | Out-Null
+        Write-Host "  $d\ (пустая)"
+        continue
     }
+    $dp = Join-Path $Dst $d
+    New-Item -ItemType Directory -Path $dp -Force | Out-Null
+    Get-ChildItem $sp -Recurse -Force | Where-Object {
+        -not $_.PSIsContainer -and -not (ShouldSkip $_.Name)
+    } | ForEach-Object {
+        $rel = $_.FullName.Substring($sp.Length).TrimStart('\','/')
+        $target = Join-Path $dp $rel
+        $targetDir = Split-Path -Parent $target
+        if (-not (Test-Path $targetDir)) { New-Item -ItemType Directory -Path $targetDir -Force | Out-Null }
+        Copy-Item $_.FullName $target -Force
+    }
+    $cnt = (Get-ChildItem $dp -Recurse -File -Force | Measure-Object).Count
+    Write-Host "  $d\ ($cnt файлов)"
 }
 
-# side\
-if (Test-Path "$SRC\side") {
-    Copy-Item "$SRC\side" "$DST\side" -Recurse -Force
-    Write-Host "  side\"
+# 3.3 profiles — всегда пустая
+$new_profiles = Join-Path $Dst "profiles"
+New-Item -ItemType Directory -Path $new_profiles -Force | Out-Null
+Write-Host "  profiles\ (пустая — агенты заведутся заново)"
+
+# ---- 4. Ключи ----
+$new_keys = Join-Path $Dst "side\api_keys.json"
+$old_keys = Join-Path $AnyjsonDir "side\api_keys.json"
+$example_keys = Join-Path $AnyjsonDir "side\api_keys.example.json"
+
+if ($WithKeys -and (Test-Path $old_keys)) {
+    Copy-Item $old_keys $new_keys -Force
+    Write-Host "  api_keys.json -> скопирован (по -WithKeys)" -ForegroundColor Yellow
+} elseif (Test-Path $example_keys) {
+    Copy-Item $example_keys $new_keys -Force
+    Write-Host "  api_keys.json -> заглушка из example (ключи не копировались)" -ForegroundColor Gray
 } else {
-    New-Item -ItemType Directory -Path "$DST\side" -Force | Out-Null
+    Set-Content -Path $new_keys -Value '{}' -Encoding UTF8
+    Write-Host "  api_keys.json -> пустой {}" -ForegroundColor Gray
 }
 
-# data\
-if (Test-Path "$SRC\data") {
-    Copy-Item "$SRC\data" "$DST\data" -Recurse -Force
-    Write-Host "  data\"
-} else {
-    New-Item -ItemType Directory -Path "$DST\data" -Force | Out-Null
-}
-
-# ---- 3. Читаем config ----
-$cfg = Get-Content "$SRC\side\config.json" -Raw -Encoding UTF8 | ConvertFrom-Json
-
-# ---- 4. proxy ----
-Write-Host ""
-Write-Host "=== Proxy ===" -ForegroundColor Cyan
-
-$old_proxy = $cfg.paths.proxy_dir
-if ($old_proxy -and (Test-Path $old_proxy)) {
-    $new_proxy = Join-Path $DST "proxy"
-    Copy-Item $old_proxy $new_proxy -Recurse -Force
-    $cfg.paths.proxy_dir = ($new_proxy -replace '\\','/')
-    Write-Host "  proxy -> $new_proxy"
-} else {
-    $cfg.paths.proxy_dir = ($DST -replace '\\','/') + "/proxy"
-    New-Item -ItemType Directory -Path $cfg.paths.proxy_dir -Force | Out-Null
-    Write-Host "  proxy: создана пустая папка"
-}
-
-# ---- 5. api_keys — спрашиваем по каждому ключу ----
-Write-Host ""
-$old_keys = $cfg.paths.api_keys_file
-$new_keys = Join-Path $DST "side\api_keys.json"
-$cfg.paths.api_keys_file = ($new_keys -replace '\\','/')
-
-if ($old_keys -and (Test-Path $old_keys)) {
-    $kobj = $null
+# ---- 5. config.json — обновляем пути ----
+$cfg_path = Join-Path $Dst "side\config.json"
+if (Test-Path $cfg_path) {
     try {
-        $kobj = Get-Content $old_keys -Raw -Encoding UTF8 | ConvertFrom-Json
-    } catch {
-        Write-Host "  ⚠️ api_keys.json не парсится — копирую как есть" -ForegroundColor Yellow
-        Copy-Item $old_keys $new_keys -Force
-        $kobj = $null
-    }
-
-    if ($kobj) {
-        Write-Host "=== API-ключи ===" -ForegroundColor Yellow
-        Write-Host "  Enter=оставить, '-'=удалить, ввод=новый ключ" -ForegroundColor Gray
-        Write-Host ""
-
-        $new_kobj = New-Object PSObject
-        foreach ($prop in $kobj.PSObject.Properties) {
-            $name = $prop.Name
-            $val = [string]$prop.Value
-            $preview = if ($val.Length -gt 8) { $val.Substring(0,8) + "..." } else { $val }
-            Write-Host ("  {0,-14} : {1}" -f $name, $preview) -ForegroundColor Gray
-            $answer = (Read-Host ("    [{0}]" -f $name)).Trim()
-            if ($answer -eq "-") {
-                Write-Host "      → удалён" -ForegroundColor DarkYellow
-                continue
-            }
-            if ([string]::IsNullOrWhiteSpace($answer)) {
-                $new_kobj | Add-Member -NotePropertyName $name -NotePropertyValue $val -Force
-            } else {
-                $new_kobj | Add-Member -NotePropertyName $name -NotePropertyValue $answer -Force
-                Write-Host "      → заменён" -ForegroundColor Green
+        $cfg = Get-Content $cfg_path -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($cfg.paths) {
+            $cfg.paths.profiles_dir     = ($new_profiles -replace '\\','/')
+            $cfg.paths.tools_dir        = "."
+            $cfg.paths.public_tools_dir = ((Join-Path $Dst "side") -replace '\\','/')
+            if (Test-Path (Join-Path $Dst "proxy")) {
+                $cfg.paths.proxy_dir = ((Join-Path $Dst "proxy") -replace '\\','/')
             }
         }
-
-        $new_kobj | ConvertTo-Json -Depth 10 | Set-Content $new_keys -Encoding UTF8
-        Write-Host "  api_keys.json -> $new_keys" -ForegroundColor Cyan
+        $cfg_json = $cfg | ConvertTo-Json -Depth 10
+        $utf8 = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::WriteAllText($cfg_path, $cfg_json, $utf8)
+        Write-Host "  side\config.json — пути обновлены" -ForegroundColor Cyan
+    } catch {
+        Write-Host "  config.json не парсится — оставляю как есть" -ForegroundColor Yellow
     }
-} else {
-    Write-Host "  api_keys.json: файла нет — путь установлен на $new_keys" -ForegroundColor Yellow
 }
 
-# ---- 6. profiles — пустая папка ----
-$new_profiles = Join-Path $DST "profiles"
-New-Item -ItemType Directory -Path $new_profiles -Force | Out-Null
-$cfg.paths.profiles_dir = ($new_profiles -replace '\\','/')
-Write-Host "  profiles: создана пустая папка (данные не копировались)" -ForegroundColor Gray
-
-# ---- 7. Обновляем paths ----
-$cfg.paths.tools_dir = "."
-$cfg.paths.public_tools_dir = ((Join-Path $DST "side") -replace '\\','/')
-
-# ---- 8. Сохраняем config.json без BOM ----
-$cfg_json = $cfg | ConvertTo-Json -Depth 10
-$utf8 = New-Object System.Text.UTF8Encoding($false)
-[System.IO.File]::WriteAllText((Join-Path $DST "side\config.json"), $cfg_json, $utf8)
-
-# ---- 9. Итог ----
+# ---- 6. Итог ----
 Write-Host ""
 Write-Host "=== Готово ===" -ForegroundColor Green
-Write-Host ""
-Write-Host "Путь: $DST" -ForegroundColor Cyan
+Write-Host "Путь: $Dst" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Структура:" -ForegroundColor Yellow
-Write-Host "  $DST\anyjson.py          (точка входа)"
-Write-Host "  $DST\_core\              (ядро)"
-Write-Host "  $DST\_actions\           (команды)"
-Write-Host "  $DST\side\config.json    (конфиг)"
-Write-Host "  $DST\side\api_keys.json  (ключи)"
-Write-Host "  $DST\data\               (scripts_*.json)"
-Write-Host "  $DST\profiles\           (пустая — агенты заведутся заново)"
-Write-Host "  $DST\proxy\"
+Write-Host "  $Dst\anyjson.py          (точка входа)"
+Write-Host "  $Dst\_core\"
+Write-Host "  $Dst\_actions\"
+Write-Host "  $Dst\side\config.json"
+Write-Host "  $Dst\side\api_keys.json  ($(if ($WithKeys) {'скопирован'} else {'заглушка'}))"
+Write-Host "  $Dst\data\"
+Write-Host "  $Dst\profiles\           (пустая)"
+Write-Host "  $Dst\proxy\"
 Write-Host ""
 Write-Host "Запуск:" -ForegroundColor Yellow
-Write-Host "  py $DST\anyjson.py Лира"
+Write-Host "  py $Dst\anyjson.py <имя_агента>"
 Write-Host ""

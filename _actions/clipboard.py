@@ -53,7 +53,7 @@ def screenshot(args):
     return msg
 
 
-@register("показать_картинку")
+# (снято с регистрации: алиас прочитать_полностью)
 def image_to_clipboard(args):
     """Показать картинку в контексте.
 

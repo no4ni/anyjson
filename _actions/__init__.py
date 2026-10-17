@@ -65,6 +65,11 @@ _CORE_WARN_ONLY = {
     "_safe_subprocess", "_validate_imports", "_web",
 }
 
+# модули _core, которые обновляются автоматически — warn не нужен.
+# _py_guard.py запускается отдельным процессом на каждый «питон»,
+# его правки подхватываются сразу, без reload и без перезапуска.
+_CORE_SILENT = {"_py_guard"}
+
 # атрибуты модулей, которые нужно сохранить при reload
 _CORE_PRESERVE = {
     "_ps": ("_ps_cwd",),
@@ -118,6 +123,8 @@ def _reload_core(changed_names):
                     setattr(mod, _attr, _val)
             except Exception as e:
                 warnings.append(f"{fname}: reload error: {e}")
+        elif mod_name in _CORE_SILENT:
+            continue
         elif mod_name in _CORE_WARN_ONLY:
             warnings.append(f"⚠️ {fname} изменён — нужен перезапуск anyjson")
         else:

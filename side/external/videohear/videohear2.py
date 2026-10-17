@@ -893,7 +893,7 @@ class AudioPlayer(QMainWindow):
 
 	def get_cache_dir(self, audio_path):
 		file_hash = hashlib.md5(audio_path.encode()).hexdigest()
-		cache_root = os.path.join(os.path.dirname(__file__), "cache")
+		cache_root = os.path.join(os.path.dirname(audio_path), ".videohear_cache")
 		return os.path.join(cache_root, file_hash)
 
 	def get_weights_dir(self, sr):

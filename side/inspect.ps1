@@ -1,82 +1,72 @@
-<#
+ï»¿<#
 .SYNOPSIS
-    Âûáèðàåò ñëó÷àéíûå ñòðîêè èç òåêñòîâîãî ôàéëà, ñîäåðæàùèå êëþ÷åâûå ñëîâà, ñ âåðîÿòíîñòíûì ïðîõîäîì.
-    Ïîääåðæèâàåò âûâîä ñîñåäíèõ ñòðîê (êîíòåêñò) äî è ïîñëå êàæäîãî ñîâïàäåíèÿ.
-    Îáíîâë¸ííàÿ âåðñèÿ: ñíà÷àëà ñîáèðàåò âñå ñîâïàäåíèÿ, çàòåì âûáèðàåò ñëó÷àéíûå èç íèõ ïî âñåìó ôàéëó.
+    Ð’Ñ‹Ð±Ð¸Ñ€Ð°ÐµÑ‚ ÑÐ»ÑƒÑ‡Ð°Ð¹Ð½Ñ‹Ðµ ÑÑ‚Ñ€Ð¾ÐºÐ¸ Ð¸Ð· Ñ‚ÐµÐºÑÑ‚Ð¾Ð²Ð¾Ð³Ð¾ Ñ„Ð°Ð¹Ð»Ð°, ÑÐ¾Ð´ÐµÑ€Ð¶Ð°Ñ‰Ð¸Ðµ ÐºÐ»ÑŽÑ‡ÐµÐ²Ñ‹Ðµ ÑÐ»Ð¾Ð²Ð°, Ñ Ð²ÐµÑ€Ð¾ÑÑ‚Ð½Ð¾ÑÑ‚Ð½Ñ‹Ð¼ Ð¿Ñ€Ð¾Ñ…Ð¾Ð´Ð¾Ð¼.
+    ÐŸÐ¾Ð´Ð´ÐµÑ€Ð¶Ð¸Ð²Ð°ÐµÑ‚ Ð²Ñ‹Ð²Ð¾Ð´ ÑÐ¾ÑÐµÐ´Ð½Ð¸Ñ… ÑÑ‚Ñ€Ð¾Ðº (ÐºÐ¾Ð½Ñ‚ÐµÐºÑÑ‚) Ð´Ð¾ Ð¸ Ð¿Ð¾ÑÐ»Ðµ ÐºÐ°Ð¶Ð´Ð¾Ð³Ð¾ ÑÐ¾Ð²Ð¿Ð°Ð´ÐµÐ½Ð¸Ñ.
+    ÐžÐ±Ð½Ð¾Ð²Ð»Ñ‘Ð½Ð½Ð°Ñ Ð²ÐµÑ€ÑÐ¸Ñ: ÑÐ½Ð°Ñ‡Ð°Ð»Ð° ÑÐ¾Ð±Ð¸Ñ€Ð°ÐµÑ‚ Ð²ÑÐµ ÑÐ¾Ð²Ð¿Ð°Ð´ÐµÐ½Ð¸Ñ, Ð·Ð°Ñ‚ÐµÐ¼ Ð²Ñ‹Ð±Ð¸Ñ€Ð°ÐµÑ‚ ÑÐ»ÑƒÑ‡Ð°Ð¹Ð½Ñ‹Ðµ Ð¸Ð· Ð½Ð¸Ñ… Ð¿Ð¾ Ð²ÑÐµÐ¼Ñƒ Ñ„Ð°Ð¹Ð»Ñƒ.
 #>
-
 param(
     [Parameter(Mandatory=$true)]
     [string]$FilePath,
-
     [Parameter(Mandatory=$true)]
     [string[]]$Keywords,
-
     [int]$TargetCount = 0,
-
     [double]$Probability = 0.5,
-
     [string]$Encoding = "utf8",
+    [int]$Context = 0,
 
-    [int]$Context = 0
+    [switch]$Regex
 )
-
-# Óñòàíàâëèâàåì êîäèðîâêó êîíñîëè äëÿ ïîääåðæêè êèðèëëèöû
+# Ð£ÑÑ‚Ð°Ð½Ð°Ð²Ð»Ð¸Ð²Ð°ÐµÐ¼ ÐºÐ¾Ð´Ð¸Ñ€Ð¾Ð²ÐºÑƒ ÐºÐ¾Ð½ÑÐ¾Ð»Ð¸ Ð´Ð»Ñ Ð¿Ð¾Ð´Ð´ÐµÑ€Ð¶ÐºÐ¸ ÐºÐ¸Ñ€Ð¸Ð»Ð»Ð¸Ñ†Ñ‹
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 [Console]::InputEncoding = [System.Text.Encoding]::UTF8
-
-# Åñëè TargetCount íå çàäàí, âûáèðàåì ñëó÷àéíîå îò 3 äî 10
+# Ð•ÑÐ»Ð¸ TargetCount Ð½Ðµ Ð·Ð°Ð´Ð°Ð½, Ð²Ñ‹Ð±Ð¸Ñ€Ð°ÐµÐ¼ ÑÐ»ÑƒÑ‡Ð°Ð¹Ð½Ð¾Ðµ Ð¾Ñ‚ 3 Ð´Ð¾ 10
 if ($TargetCount -le 0) {
     $TargetCount = Get-Random -Minimum 3 -Maximum 11
 }
-
-# Ïðîâåðêà âåðîÿòíîñòè
+# ÐŸÑ€Ð¾Ð²ÐµÑ€ÐºÐ° Ð²ÐµÑ€Ð¾ÑÑ‚Ð½Ð¾ÑÑ‚Ð¸
 if ($Probability -lt 0 -or $Probability -gt 1) {
-    throw "Âåðîÿòíîñòü äîëæíà áûòü â äèàïàçîíå [0,1]"
+    throw "Ð’ÐµÑ€Ð¾ÑÑ‚Ð½Ð¾ÑÑ‚ÑŒ Ð´Ð¾Ð»Ð¶Ð½Ð° Ð±Ñ‹Ñ‚ÑŒ Ð² Ð´Ð¸Ð°Ð¿Ð°Ð·Ð¾Ð½Ðµ [0,1]"
 }
-
-# Ôóíêöèÿ íîðìàëèçàöèè ïóòè ñ ïîääåðæêîé êèðèëëèöû
+# Ð¤ÑƒÐ½ÐºÑ†Ð¸Ñ Ð½Ð¾Ñ€Ð¼Ð°Ð»Ð¸Ð·Ð°Ñ†Ð¸Ð¸ Ð¿ÑƒÑ‚Ð¸ Ñ Ð¿Ð¾Ð´Ð´ÐµÑ€Ð¶ÐºÐ¾Ð¹ ÐºÐ¸Ñ€Ð¸Ð»Ð»Ð¸Ñ†Ñ‹
 function Get-NormalizedPath {
     param([string]$Path)
     
-    # Óáèðàåì êàâû÷êè
+    # Ð£Ð±Ð¸Ñ€Ð°ÐµÐ¼ ÐºÐ°Ð²Ñ‹Ñ‡ÐºÐ¸
     $Path = $Path.Trim('"', "'")
     
-    # Ðàñøèðÿåì ïåðåìåííûå îêðóæåíèÿ
+    # Ð Ð°ÑÑˆÐ¸Ñ€ÑÐµÐ¼ Ð¿ÐµÑ€ÐµÐ¼ÐµÐ½Ð½Ñ‹Ðµ Ð¾ÐºÑ€ÑƒÐ¶ÐµÐ½Ð¸Ñ
     $Path = [System.Environment]::ExpandEnvironmentVariables($Path)
     
-    # Çàìåíÿåì ñëýøè
+    # Ð—Ð°Ð¼ÐµÐ½ÑÐµÐ¼ ÑÐ»ÑÑˆÐ¸
     $Path = $Path -replace '/', '\'
     
-    # Óáèðàåì ïðåôèêñ \\?\ åñëè îí åñòü (îí âûçûâàåò ïðîáëåìû ñ êèðèëëèöåé)
+    # Ð£Ð±Ð¸Ñ€Ð°ÐµÐ¼ Ð¿Ñ€ÐµÑ„Ð¸ÐºÑ \\?\ ÐµÑÐ»Ð¸ Ð¾Ð½ ÐµÑÑ‚ÑŒ (Ð¾Ð½ Ð²Ñ‹Ð·Ñ‹Ð²Ð°ÐµÑ‚ Ð¿Ñ€Ð¾Ð±Ð»ÐµÐ¼Ñ‹ Ñ ÐºÐ¸Ñ€Ð¸Ð»Ð»Ð¸Ñ†ÐµÐ¹)
     if ($Path -like '\\?\*') {
         $Path = $Path.Substring(4)
     }
     
-    # Åñëè ïóòü îòíîñèòåëüíûé, äåëàåì àáñîëþòíûì
+    # Ð•ÑÐ»Ð¸ Ð¿ÑƒÑ‚ÑŒ Ð¾Ñ‚Ð½Ð¾ÑÐ¸Ñ‚ÐµÐ»ÑŒÐ½Ñ‹Ð¹, Ð´ÐµÐ»Ð°ÐµÐ¼ Ð°Ð±ÑÐ¾Ð»ÑŽÑ‚Ð½Ñ‹Ð¼
     if (-not [System.IO.Path]::IsPathRooted($Path)) {
         $Path = Join-Path (Get-Location).Path $Path
     }
     
     return $Path
 }
-
-# Íîðìàëèçàöèÿ ïóòè
+# ÐÐ¾Ñ€Ð¼Ð°Ð»Ð¸Ð·Ð°Ñ†Ð¸Ñ Ð¿ÑƒÑ‚Ð¸
 $FilePath = Get-NormalizedPath -Path $FilePath
-
-# Ïðîâåðêà ñóùåñòâîâàíèÿ ôàéëà ñ ïîääåðæêîé êèðèëëèöû
+# ÐŸÑ€Ð¾Ð²ÐµÑ€ÐºÐ° ÑÑƒÑ‰ÐµÑÑ‚Ð²Ð¾Ð²Ð°Ð½Ð¸Ñ Ñ„Ð°Ð¹Ð»Ð° Ñ Ð¿Ð¾Ð´Ð´ÐµÑ€Ð¶ÐºÐ¾Ð¹ ÐºÐ¸Ñ€Ð¸Ð»Ð»Ð¸Ñ†Ñ‹
 try {
-    # Ïðîáóåì íàéòè ôàéë íàïðÿìóþ
+    # ÐŸÑ€Ð¾Ð±ÑƒÐµÐ¼ Ð½Ð°Ð¹Ñ‚Ð¸ Ñ„Ð°Ð¹Ð» Ð½Ð°Ð¿Ñ€ÑÐ¼ÑƒÑŽ
     if (Test-Path -LiteralPath $FilePath -PathType Leaf) {
         $fileInfo = Get-Item -LiteralPath $FilePath
     }
     else {
-        # Ïðîáóåì íàéòè ôàéë ñ ó÷åòîì ðåãèñòðà
+        # ÐŸÑ€Ð¾Ð±ÑƒÐµÐ¼ Ð½Ð°Ð¹Ñ‚Ð¸ Ñ„Ð°Ð¹Ð» Ñ ÑƒÑ‡ÐµÑ‚Ð¾Ð¼ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð°
         $directory = Split-Path $FilePath -Parent
         $fileName = Split-Path $FilePath -Leaf
         
         if (Test-Path -LiteralPath $directory) {
-            # Èùåì ôàéë ñ èãíîðèðîâàíèåì ðåãèñòðà
+            # Ð˜Ñ‰ÐµÐ¼ Ñ„Ð°Ð¹Ð» Ñ Ð¸Ð³Ð½Ð¾Ñ€Ð¸Ñ€Ð¾Ð²Ð°Ð½Ð¸ÐµÐ¼ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð°
             $foundFile = Get-ChildItem -Path $directory -Filter $fileName -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($foundFile) {
                 $fileInfo = $foundFile
@@ -86,15 +76,14 @@ try {
     }
     
     if (-not $fileInfo) {
-        throw "Ôàéë íå íàéäåí: $FilePath"
+        throw "Ð¤Ð°Ð¹Ð» Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½: $FilePath"
     }
 }
 catch {
-    Write-Error "Îøèáêà ïðè ïðîâåðêå ôàéëà: $_"
+    Write-Error "ÐžÑˆÐ¸Ð±ÐºÐ° Ð¿Ñ€Ð¸ Ð¿Ñ€Ð¾Ð²ÐµÑ€ÐºÐµ Ñ„Ð°Ð¹Ð»Ð°: $_"
     exit 1
 }
-
-# Îïðåäåëåíèå êîäèðîâêè
+# ÐžÐ¿Ñ€ÐµÐ´ÐµÐ»ÐµÐ½Ð¸Ðµ ÐºÐ¾Ð´Ð¸Ñ€Ð¾Ð²ÐºÐ¸
 $encodingObj = switch ($Encoding.ToLower()) {
     "utf8"      { [System.Text.Encoding]::UTF8 }
     "utf8bom"   { [System.Text.UTF8Encoding]::new($true) }
@@ -105,10 +94,9 @@ $encodingObj = switch ($Encoding.ToLower()) {
     "cp866"     { [System.Text.Encoding]::GetEncoding(866) }
     default     { [System.Text.Encoding]::UTF8 }
 }
-
-# Ôóíêöèÿ ïðîâåðêè íàëè÷èÿ êëþ÷åâîãî ñëîâà (ðåãèñòðîíåçàâèñèìî)
+# Ð¤ÑƒÐ½ÐºÑ†Ð¸Ñ Ð¿Ñ€Ð¾Ð²ÐµÑ€ÐºÐ¸ Ð½Ð°Ð»Ð¸Ñ‡Ð¸Ñ ÐºÐ»ÑŽÑ‡ÐµÐ²Ð¾Ð³Ð¾ ÑÐ»Ð¾Ð²Ð° (Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð¾Ð½ÐµÐ·Ð°Ð²Ð¸ÑÐ¸Ð¼Ð¾)
 function Test-StringContainsKeyword {
-    param([string]$Line, [string[]]$Keywords)
+    param([string]$Line, [string[]]$Keywords, [switch]$Regex)
     
     if ([string]::IsNullOrEmpty($Line)) {
         return $false
@@ -118,18 +106,26 @@ function Test-StringContainsKeyword {
         if ([string]::IsNullOrEmpty($kw)) {
             continue
         }
-        # Èñïîëüçóåì ðåãèñòðîíåçàâèñèìîå ñðàâíåíèå ñ ó÷åòîì êóëüòóðû
-        if ($Line.IndexOf($kw, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
-            return $true
+        if ($Regex) {
+            try {
+                if ([regex]::IsMatch($Line, $kw, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)) {
+                    return $true
+                }
+            } catch {
+                continue
+            }
+        } else {
+            if ($Line.IndexOf($kw, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                return $true
+            }
         }
     }
     return $false
 }
-
-# ×òåíèå ôàéëà
+# Ð§Ñ‚ÐµÐ½Ð¸Ðµ Ñ„Ð°Ð¹Ð»Ð°
 $allLines = [System.Collections.Generic.List[string]]::new()
 try {
-    # Ñîçäàåì StreamReader ñ ïðàâèëüíîé êîäèðîâêîé
+    # Ð¡Ð¾Ð·Ð´Ð°ÐµÐ¼ StreamReader Ñ Ð¿Ñ€Ð°Ð²Ð¸Ð»ÑŒÐ½Ð¾Ð¹ ÐºÐ¾Ð´Ð¸Ñ€Ð¾Ð²ÐºÐ¾Ð¹
     $reader = [System.IO.StreamReader]::new($FilePath, $encodingObj)
     try {
         while (($line = $reader.ReadLine()) -ne $null) {
@@ -137,7 +133,7 @@ try {
         }
     }
     finally {
-        # Çàêðûâàåì è îñâîáîæäàåì ðåñóðñû
+        # Ð—Ð°ÐºÑ€Ñ‹Ð²Ð°ÐµÐ¼ Ð¸ Ð¾ÑÐ²Ð¾Ð±Ð¾Ð¶Ð´Ð°ÐµÐ¼ Ñ€ÐµÑÑƒÑ€ÑÑ‹
         if ($reader -ne $null) {
             $reader.Close()
             $reader.Dispose()
@@ -145,56 +141,47 @@ try {
     }
 }
 catch {
-    Write-Error "Îøèáêà ïðè ÷òåíèè ôàéëà: $_"
-    Write-Host "`nÏîïðîáóéòå óêàçàòü ïðàâèëüíóþ êîäèðîâêó:" -ForegroundColor Yellow
-    Write-Host "  -Encoding windows1251 - äëÿ ôàéëîâ â êîäèðîâêå Windows" -ForegroundColor Yellow
-    Write-Host "  -Encoding utf8 - äëÿ ôàéëîâ â UTF-8" -ForegroundColor Yellow
-    Write-Host "  -Encoding cp866 - äëÿ ôàéëîâ â DOS êîäèðîâêå" -ForegroundColor Yellow
+    Write-Error "ÐžÑˆÐ¸Ð±ÐºÐ° Ð¿Ñ€Ð¸ Ñ‡Ñ‚ÐµÐ½Ð¸Ð¸ Ñ„Ð°Ð¹Ð»Ð°: $_"
+    Write-Host "`nÐŸÐ¾Ð¿Ñ€Ð¾Ð±ÑƒÐ¹Ñ‚Ðµ ÑƒÐºÐ°Ð·Ð°Ñ‚ÑŒ Ð¿Ñ€Ð°Ð²Ð¸Ð»ÑŒÐ½ÑƒÑŽ ÐºÐ¾Ð´Ð¸Ñ€Ð¾Ð²ÐºÑƒ:" -ForegroundColor Yellow
+    Write-Host "  -Encoding windows1251 - Ð´Ð»Ñ Ñ„Ð°Ð¹Ð»Ð¾Ð² Ð² ÐºÐ¾Ð´Ð¸Ñ€Ð¾Ð²ÐºÐµ Windows" -ForegroundColor Yellow
+    Write-Host "  -Encoding utf8 - Ð´Ð»Ñ Ñ„Ð°Ð¹Ð»Ð¾Ð² Ð² UTF-8" -ForegroundColor Yellow
+    Write-Host "  -Encoding cp866 - Ð´Ð»Ñ Ñ„Ð°Ð¹Ð»Ð¾Ð² Ð² DOS ÐºÐ¾Ð´Ð¸Ñ€Ð¾Ð²ÐºÐµ" -ForegroundColor Yellow
     exit 1
 }
-
 $totalLines = $allLines.Count
-
 if ($totalLines -eq 0) {
-    Write-Warning "Ôàéë ïóñò èëè íå ñîäåðæèò ÷èòàåìûõ ñòðîê."
+    Write-Warning "Ð¤Ð°Ð¹Ð» Ð¿ÑƒÑÑ‚ Ð¸Ð»Ð¸ Ð½Ðµ ÑÐ¾Ð´ÐµÑ€Ð¶Ð¸Ñ‚ Ñ‡Ð¸Ñ‚Ð°ÐµÐ¼Ñ‹Ñ… ÑÑ‚Ñ€Ð¾Ðº."
     exit
 }
-
-# Ñîáèðàåì âñå èíäåêñû ñòðîê, ñîäåðæàùèõ êëþ÷åâûå ñëîâà
+# Ð¡Ð¾Ð±Ð¸Ñ€Ð°ÐµÐ¼ Ð²ÑÐµ Ð¸Ð½Ð´ÐµÐºÑÑ‹ ÑÑ‚Ñ€Ð¾Ðº, ÑÐ¾Ð´ÐµÑ€Ð¶Ð°Ñ‰Ð¸Ñ… ÐºÐ»ÑŽÑ‡ÐµÐ²Ñ‹Ðµ ÑÐ»Ð¾Ð²Ð°
 $matchIndices = [System.Collections.Generic.List[int]]::new()
 for ($i = 0; $i -lt $totalLines; $i++) {
     $line = $allLines[$i]
-    if (Test-StringContainsKeyword -Line $line -Keywords $Keywords) {
+    if (Test-StringContainsKeyword -Line $line -Keywords $Keywords -Regex:$Regex) {
         $matchIndices.Add($i)
     }
 }
-
 $foundCount = $matchIndices.Count
-
 if ($foundCount -eq 0) {
-    Write-Host "`nÍå íàéäåíî ñòðîê, ñîäåðæàùèõ êëþ÷åâûå ñëîâà." -ForegroundColor Yellow
-    Write-Host "Âîçìîæíî, âåðîÿòíîñòü ñëèøêîì ìàëà èëè êëþ÷åâûå ñëîâà íå ñîîòâåòñòâóþò ñîäåðæèìîìó." -ForegroundColor Yellow
+    Write-Host "Ð’ $FilePath Ð½Ðµ Ð½Ð°ÑˆÐ»Ð¾ÑÑŒ: $($Keywords -join ', ')" -ForegroundColor Yellow
     exit
 }
-
-# Âûáèðàåì ñëó÷àéíûå èíäåêñû èç âñåõ ñîâïàäåíèé, åñëè èõ áîëüøå TargetCount
+# Ð’Ñ‹Ð±Ð¸Ñ€Ð°ÐµÐ¼ ÑÐ»ÑƒÑ‡Ð°Ð¹Ð½Ñ‹Ðµ Ð¸Ð½Ð´ÐµÐºÑÑ‹ Ð¸Ð· Ð²ÑÐµÑ… ÑÐ¾Ð²Ð¿Ð°Ð´ÐµÐ½Ð¸Ð¹, ÐµÑÐ»Ð¸ Ð¸Ñ… Ð±Ð¾Ð»ÑŒÑˆÐµ TargetCount
 if ($foundCount -gt $TargetCount) {
-    # Èñïîëüçóåì Get-Random äëÿ âûáîðà ñëó÷àéíîãî íàáîðà
+    # Ð˜ÑÐ¿Ð¾Ð»ÑŒÐ·ÑƒÐµÐ¼ Get-Random Ð´Ð»Ñ Ð²Ñ‹Ð±Ð¾Ñ€Ð° ÑÐ»ÑƒÑ‡Ð°Ð¹Ð½Ð¾Ð³Ð¾ Ð½Ð°Ð±Ð¾Ñ€Ð°
     $selectedIndices = $matchIndices | Get-Random -Count $TargetCount
 } else {
     $selectedIndices = $matchIndices
 }
-
-# Äîáàâëÿåì êîíòåêñò âîêðóã âûáðàííûõ ñòðîê
+# Ð”Ð¾Ð±Ð°Ð²Ð»ÑÐµÐ¼ ÐºÐ¾Ð½Ñ‚ÐµÐºÑÑ‚ Ð²Ð¾ÐºÑ€ÑƒÐ³ Ð²Ñ‹Ð±Ñ€Ð°Ð½Ð½Ñ‹Ñ… ÑÑ‚Ñ€Ð¾Ðº
 $resultLines = [System.Collections.Generic.List[string]]::new()
 $addedLineNumbers = [System.Collections.Generic.HashSet[int]]::new()
-
 foreach ($idx in $selectedIndices) {
-    # Îïðåäåëÿåì äèàïàçîí êîíòåêñòà
+    # ÐžÐ¿Ñ€ÐµÐ´ÐµÐ»ÑÐµÐ¼ Ð´Ð¸Ð°Ð¿Ð°Ð·Ð¾Ð½ ÐºÐ¾Ð½Ñ‚ÐµÐºÑÑ‚Ð°
     $start = [Math]::Max(0, $idx - $Context)
     $end = [Math]::Min($totalLines - 1, $idx + $Context)
     
-    # Äîáàâëÿåì ñòðîêè èç äèàïàçîíà, êîòîðûõ åù¸ íåò
+    # Ð”Ð¾Ð±Ð°Ð²Ð»ÑÐµÐ¼ ÑÑ‚Ñ€Ð¾ÐºÐ¸ Ð¸Ð· Ð´Ð¸Ð°Ð¿Ð°Ð·Ð¾Ð½Ð°, ÐºÐ¾Ñ‚Ð¾Ñ€Ñ‹Ñ… ÐµÑ‰Ñ‘ Ð½ÐµÑ‚
     for ($j = $start; $j -le $end; $j++) {
         if (-not $addedLineNumbers.Contains($j)) {
             $addedLineNumbers.Add($j) | Out-Null
@@ -202,30 +189,24 @@ foreach ($idx in $selectedIndices) {
         }
     }
 }
-
-
-# Âûáîð ñëó÷àéíûõ èíäåêñîâ èç âñåõ ñîâïàäåíèé
+# Ð’Ñ‹Ð±Ð¾Ñ€ ÑÐ»ÑƒÑ‡Ð°Ð¹Ð½Ñ‹Ñ… Ð¸Ð½Ð´ÐµÐºÑÐ¾Ð² Ð¸Ð· Ð²ÑÐµÑ… ÑÐ¾Ð²Ð¿Ð°Ð´ÐµÐ½Ð¸Ð¹
 if ($foundCount -gt $TargetCount) {
     $selectedIndices = $matchIndices | Get-Random -Count $TargetCount
     $selectedIndices = $selectedIndices | Sort-Object
 } else {
     $selectedIndices = $matchIndices | Sort-Object
 }
-
-# Âûâîä
-Write-Host "Âñåãî ñîâïàäåíèé â ôàéëå: $foundCount" -ForegroundColor Green
-Write-Host "Ïîêàçàíî: $($selectedIndices.Count) (ñòðîêè ñ êîíòåêñòîì +/-$Context)" -ForegroundColor Gray
+# Ð’Ñ‹Ð²Ð¾Ð´
+Write-Host "Ð’ÑÐµÐ³Ð¾ ÑÐ¾Ð²Ð¿Ð°Ð´ÐµÐ½Ð¸Ð¹ Ð² Ñ„Ð°Ð¹Ð»Ðµ: $foundCount" -ForegroundColor Green
+Write-Host "ÐŸÐ¾ÐºÐ°Ð·Ð°Ð½Ð¾: $($selectedIndices.Count) (ÑÑ‚Ñ€Ð¾ÐºÐ¸ Ñ ÐºÐ¾Ð½Ñ‚ÐµÐºÑÑ‚Ð¾Ð¼ +/-$Context)" -ForegroundColor Gray
 Write-Host "---------------------------" -ForegroundColor Gray
-
 $prevLast = -999
 foreach ($idx in $selectedIndices) {
     $start = [Math]::Max(0, $idx - $Context)
     $end   = [Math]::Min($totalLines - 1, $idx + $Context)
-
     if ($prevLast -ne -999 -and $start -gt ($prevLast + 1)) {
         Write-Host "---" -ForegroundColor DarkGray
     }
-
     for ($j = $start; $j -le $end; $j++) {
         $realNum = $j + 1
         $prefix = if ($j -eq $idx) { ">" } else { " " }

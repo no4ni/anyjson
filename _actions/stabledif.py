@@ -57,22 +57,99 @@ def _ensure_model(requested):
     """Переключить модель на requested, если задана и отличается от текущей.
 
     Возвращает None при успехе, строку с ошибкой — при проблеме.
+
+    Перед переключением сверяет имя со списком Forge. Принимает:
+      • "name" — как в статусе (канонично);
+      • "name.safetensors" — с расширением;
+      • "Stable-diffusion/name.safetensors" — путь от корня моделей;
+      • подкаталоги.
+    Матч — по нормализованному basename (без пути и расширения).
+    Если модели нет — возвращает ошибку со списком доступных.
     """
     if not requested:
         return None
+
+    req = str(requested).strip()
+
+    try:
+        ms = _sd_models_list()
+    except Exception:
+        ms = []
+
+    names = []
+    for m in ms:
+        if not isinstance(m, dict):
+            continue
+        mn = m.get("model_name")
+        tt = m.get("title")
+        if mn:
+            names.append(str(mn))
+        if tt and tt != mn:
+            names.append(str(tt))
+
+    def _base(s):
+        s = str(s).replace("\\", "/")
+        if "/" in s:
+            s = s.rsplit("/", 1)[-1]
+        for _e in (".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".onnx"):
+            if s.lower().endswith(_e):
+                s = s[: -len(_e)]
+                break
+        return s.lower()
+
+    lookup = {}
+    for n in names:
+        lookup.setdefault(_base(n), n)
+
+    if req in names:
+        canonical = req
+    elif _base(req) in lookup:
+        canonical = lookup[_base(req)]
+    else:
+        _lines = ["\u274c \u041c\u043e\u0434\u0435\u043b\u044c \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u0430 \u0432 Forge: " + repr(requested)]
+        if names:
+            _lines.append("")
+            _lines.append("\U0001f4c1 \u0414\u043e\u0441\u0442\u0443\u043f\u043d\u044b\u0435 \u043c\u043e\u0434\u0435\u043b\u0438:")
+            _seen = set()
+            for n in names:
+                if n in _seen:
+                    continue
+                _seen.add(n)
+                _lines.append("  \u2022 " + n)
+        else:
+            _lines.append("")
+            _lines.append("(Forge \u0432\u0435\u0440\u043d\u0443\u043b \u043f\u0443\u0441\u0442\u043e\u0439 "
+                          "\u0441\u043f\u0438\u0441\u043e\u043a \u2014 \u043f\u0440\u043e\u0432\u0435\u0440\u044c \u0441\u0442\u0430\u0431\u0438\u043b\u0434\u0438\u0444_\u0441\u0442\u0430\u0442\u0443\u0441)")
+        _lines.append("")
+        _lines.append("\U0001f4a1 \u0423\u043a\u0430\u0437\u044b\u0432\u0430\u0439 \u0438\u043c\u044f \u0431\u0435\u0437 \u043f\u0440\u0435\u0444\u0438\u043a\u0441\u0430 "
+                      "'Stable-diffusion/' \u0438 \u0431\u0435\u0437 '.safetensors'.")
+        return "\n".join(_lines)
+
     try:
         _, opts = _http("GET", "/sdapi/v1/options", timeout=10)
         current = opts.get("sd_model_checkpoint", "")
     except Exception:
         current = ""
-    if current == requested:
+    if current == canonical:
         return None
+
     try:
         _http("POST", "/sdapi/v1/options",
-              {"sd_model_checkpoint": requested}, timeout=120)
+              {"sd_model_checkpoint": canonical}, timeout=120)
     except Exception as e:
-        return "не удалось переключить модель: " + str(e)
-    _set_last_model(requested)
+        _lines = ["\u274c \u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043f\u0435\u0440\u0435\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u043c\u043e\u0434\u0435\u043b\u044c: "
+                  + str(e)]
+        if names:
+            _lines.append("")
+            _lines.append("\U0001f4c1 \u0414\u043e\u0441\u0442\u0443\u043f\u043d\u044b\u0435 \u043c\u043e\u0434\u0435\u043b\u0438:")
+            _seen = set()
+            for n in names:
+                if n in _seen:
+                    continue
+                _seen.add(n)
+                _lines.append("  \u2022 " + n)
+        return "\n".join(_lines)
+    _set_last_model(canonical)
     return None
 
 
@@ -439,7 +516,7 @@ def _sd_wht(args):
     return {"width": w, "height": h, "steps": st}
 
 
-@register(["стабилдиф", "сгенерировать", "нарисуй", "txt2img"])
+@register(["стабилдиф", "сгенерировать", "нарисуй", "нарисовать", "txt2img"])
 def sd_txt2img(args):
     """Сгенерировать картинку через Forge (txt2img).
 

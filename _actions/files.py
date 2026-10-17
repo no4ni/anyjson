@@ -205,7 +205,7 @@ def read_(args):
       {"читать": {"путь": "E:/data.csv", "кодировка": "cp1251"}}
     """
     from _actions.tools_files import read_file
-    path = args.get("путь", "")
+    path = args.get("путь") or args.get("файл") or ""
     if not path:
         return "Укажите 'путь'."
 
@@ -302,14 +302,23 @@ for _cat, _exts in _SUPPORTED_CATEGORIES:
         _SUPPORTED_EXT.add("." + _e.lower())
 
 
-def _copy_file_to_clipboard(path):
-    """Кладёт в буфер ссылку на файл (как Ctrl+C в проводнике).
-    Возвращает True/False."""
+def _copy_file_to_clipboard(paths):
+    """Кладёт в буфер ссылку на файл(ы) — как Ctrl+C в проводнике.
+    Принимает строку или список. Возвращает True/False."""
+    if isinstance(paths, str):
+        paths = [paths]
+    paths = [str(p) for p in (paths or []) if str(p).strip()]
+    if not paths:
+        return False
     try:
-        win_path = str(path).replace("/", "\\\\")
+        win_paths = [p.replace("/", "\\\\") for p in paths]
+        if len(win_paths) == 1:
+            ps_arg = "'" + win_paths[0] + "'"
+        else:
+            ps_arg = "@(" + ",".join("'" + p + "'" for p in win_paths) + ")"
         proc = subprocess.run(
             ["powershell.exe", "-NoProfile", "-Command",
-             f"Set-Clipboard -Path '{win_path}'"],
+             f"Set-Clipboard -Path {ps_arg}"],
             capture_output=True, text=True,
             encoding="utf-8", errors="replace", timeout=15,
             creationflags=subprocess.CREATE_NO_WINDOW,
@@ -319,7 +328,60 @@ def _copy_file_to_clipboard(path):
         return False
 
 
-@register(["прочитать_полностью", "читать_полностью", "открыть"])
+def _read_full_many(paths):
+    """Несколько файлов — один Set-Clipboard -Path @(...).
+    Все файлы кладутся в буфер одним Ctrl+C (как в проводнике)."""
+    import os as _os
+    ok, bad = [], []
+    for p in paths:
+        if not _os.path.exists(p):
+            bad.append((p, "не найден"))
+            continue
+        if not _os.path.isfile(p):
+            bad.append((p, "не файл"))
+            continue
+        ext = _os.path.splitext(p)[1].lower()
+        if not ext:
+            bad.append((p, "без расширения"))
+            continue
+        if ext not in _SUPPORTED_EXT:
+            bad.append((p, "формат " + ext + " не поддерживается"))
+            continue
+        ok.append(p)
+
+    if not ok:
+        lines = ["❌ Ни один файл не подошёл:"]
+        # Группируем по причине, чтобы заголовок не врал.
+        _by_reason = {}
+        for p, why in bad:
+            _by_reason.setdefault(why, []).append(p)
+        for why, paths in _by_reason.items():
+            lines.append("  " + why + ":")
+            for p in paths:
+                lines.append("    • " + p)
+        if "не найден" in _by_reason:
+            try:
+                _cwd = os.getcwd()
+            except Exception:
+                _cwd = "?"
+            lines.append("")
+            lines.append("💡 Относительные пути резолвятся от: " + _cwd)
+            lines.append("   Если файл в другом месте — укажи полный путь.")
+        return chr(10).join(lines)
+
+    copied = _copy_file_to_clipboard(ok)
+    if not copied:
+        return "❌ Не удалось положить в буфер (" + str(len(ok)) + " файлов)."
+
+    msg = "[BUF] 📋 " + str(len(ok)) + " файлов в буфере обмена"
+    if bad:
+        _tail = ", ".join(p for p, _ in bad[:5])
+        if len(bad) > 5:
+            _tail += " ... и ещё " + str(len(bad) - 5)
+        msg += chr(10) + "   ⚠️ пропущено " + str(len(bad)) + ": " + _tail
+    return msg
+
+@register(["прочитать_полностью", "читать_полностью", "открыть", "показать_картинку"])
 def read_full(args):
     """Прочитать файл целиком, если его формат поддерживается.
 
@@ -330,7 +392,17 @@ def read_full(args):
       {"прочитать_полностью": {"путь": "E:/docs/report.pdf"}}
       {"читать_полностью": {"путь": "D:/logs/app.log"}}
     """
-    path = args.get("путь", "")
+    raw = args.get("путь") or args.get("файл") or ""
+
+    if isinstance(raw, list):
+        paths = [str(p).strip() for p in raw if str(p).strip()]
+        if not paths:
+            return "Укажите 'путь'."
+        if len(paths) > 1:
+            return _read_full_many(paths)
+        raw = paths[0]
+
+    path = raw
     if not path:
         return "Укажите 'путь'."
     import os as _os
@@ -387,7 +459,8 @@ def read_kb(args):
     Параметры:
       путь      — путь к файлу (обязательный)
       кб        — размер блока в КБ (по умолчанию 1)
-      скролл    — номер блока (0 = начало)
+      скролл    — номер блока (0 = начало), алиас: страница
+      смещение  — абсолютное смещение в байтах (переопределяет скролл)
       кодировка — принудительная (по умолчанию utf-8 с fallback)
 
     Возвращает заголовок, блок текста и подсказки навигации
@@ -396,10 +469,11 @@ def read_kb(args):
     Примеры:
       {"читать_по_кб": {"путь": "C:/log.txt"}}
       {"читать_по_кб": {"путь": "C:/big.txt", "кб": 5, "скролл": 2}}
+      {"читать_по_кб": {"путь": "C:/big.txt", "кб": 1, "смещение": 40000}}
     """
-    path = args.get("путь", "")
+    path = args.get("путь") or args.get("файл") or ""
     if not path:
-        return "Укажите 'путь'."
+        return "Укажите 'путь' (можно и 'файл')."
     if not os.path.isfile(path):
         return f"❌ Файл не найден: {path}"
 
@@ -418,8 +492,10 @@ def read_kb(args):
         kb = int(args.get("кб", 1) or 1)
     except (TypeError, ValueError):
         kb = 1
+    # скролл / страница — синонимы
+    scroll_raw = args.get("скролл", args.get("страница", 0))
     try:
-        scroll = int(args.get("скролл", 0) or 0)
+        scroll = int(scroll_raw or 0)
     except (TypeError, ValueError):
         scroll = 0
     if kb <= 0:
@@ -427,13 +503,36 @@ def read_kb(args):
     if scroll < 0:
         scroll = 0
 
+    # Смещение — абсолютная байтовая позиция, если задано
+    use_offset = "смещение" in args and args.get("смещение") is not None
+    offset = None
+    if use_offset:
+        try:
+            offset = int(args.get("смещение") or 0)
+        except (TypeError, ValueError):
+            use_offset = False
+            offset = None
+        if use_offset and offset < 0:
+            offset = 0
+
     chunk = kb * 1024
     size = os.path.getsize(path)
     total_pages = max(1, (size + chunk - 1) // chunk)
-    start = scroll * chunk
 
+    if use_offset:
+        start = offset
+        # Для отображения номера страницы
+        scroll_display = start // chunk
+    else:
+        start = scroll * chunk
+        scroll_display = scroll
+
+    _clamped = False
     if start >= size:
-        return f"📄 {path}\nСкролл {scroll} вне диапазона (всего страниц: {total_pages})."
+        # Запрошено дальше конца — показываем последний блок.
+        start = max(0, size - chunk)
+        scroll_display = start // chunk
+        _clamped = True
 
     try:
         with open(path, "rb") as f:
@@ -445,20 +544,44 @@ def read_kb(args):
     text = data.decode(args.get("кодировка") or "utf-8", errors="replace")
 
     if not text.strip():
-        return (f"📄 {path} — страница {scroll + 1}/{total_pages}: "
+        return (f"📄 {path} — позиция {start}/{size}: "
                 f"пусто (0 байт на этой позиции)")
 
-    header = f"📄 {path} — страница {scroll + 1}/{total_pages} ({kb} КБ/стр, всего {size} Б)"
+    # Нумерация страниц — 0-based, как и параметр «скролл»:
+    # скролл 0 → страница 0, скролл 10 → страница 10.
+    _last_page = max(0, total_pages - 1)
+    if use_offset:
+        header = f"📄 {path} — смещение {start} Б (стр. ~{scroll_display}/{_last_page}, {kb} КБ, всего {size} Б)"
+    else:
+        header = f"📄 {path} — страница {scroll_display}/{_last_page} ({kb} КБ/стр, всего {size} Б)"
+        if _clamped:
+            header += f"  ← запрошена {scroll}, показана последняя"
+
     _win = str(path).replace("/", "\\")
     footer = ""
-    if scroll + 1 < total_pages:
-        footer += (f'\n\n▶ Дальше: ```text\n'
-                   f'{{"читать_по_кб": {{"путь": "{_win}", '
-                   f'"кб": {kb}, "скролл": {scroll + 1}}}}}\n```')
-    if scroll > 0:
-        footer += (f'\n\n◀ Назад: ```text\n'
-                   f'{{"читать_по_кб": {{"путь": "{_win}", '
-                   f'"кб": {kb}, "скролл": {scroll - 1}}}}}\n```')
+
+    if use_offset:
+        next_pos = start + chunk
+        prev_pos = start - chunk
+        if next_pos < size:
+            footer += (f'\n\n▶ Дальше: ```text\n'
+                       f'{{"читать_по_кб": {{"путь": "{_win}", '
+                       f'"кб": {kb}, "смещение": {next_pos}}}}}\n```')
+        if prev_pos >= 0:
+            if prev_pos < 0:
+                prev_pos = 0
+            footer += (f'\n\n◀ Назад: ```text\n'
+                       f'{{"читать_по_кб": {{"путь": "{_win}", '
+                       f'"кб": {kb}, "смещение": {prev_pos}}}}}\n```')
+    else:
+        if scroll + 1 < total_pages:
+            footer += (f'\n\n▶ Дальше: ```text\n'
+                       f'{{"читать_по_кб": {{"путь": "{_win}", '
+                       f'"кб": {kb}, "скролл": {scroll + 1}}}}}\n```')
+        if scroll > 0:
+            footer += (f'\n\n◀ Назад: ```text\n'
+                       f'{{"читать_по_кб": {{"путь": "{_win}", '
+                       f'"кб": {kb}, "скролл": {scroll - 1}}}}}\n```')
 
     footer += (f'\n\n📄 Весь файл целиком: ```text\n'
                f'{{"прочитать_полностью": {{"путь": "{_win}"}}}}\n```')
@@ -468,7 +591,7 @@ def read_kb(args):
     return f"{header}\n{'-' * 50}\n{text}{footer}"
 
 
-@register(["список_файлов", "файлы", "каталог", "список"])
+@register(["список_файлов", "файлы", "каталог", "показать_каталог", "список"])
 def list_files(args):
     """Листинг папки: имена, размеры, даты изменения.
 
@@ -477,6 +600,7 @@ def list_files(args):
       скрытые  — если true, показывать файлы, начинающиеся с "."
       страница — номер страницы, 1-based (по умолчанию 1)
       размер   — элементов на странице (по умолчанию 100, максимум 500)
+      маска    — glob-фильтр по имени файла/папки (*.py, checkpoint-*, *log*)
 
     Постраничный вывод: если элементов больше «размер», показываются
     только текущая страница и навигация ▶/◀. На огромных папках
@@ -503,6 +627,7 @@ def list_files(args):
                 f"Изменён: {mtime}")
 
     show_hidden = args.get("скрытые", False)
+    mask = (args.get("маска", "") or "").strip()
 
     # --- параметры пагинации ---
     try:
@@ -537,6 +662,11 @@ def list_files(args):
                     continue
     except PermissionError:
         return f"❌ Нет доступа: {path}"
+
+    if mask:
+        import fnmatch
+        dirs_all = [n for n in dirs_all if fnmatch.fnmatch(n, mask)]
+        files_all = [n for n in files_all if fnmatch.fnmatch(n, mask)]
 
     dirs_all.sort(key=lambda n: n.lower())
     files_all.sort(key=lambda n: n.lower())
@@ -576,7 +706,11 @@ def list_files(args):
         sys.stdout.write("\r" + " " * 60 + "\r")
         sys.stdout.flush()
 
-    out = [f"📁 {path}"]
+    _abs = os.path.abspath(path)
+    _header = f"📁 {_abs}"
+    if os.path.normpath(_abs) != os.path.normpath(path):
+        _header += f"  (из «{path}»)"
+    out = [_header]
     out.append(f"   папок: {len(dirs_all)}, файлов: {len(files_all)}, "
                f"всего: {total}")
     if total_pages > 1:
@@ -624,11 +758,10 @@ def rewrite(args):
     Пример:
       {"переписать": {"путь": "E:/out.txt", "содержание": "привет"}}
 
-    Для многострочного текста используйте heredoc:
-      {"переписать": {"путь": "E:/out.py"}}
-      <<<
+    Для многострочного текста используйте inline-heredoc:
+      {"переписать": {"путь": "E:/out.py", "содержание": <<<
       ...любой код...
-      >>>
+      >>>}}
     """
     from _actions.tools_files import write_file
     path = args.get("путь", "")
@@ -638,7 +771,7 @@ def rewrite(args):
     return write_file(path, args.get("содержание") or args.get("содержимое", ""))
 
 
-@register(["добавить", "записать_файл", "создать_файл"])
+@register(["добавить", "дописать_файл", "записать_файл", "создать_файл"])
 def append_(args):
     """Дописать текст в конец файла (создаст, если файла нет).
 
@@ -653,20 +786,16 @@ def append_(args):
     Обычный вызов (одна строка):
       {"добавить": {"путь": "E:/log.txt", "содержание": "новая строка"}}
 
-    Многострочный текст — через heredoc:
-      1. сначала строка с JSON-командой
-      2. затем строка <<< (три знака «меньше»)
-      3. строки текста как есть (без JSON-экранирования)
-      4. закрывающая строка >>> (три знака «больше») — конец блока
+    Многострочный текст — через inline-heredoc:
+      значение поля оборачивается в <<< ... >>>
 
-    Пример heredoc:
+    Пример:
       ```text
-      {"добавить": {"путь": "E:/log.txt"}}
-      <<<
+      {"добавить": {"путь": "E:/log.txt", "содержание": <<<
       первая строка
       вторая строка
       "кавычки" и \\ обратные слэши — как есть
-      >>>
+      >>>}}
       ```
 
     Альтернативное имя:
@@ -681,5 +810,5 @@ def append_(args):
     ok, err = _check_write_path(path)
     if not ok:
         return f"⛔ Запись в системную папку {err} запрещена" if (":\\" in err or ":/" in err) else f"⛔ Запись запрещена: {err}"
-    return append_to_file(path, args.get("содержание") or args.get("содержимое", ""))
+    return append_to_file(path, args.get("содержание") or args.get("содержимое") or args.get("текст", ""))
 

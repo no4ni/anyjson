@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8">
+<style>
+body { margin: 0; background: #101020; }
+.spin {
+  position: absolute;
+  left: 150px;
+  top: 100px;
+  width: 100px;
+  height: 100px;
+  background: #ff5566;
+  animation: spin 2s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+</style>
+</head>
+<body>
+<div class="spin"></div>
+</body>
+</html>

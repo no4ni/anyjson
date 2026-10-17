@@ -197,6 +197,73 @@ def _walk_step(skip_dirs, deadline, pbar, state):
     return not timed_out
 
 
+def _find_in_single_file(path, search_name, search_content, search_all,
+                         search_mask, encoding="utf-8"):
+    """Поиск по содержимому одного файла (когда 'путь' — файл, а не папка)."""
+    _NL = chr(10)
+    _keywords = []
+    for _raw in (search_all, search_content, search_name, search_mask):
+        if not _raw:
+            continue
+        if isinstance(_raw, list):
+            _items = _raw
+        elif isinstance(_raw, str) and "|" in _raw:
+            _items = _raw.split("|")
+        else:
+            _items = [_raw]
+        for _k in _items:
+            _s = str(_k).replace("*", "").replace("?", "").strip()
+            if _s:
+                _keywords.append(_s)
+
+    if not _keywords:
+        _p = str(path).replace(chr(92), "/")
+        return (
+            "❌ Для одиночного файла нужен хотя бы один критерий "
+            "поиска (содержание/имя/всё/маска)." + _NL
+            + "  " + path.name + " — файл, поиск идёт по содержимому." + _NL
+            + "💡 Пример:" + _NL
+            + "```text" + _NL
+            + '{"найти_файл": {"путь": "' + _p + '", '
+            + '"содержание": "подстрока"}}' + _NL
+            + "```"
+        )
+
+    _kws_lower = [k.lower() for k in _keywords]
+
+    try:
+        with open(path, "r", encoding=encoding, errors="ignore") as f:
+            _lines = f.readlines()
+    except Exception as e:
+        return "❌ Не удалось прочитать файл: " + str(e)
+
+    _matches = []
+    for _i, _line in enumerate(_lines, 1):
+        _ll = _line.lower()
+        if any(_k in _ll for _k in _kws_lower):
+            _matches.append((_i, _line.rstrip(chr(10)).rstrip(chr(13))))
+
+    if not _matches:
+        return (
+            "❌ Совпадений не найдено в " + path.name + _NL
+            + "  искал: " + ", ".join(_keywords) + _NL
+            + "  строк в файле: " + str(len(_lines))
+        )
+
+    _MAX_SHOW = 100
+    _shown = _matches[:_MAX_SHOW]
+    _word = "совпадение" if len(_matches) == 1 else "совпадений"
+    out = "✅ Найдено " + str(len(_matches)) + " " + _word + " в " + path.name
+    if len(_matches) > _MAX_SHOW:
+        out += " (показаны первые " + str(_MAX_SHOW) + ")"
+    out += _NL + "  искал: " + ", ".join(_keywords) + _NL
+    for _ln, _txt in _shown:
+        _t = _txt if len(_txt) <= 200 else _txt[:200] + "…"
+        out += "  " + str(_ln) + ": " + _t + _NL
+    if len(_matches) > _MAX_SHOW:
+        out += "  … и ещё " + str(len(_matches) - _MAX_SHOW) + " совпадений" + _NL
+    return out.rstrip(_NL)
+
 # ---------- поиск файлов ----------
 def find_file(root_path: str, search_name: str = "", search_content: str = "",
               search_all: str = "", encoding: str = "utf-8",
@@ -209,6 +276,13 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
                            ".ini", ".cfg", ".xml", ".html", ".css", ".js"}
 
     root = Path(root_path).resolve()
+    # Если путь — файл (а не папка): поиск по содержимому этого файла.
+    if root.is_file():
+        return _find_in_single_file(
+            root, search_name, search_content, search_all, search_mask,
+            encoding
+        )
+
     if not root.is_dir():
         return f"Ошибка: корневая папка {root} не существует."
 

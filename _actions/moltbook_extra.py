@@ -4,6 +4,9 @@ from _tor import ensure_tor, restart_tor as _restart_tor
 from _actions.moltbook import _need_tor
 
 
+NL = "\n"
+
+
 
 @register(["молтбук_ответы", "moltbook_replies"])
 def replies(args):
@@ -434,7 +437,8 @@ def _fmt_comments_readable(data, max_depth=3, max_len=4000):
     return text
 
 
-@register(["молтбук_пост_читать", "молтбук_пост_показать"])
+@register(["молтбук_пост_читать", "молтбук_пост_показать",
+           "молтбук_пост_детали", "молтбук_чтение_поста", "молтбук_подробно"])
 def read_post(args):
     """Прочитать один пост Moltbook по ID (человекочитаемо).
 

@@ -315,3 +315,143 @@ def diagnostics(args):
         )
 
     return "\n".join(lines).rstrip()
+
+@register(["найти_функцию", "поиск_функции", "где_функция"])
+def find_function(args):
+    """Найти определение функции в исходниках anyjson.
+
+    Параметры:
+      имя       — подстрока имени (обязательно)
+      регулярка — true: имя как regex
+      точно     — true: только полное совпадение (имени def или алиаса)
+      тело      — true: вернуть исходник функции
+      путь      — папка или файл (по умолч. _actions, _core, anyjson.py)
+      количество — лимит (по умолч. 20)
+
+    Ищет и по имени функции (def), и по строковым литералам
+    в @register(...) — то есть по русским алиасам команд.
+    Совпадение по алиасу помечается в выводе: [алиас: "X"].
+    Приоритет: точное имя > точный алиас > подстрока в имени
+    > подстрока в алиасе.
+    """
+    import ast
+    import pathlib
+    import re as _re
+
+    def _register_aliases_of(node):
+        """Строковые литералы из @register(...) на функции.
+
+        Формы: @register("a"), @register(["a", "b"]),
+        @register(("a", "b")), @register(names=["a", "b"]).
+        Непарсящиеся формы (f-строки, ListComp, *args) тихо пропускаются.
+        """
+        out = []
+        for dec in node.decorator_list:
+            if not isinstance(dec, ast.Call):
+                continue
+            f = dec.func
+            if isinstance(f, ast.Name):
+                fname = f.id
+            elif isinstance(f, ast.Attribute):
+                fname = f.attr
+            else:
+                continue
+            if fname != "register":
+                continue
+            for arg in dec.args:
+                if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                    out.append(arg.value)
+                elif isinstance(arg, (ast.List, ast.Tuple)):
+                    for el in arg.elts:
+                        if isinstance(el, ast.Constant) and isinstance(el.value, str):
+                            out.append(el.value)
+            for kw in dec.keywords:
+                v = kw.value
+                if isinstance(v, ast.Constant) and isinstance(v.value, str):
+                    out.append(v.value)
+                elif isinstance(v, (ast.List, ast.Tuple)):
+                    for el in v.elts:
+                        if isinstance(el, ast.Constant) and isinstance(el.value, str):
+                            out.append(el.value)
+            break
+        return out
+
+    def _match_score(fn, nm, exact, pat, is_alias):
+        """100 — точное имя, 80 — точный алиас,
+        60 — подстрока в имени, 40 — подстрока в алиасе. 0 — нет."""
+        if exact:
+            if fn == nm:
+                return 80 if is_alias else 100
+            return 0
+        if pat:
+            return (40 if is_alias else 60) if pat.search(fn) else 0
+        return (40 if is_alias else 60) if (nm.lower() in fn.lower()) else 0
+
+    name = args.get("имя") or args.get("name") or ""
+    if not name:
+        return "Укажите 'имя'."
+    is_re = bool(args.get("регулярка"))
+    exact = bool(args.get("точно"))
+    with_body = bool(args.get("тело"))
+    limit = int(args.get("количество") or 20)
+    pat = _re.compile(name) if is_re else None
+
+    _base = pathlib.Path(__file__).resolve().parent.parent
+    paths = []
+    p_arg = args.get("путь")
+    if p_arg:
+        p_p = pathlib.Path(p_arg)
+        if p_p.is_file(): paths = [p_p]
+        elif p_p.is_dir(): paths = list(p_p.rglob("*.py"))
+    if not paths:
+        paths = list((_base / "_actions").rglob("*.py")) + \
+                list((_base / "_core").rglob("*.py")) + \
+                [_base / "anyjson.py"]
+
+    hits = []
+    for f in paths:
+        if not f.exists(): continue
+        try:
+            src = f.read_text(encoding="utf-8")
+            tree = ast.parse(src)
+        except Exception:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            fn = node.name
+            aliases = _register_aliases_of(node)
+            score = _match_score(fn, name, exact, pat, is_alias=False)
+            matched_aliases = []
+            for a in aliases:
+                s = _match_score(a, name, exact, pat, is_alias=True)
+                if s > 0:
+                    matched_aliases.append(a)
+                if s > score:
+                    score = s
+            if score == 0:
+                continue
+            try:
+                rel = f.relative_to(_base)
+            except ValueError:
+                rel = f
+            hits.append((score, str(rel), node.lineno, fn, src, node, matched_aliases))
+
+    if not hits:
+        return "Не найдено: " + name
+
+    hits.sort(key=lambda h: (-h[0], h[1], h[2]))
+    out = [f"🔍 Найдено {len(hits)} по «{name}»:"]
+    for i, (score, rel, lineno, fn, src, node, matched_aliases) in enumerate(hits[:limit], 1):
+        line = f"\n{i}. {fn}"
+        if matched_aliases:
+            line += "  [алиас: " + ", ".join(repr(a) for a in matched_aliases) + "]"
+        out.append(line)
+        out.append(f"   📄 {rel}:{lineno}")
+        if with_body:
+            lines = src.split("\n")
+            body = "\n".join(lines[node.lineno-1:node.end_lineno])
+            out.append("```python\n" + body + "\n```")
+    if len(hits) > limit:
+        out.append(f"\n... и ещё {len(hits) - limit}")
+    return "\n".join(out)

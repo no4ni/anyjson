@@ -93,6 +93,45 @@ def _normalize_for_search(text):
     return t
 
 
+def _build_diff_out(old_text, new_text, examples, limit=40):
+    """Общий diff-хвост для боевого режима и предпросмотра.
+
+    Единый источник формата: и предпросмотр, и запись показывают
+    одни и те же @@ -A,B +C,D @@ блоки. Возвращает строку, начинающуюся
+    с NL (или пустую, если диффить нечего и examples пуст).
+    """
+    NL = chr(10)
+    out = ""
+    try:
+        import difflib as _df
+        _old_lines = old_text.split(NL)
+        _new_lines = new_text.split(NL)
+        _diff = list(_df.unified_diff(_old_lines, _new_lines,
+                                      lineterm="", n=2))
+        # шапки ---/+++ не нужны — путь и так в заголовке
+        _body = [_d for _d in _diff
+                 if not _d.startswith("---")
+                 and not _d.startswith("+++")]
+        if _body:
+            out += NL
+            for _d in _body[:limit]:
+                out += NL + "  " + _d
+            if len(_body) > limit:
+                out += (f"{NL}  … diff обрезан: "
+                        f"{len(_body) - limit} строк")
+        elif examples:
+            # diff пуст (замена == поиск?): fallback на компактный показ
+            for i, (b, a) in enumerate(examples, 1):
+                out += f"{NL}  {i}) до:    {b}"
+                out += f"{NL}     после: {a}"
+    except Exception:
+        if examples:
+            for i, (b, a) in enumerate(examples, 1):
+                out += f"{NL}  {i}) до:    {b}"
+                out += f"{NL}     после: {a}"
+    return out
+
+
 @register(["заменить_текст", "замена_текста", "заменить_в_тексте"])
 def replace_text(args: dict) -> str:
     """Заменить X на Y в текстовом файле.
@@ -104,7 +143,7 @@ def replace_text(args: dict) -> str:
       все               — заменить все вхождения (по умолчанию true)
       регулярка         — трактовать «найти» как regex (по умолчанию false)
       регистр           — учитывать регистр (по умолчанию true)
-      предпросмотр      — не писать файл, только показать, сколько заменится
+      предпросмотр      — не писать файл, только показать diff и счётчик
       нестрого          — если точный поиск не нашёл, попробовать огрубить
                           текст: NBSP->пробел, тире->дефис, «»->"", 3+ пустых
                           строк->2 (по умолчанию true). При срабатывании
@@ -259,12 +298,10 @@ def replace_text(args: dict) -> str:
                     else:
                         _new2 = text.replace(_v, repl_s, 1)
                     if preview:
-                        _cap = 2000
-                        _shown = _new2 if len(_new2) <= _cap else _new2[:_cap] + NL + "…(обрезано)"
-                        return ("👁 [предпросмотр] Заменилось бы " + str(_cnt2)
+                        _out = ("👁 [предпросмотр] Заменилось бы " + str(_cnt2)
                                 + " вхождений в " + path.name
-                                + " (нашлось после нормализации переводов строк):"
-                                + NL + NL + _shown)
+                                + " (нашлось после нормализации переводов строк):")
+                        return _out + _build_diff_out(text, _new2, [])
                     try:
                         _write_text(path, _new2, enc)
                     except Exception as e:
@@ -284,16 +321,13 @@ def replace_text(args: dict) -> str:
                     _new3 = _tn.replace(_fn, repl_s)
                 else:
                     _new3 = _tn.replace(_fn, repl_s, 1)
+                if preview:
+                    _out = ("👁 [предпросмотр, нестрого] Заменилось бы "
+                            + str(_cnt3) + " вхождений в " + path.name
+                            + " (формат будет нормализован):")
+                    return _out + _build_diff_out(text, _new3, [])
                 if _orig_crlf:
                     _new3 = _new3.replace(NL, CR + NL)
-                if preview:
-                    _cap = 2000
-                    _shown = (_new3 if len(_new3) <= _cap
-                              else _new3[:_cap] + NL + "…(обрезано)")
-                    return ("👁 [предпросмотр, нестрого] Заменилось бы "
-                            + str(_cnt3) + " вхождений в " + path.name
-                            + " (формат будет нормализован):"
-                            + NL + NL + _shown)
                 try:
                     _write_text(path, _new3, enc)
                 except Exception as e:
@@ -350,12 +384,85 @@ def replace_text(args: dict) -> str:
             return out
 
         _find_lines = find_s.split(NL)
-        out += NL + NL + "🤔 Ближайшие совпадения:"
+
+        def _line_div(a, b):
+            """Вернуть (kind, pos, extra) для пары строк или None."""
+            _m = min(len(a), len(b))
+            for _ci in range(_m):
+                if a[_ci] != b[_ci]:
+                    return ("char", _ci, None)
+            if len(a) > len(b):
+                return ("tail_find", _m, a[_m:])
+            if len(b) > len(a):
+                return ("tail_file", _m, b[_m:])
+            return None
+
+        _summary = []
+        _r0, _i0, _ls0 = candidates[0]
+        _block_end0 = min(len(text_lines), _i0 + len(_find_lines))
+        _file_block0 = text_lines[_i0:_block_end0]
+        _n_cmp = min(len(_find_lines), len(_file_block0))
+        for _k in range(_n_cmp):
+            _a = _find_lines[_k]
+            _b = _file_block0[_k]
+            if _a == _b:
+                continue
+            _d = _line_div(_a, _b)
+            if _d is None:
+                continue
+            _kind, _pos, _extra = _d
+            _ln = _i0 + 1 + _k
+            if _kind == "char":
+                _summary.append(
+                    "🔍 Первое расхождение: стр. " + str(_ln)
+                    + ", поз. " + str(_pos))
+                _summary.append("    в «ищем»:  " + repr(_a[_pos])
+                                + "  (U+" + format(ord(_a[_pos]), "04X") + ")")
+                _summary.append("    в файле:   " + repr(_b[_pos])
+                                + "  (U+" + format(ord(_b[_pos]), "04X") + ")")
+            elif _kind == "tail_find":
+                _summary.append(
+                    "🔍 Первое расхождение: стр. " + str(_ln)
+                    + " — в «ищем» +" + str(len(_extra)) + " симв.")
+                _tail = _extra[:80] + ("…" if len(_extra) > 80 else "")
+                _summary.append("    лишнее:  " + repr(_tail))
+                _head = _b[:40] + ("…" if len(_b) > 40 else "")
+                _summary.append("    в файле: " + repr(_head))
+            else:
+                _summary.append(
+                    "🔍 Первое расхождение: стр. " + str(_ln)
+                    + " — в файле +" + str(len(_extra)) + " симв.")
+                _tail = _extra[:80] + ("…" if len(_extra) > 80 else "")
+                _summary.append("    лишнее:  " + repr(_tail))
+                _head = _a[:40] + ("…" if len(_a) > 40 else "")
+                _summary.append("    в «ищем»: " + repr(_head))
+            break
+        else:
+            if len(_find_lines) > len(_file_block0):
+                _k = _n_cmp
+                _summary.append(
+                    "🔍 В «ищем» есть строка, которой нет в файле "
+                    "(после стр. " + str(_i0 + _k) + "):")
+                _summary.append("    L" + str(_k + 1) + ": "
+                                + repr(_find_lines[_k][:120]))
+            elif len(_file_block0) > len(_find_lines):
+                _k = _n_cmp
+                _summary.append(
+                    "🔍 В файле есть строка, которой нет в «ищем» "
+                    + "(после стр. " + str(_i0 + _k) + "):")
+                _summary.append("    в файле L" + str(_k + 1) + ": "
+                                + repr(_file_block0[_k][:120]))
+
+        out += NL + NL
+        if _summary:
+            for _s in _summary:
+                out += NL + _s
+            out += NL + NL
+
+        out += "🤔 Ближайшие совпадения:"
         for _r, _i, _ls in candidates:
             out += NL + NL
-            out += "  📄 стр. " + str(_i + 1) + " — сходство " \
-                   + format(_r * 100, ".0f") + "%:"
-            # берём столько же строк из файла, сколько в «найти»
+            out += "  📄 стр. " + str(_i + 1) + ":"
             _block_end = min(len(text_lines), _i + len(_find_lines))
             _file_block = text_lines[_i:_block_end]
             _diff = list(_df.unified_diff(
@@ -369,38 +476,23 @@ def replace_text(args: dict) -> str:
                         or _d.startswith("@@")):
                     continue
                 _any_diff = True
-                _line_show = _d if len(_d) <= 200 else _d[:200] + "…"
-                out += NL + "    " + _line_show
-
-            # посимвольное сравнение каждой пары строк
-            for _k in range(min(len(_find_lines), len(_file_block))):
-                _a = _find_lines[_k]
-                _b = _file_block[_k]
-                if _a == _b:
-                    continue
-                for _ci in range(min(len(_a), len(_b))):
-                    if _a[_ci] != _b[_ci]:
-                        out += NL + "    ⚠️ стр. " + str(_i + 1 + _k) \
-                               + " поз. " + str(_ci) + " — первое расхождение:"
-                        out += NL + "        ищем:    " + repr(_a[_ci]) \
-                               + "  (U+" + format(ord(_a[_ci]), "04X") + ")"
-                        out += NL + "        в файле: " + repr(_b[_ci]) \
-                               + "  (U+" + format(ord(_b[_ci]), "04X") + ")"
-                        break
+                if _d.startswith("- ") or _d.startswith("+ "):
+                    _prefix = _d[:2]
+                    _content = _d[2:]
+                elif _d.startswith("  "):
+                    _prefix = "  "
+                    _content = _d[2:]
+                elif _d.startswith("-") or _d.startswith("+"):
+                    _prefix = _d[0]
+                    _content = _d[1:]
                 else:
-                    # одна строка — префикс другой
-                    if len(_a) < len(_b):
-                        out += NL + "    ⚠️ стр. " + str(_i + 1 + _k) \
-                               + " — в файле строка длиннее на " \
-                               + str(len(_b) - len(_a)) + " симв."
-                        _tail = _b[len(_a):][:30]
-                        out += NL + "        хвост в файле: " + repr(_tail)
-                    elif len(_a) > len(_b):
-                        out += NL + "    ⚠️ стр. " + str(_i + 1 + _k) \
-                               + " — в «ищем» строка длиннее на " \
-                               + str(len(_a) - len(_b)) + " симв."
-                        _tail = _a[len(_b):][:30]
-                        out += NL + "        хвост в «ищем»: " + repr(_tail)
+                    _prefix = ""
+                    _content = _d
+                if len(_content) <= 200:
+                    _line_show = _prefix + repr(_content)
+                else:
+                    _line_show = _prefix + repr(_content[:200]) + "…"
+                out += NL + "    " + _line_show
 
             if not _any_diff:
                 out += NL + "    (строки идентичны по тексту — "
@@ -415,10 +507,8 @@ def replace_text(args: dict) -> str:
         return out
 
     if preview:
-        _cap = 2000
-        _pv = new_text.replace("\n", "\r\n") if _orig_crlf else new_text
-        _shown = _pv if len(_pv) <= _cap else _pv[:_cap] + "\n…(обрезано, всего " + str(len(_pv)) + " симв.)"
-        return f"👁 [предпросмотр] Заменилось бы {cnt} вхождений в {path.name}:\n\n{_shown}"
+        _out = f"👁 [предпросмотр] Заменилось бы {cnt} вхождений в {path.name}:"
+        return _out + _build_diff_out(text, new_text, examples)
 
     try:
         _new_to_write = new_text.replace("\n", "\r\n") if _orig_crlf else new_text
@@ -427,35 +517,4 @@ def replace_text(args: dict) -> str:
         return f"❌ Не удалось записать файл: {e}"
 
     _out = f"✅ Заменено {cnt} вхождений в {path.name} (кодировка {enc})"
-    # diff по строкам: только изменённые строки + контекст ±2.
-    # Для длинных якорей это на порядок компактнее, чем «до/после».
-    try:
-        import difflib as _df
-        _old_lines = text.split("\n")
-        _new_lines = new_text.split("\n")
-        _diff = list(_df.unified_diff(_old_lines, _new_lines,
-                                      lineterm="", n=2))
-        # шапки ---/+++ не нужны — путь и так в заголовке
-        _body = [_d for _d in _diff
-                 if not _d.startswith("---")
-                 and not _d.startswith("+++")]
-        _LIMIT = 40
-        if _body:
-            _out += "\n"
-            for _d in _body[:_LIMIT]:
-                _out += "\n  " + _d
-            if len(_body) > _LIMIT:
-                _out += (f"\n  … diff обрезан: "
-                         f"{len(_body) - _LIMIT} строк")
-        elif examples:
-            # diff пуст (замена == поиск?): fallback на компактный показ
-            for i, (b, a) in enumerate(examples, 1):
-                _out += f"\n  {i}) до:    {b}"
-                _out += f"\n     после: {a}"
-    except Exception:
-        if examples:
-            for i, (b, a) in enumerate(examples, 1):
-                _out += f"\n  {i}) до:    {b}"
-                _out += f"\n     после: {a}"
-    return _out
-
+    return _out + _build_diff_out(text, new_text, examples)

@@ -61,6 +61,7 @@ ALLOWED_STDLIB = {
     "telnetlib", "this", "timeit", "token", "tokenize", "trace",
     "tracemalloc", "types", "typing", "zipapp", "zoneinfo",
     "wave", "audioop",
+    "__future__",
 }
 
 

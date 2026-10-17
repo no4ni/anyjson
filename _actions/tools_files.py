@@ -45,10 +45,25 @@ def _foreign_guard(path_str):
     return None
 
 
-def compress_output(text):
+def compress_output(text, preserve_ws=False):
     if not isinstance(text, str):
         return text
     import re as _re
+    if preserve_ws:
+        # Для осмотра: сохраняем ведущие пробелы, табы, выравнивание.
+        # Схлопываем только серии пустых строк.
+        lines = text.split("\n")
+        compressed = []
+        prev_empty = False
+        for line in lines:
+            if line == "":
+                if not prev_empty:
+                    compressed.append("")
+                    prev_empty = True
+            else:
+                compressed.append(line)
+                prev_empty = False
+        return "\n".join(compressed).strip()
     lines = [line.rstrip() for line in text.split("\n")]
     compressed = []
     prev_empty = False
@@ -78,7 +93,7 @@ def safe_append_to_file(path, content):
 
 
 # ---------- PowerShell ----------
-def execute_command(cmd_line, timeout=30):
+def execute_command(cmd_line, timeout=30, preserve_ws=False):
     """Выполнить PowerShell-команду (через -EncodedCommand)."""
     import base64
     encoded_cmd = base64.b64encode(cmd_line.encode("utf-16-le")).decode("ascii")
@@ -102,7 +117,7 @@ def execute_command(cmd_line, timeout=30):
         except UnicodeDecodeError:
             stderr_str = stderr.decode("cp1251", errors="replace")
         output = stdout_str + "\n" + stderr_str
-        output = compress_output(output)
+        output = compress_output(output, preserve_ws=preserve_ws)
         return output.strip() if output else "Команда выполнена, вывод пуст."
     except subprocess.TimeoutExpired:
         process.kill()

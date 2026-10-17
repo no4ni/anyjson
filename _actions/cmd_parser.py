@@ -15,6 +15,11 @@ from _utils import (
 from _color import color_red, color_yellow, color_blue
 
 
+# Предупреждения, которые _parse_part собирает по ходу разбора.
+# Добавляются в результаты перед выводом "Результаты:".
+_LAST_PARSE_WARNINGS = []
+
+
 # --- банк примеров для fallback (динамический, из HANDLERS) ---
 
 _EXAMPLE_RE = None
@@ -130,6 +135,56 @@ def _fill_bare_keys(text: str) -> str:
     return _BARE_KEY_RE.sub(r'{"\1": null}', text)
 
 
+def _expand_inline_heredocs(text: str) -> str:
+    """Заменить inline-heredoc внутри JSON на JSON-escaped строки.
+
+    Открывающий маркер — три символа <, закрывающий — три >.
+    Один ведущий и один хвостовой перевод строки обрезаются.
+
+    Правила:
+      • многострочное тело (в исходнике был перевод строки внутри
+        маркеров) сохраняет отступы как есть;
+      • однострочное тело (без переводов внутри маркеров) — strip()
+        снимает крайние пробелы;
+      • внутри тела ничего не экранируется — литерал-закрыватель
+        в теле закроет блок раньше времени;
+      • если открывающий маркер есть, а закрывающего нет — текст
+        не меняем, дальше сработает обычная ошибка JSON.
+    """
+    _OPEN = chr(60) * 3
+    _CLOSE = chr(62) * 3
+    if _OPEN not in text:
+        return text
+    out = []
+    i = 0
+    n = len(text)
+    while i < n:
+        if text.startswith(_OPEN, i):
+            end = text.find(_CLOSE, i + 3)
+            if end < 0:
+                out.append(text[i:])
+                break
+            raw_body = text[i + 3:end]
+            is_multiline = ("\n" in raw_body or "\r" in raw_body)
+            body = raw_body
+            if body.startswith("\r\n"):
+                body = body[2:]
+            elif body.startswith("\n"):
+                body = body[1:]
+            if body.endswith("\r\n"):
+                body = body[:-2]
+            elif body.endswith("\n"):
+                body = body[:-1]
+            if not is_multiline:
+                body = body.strip()
+            out.append(json.dumps(body, ensure_ascii=False))
+            i = end + 3
+        else:
+            out.append(text[i])
+            i += 1
+    return "".join(out)
+
+
 # Общие алиасы параметров: если команда ждёт одно, а пришло
 # другое — продублировать значение. Работает для всех команд.
 _PARAM_ALIAS_PAIRS = [
@@ -139,6 +194,9 @@ _PARAM_ALIAS_PAIRS = [
     ("ссылка", "адрес"),
     ("количество", "limit"),
     ("запрос", "query"),
+    ("шаблон", "маска"),
+    ("код", "скрипт"),
+    ("новое_имя", "имя"),
 ]
 
 
@@ -174,7 +232,13 @@ def _normalize_params(action: str, params) -> Dict[str, Any]:
             return {"агент": params}
         return {"запрос": params}
     if isinstance(params, dict):
-        return _apply_param_aliases(params)
+        _p = _apply_param_aliases(params)
+        # "кадр" — алиас "кадр+субтитр" без наложения субтитров.
+        # Дефолт "субтитр": false; можно переопределить в вызове.
+        if action == "кадр" and "субтитр" not in _p:
+            _p = dict(_p)
+            _p["субтитр"] = False
+        return _p
     return {"значение": params}
 
 
@@ -277,7 +341,7 @@ def _extract_params_ast(fn):
                 _collect(stmt)
             break
 
-    BAD = ("key", "token", "secret", "password", "passwd", "pwd", "буфер")
+    BAD = ("key", "token", "secret", "password", "passwd", "pwd", "буфер", "шаблон")
     def _ok(n):
         low = n.lower()
         return not any(b in low for b in BAD)
@@ -416,9 +480,14 @@ def _wrap_error(action, result):
         if not _skip_doc:
             _doc = _doc_for(action, error_text=msg)
             if _doc:
-                msg += "\n\n📖 Справка:\n" + _doc
+                # обёртка — только для собственной справки anyjson
+                # (там примеры-команды для читаемости). Сам result
+                # не перелопачиваем: если команда вернула текст
+                # с JSON-командами (читать, осмотреть, питон) — он
+                # должен остаться как есть.
+                msg += "\n\n📖 Справка:\n" + wrap_json_hints(_doc)
 
-    return wrap_json_hints(msg)
+    return msg
 
 
 _KNOWN_PARAMS_CACHE = {}
@@ -426,6 +495,7 @@ _KNOWN_PARAMS_CACHE = {}
 _UNKNOWN_PARAM_SKIP = {
     "в_контекст", "в_буфер", "сохранить", "параллельно",
     "action", "params", "reasoning", "actions", "commands",
+    "__got_body__",
 }
 
 
@@ -467,7 +537,9 @@ def _check_unknown_params(action, params):
         return ""
     _alias_to = {"лимит": "количество", "url": "адрес",
                  "урл": "адрес", "ссылка": "адрес",
-                 "количество": "limit", "запрос": "query"}
+                 "количество": "limit", "запрос": "query",
+                 "шаблон": "маска", "код": "скрипт",
+                 "новое_имя": "имя"}
     def _is_known_alias(k):
         _c = _alias_to.get(k)
         return bool(_c and _c in known)
@@ -524,12 +596,50 @@ def _is_likely_natural_language(text: str) -> bool:
     return bool(re.fullmatch(r'[а-яА-ЯёЁ0-9\s\.,!?\-:;]+', text.strip()))
 
 
+def _brace_balance(text):
+    """Возвращает (стек незакрытых скобок, флаг 'внутри строки').
+
+    Стек — закрывающие символы, которые надо дописать в конец
+    (в обратном порядке), чтобы сбалансировать текст.
+    Пример: '{"a": {"b": 1}' -> (['}'], False) — не хватает одной '}'.
+    """
+    stack = []
+    in_str = False
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if in_str:
+            if ch == "\\" and i + 1 < n:
+                i += 2
+                continue
+            if ch == '"':
+                in_str = False
+            i += 1
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == "{":
+            stack.append("}")
+        elif ch == "[":
+            stack.append("]")
+        elif ch in "}]":
+            if stack and stack[-1] == ch:
+                stack.pop()
+        i += 1
+    return stack, in_str
+
+
 def _parse_part(part):
     """Разбирает одну часть ввода. Возвращает (cmd, err)."""
     part_normalized = normalize_input(part)
     cleaned = ""
     try:
-        cleaned = strip_trailing_comments(part_normalized).strip()
+        # Сначала inline-heredoc: внутри <<<...>>> может быть любой
+        # текст, включая // и #. Только после этого — strip_trailing_comments,
+        # который уже не тронет содержимое JSON-строк.
+        cleaned = _expand_inline_heredocs(part_normalized)
+        cleaned = strip_trailing_comments(cleaned).strip()
         if cleaned.startswith('\ufeff'):
             cleaned = cleaned[1:]
         cleaned = cleaned.encode('utf-8').decode('utf-8-sig')
@@ -542,8 +652,26 @@ def _parse_part(part):
             cmd = safe_json_parse(fixed)
     except json.JSONDecodeError as e:
         error_pos = e.pos if hasattr(e, 'pos') else '?'
+        _err_msg = str(e)
+        _err_frag = (cleaned[max(0, error_pos-30):error_pos+30]
+                     if isinstance(error_pos, int) else "")
         print(f"[DEBUG] Ошибка JSON (позиция {error_pos}): {e}")
-        print(f"[DEBUG] Фрагмент: ...{cleaned[max(0, error_pos-30):error_pos+30]}...")
+        print(f"[DEBUG] Фрагмент: ...{_err_frag}...")
+        # Автопочин: если скобки не сбалансированы и мы не внутри строки —
+        # пробуем дописать недостающие закрывающие в конец.
+        _stack, _in_str = _brace_balance(cleaned)
+        if _stack and not _in_str:
+            _ac_text = cleaned + "".join(reversed(_stack))
+            try:
+                cmd = safe_json_parse(_ac_text)
+                _ac_chars = "".join(reversed(_stack))
+                _LAST_PARSE_WARNINGS.append(
+                    "⚠️ JSON не закрыт — автопочин добавил: " + _ac_chars
+                    + " (возможно, забыл закрыть в конце?)"
+                )
+                return cmd, None
+            except json.JSONDecodeError:
+                pass
         single_line = normalize_input(part_normalized.replace('\n', '\\n'))
         try:
             cleaned = strip_trailing_comments(single_line).strip()
@@ -573,6 +701,7 @@ def _parse_part(part):
                 except Exception:
                     pass
                 _tail = (chr(10) + "   Ты пробовал(а) команду \u00ab" + _rnd_cmd + "\u00bb?"
+                         + " Что это: {\"справка\": \"" + _rnd_cmd + "\"}"
                          if _rnd_cmd else "")
                 _extra_hint = (
                     chr(10) + chr(10) + "💡 Похоже, это текст (не команда). Сохранить в память?" + chr(10) +
@@ -596,6 +725,51 @@ def _parse_part(part):
                 except Exception:
                     pass
 
+            _python_hint = ""
+            _py_m = re.match(
+                r'^\s*(python(?:3(?:\.\d+)?)?|py|pyw|python\.exe|py\.exe)\s+(\S+)',
+                part, re.IGNORECASE,
+            )
+            if _py_m:
+                _script = _py_m.group(2)
+                _rest = part[_py_m.end():].strip()
+                _args_list = []
+                if _rest:
+                    try:
+                        import shlex as _shlex
+                        _args_list = _shlex.split(_rest, posix=False)
+                    except Exception:
+                        _args_list = _rest.split()
+                _clean = []
+                for _a in _args_list:
+                    _a = _a.strip()
+                    if (len(_a) >= 2 and _a[0] == _a[-1]
+                            and _a[0] in ('"', "'")):
+                        _a = _a[1:-1]
+                    _clean.append(_a)
+                _args_list = _clean
+                _example = '{"питон": {"скрипт": "' + _script + '"'
+                if _args_list:
+                    _quoted = []
+                    for _a in _args_list:
+                        _quoted.append('"' + _a.replace('\\', '\\\\').replace('"', '\\"') + '"')
+                    _example += ', "аргументы": [' + ", ".join(_quoted) + ']'
+                _example += '}}'
+                _doc_py = ""
+                try:
+                    _doc_py = _doc_for("питон")
+                except Exception:
+                    _doc_py = ""
+                _FENCE = chr(96) * 3
+                _python_hint = (
+                    "\n\n💡 Похоже на запуск Python из консоли. "
+                    "В anyjson для этого есть команда «питон»:\n"
+                    + _FENCE + "text\n" + _example + "\n" + _FENCE
+                )
+                if _doc_py:
+                    _python_hint += "\n\n📖 Справка:\n" + _doc_py
+                # это не текст для памяти — питон-команда
+                _extra_hint = ""
             _tormoza = ""
             if re.search(r"жду|ожидаю", part, re.IGNORECASE):
                 _tormoza = "\n\n🚗 У машины прогресса сломаны тормоза."
@@ -613,8 +787,19 @@ def _parse_part(part):
                                  "```text\n"
                                  '{"осталось_сессии": {}}\n'
                                  "```")
+            _json_err_hint = (
+                "⚠️ JSON не разобран: " + _err_msg + "\n"
+                + ("   Фрагмент: ..." + _err_frag + "...\n"
+                   if _err_frag else "")
+                + ("   Открыто без закрытия: " + str(len(_stack))
+                   + " (" + "".join(reversed(_stack)) + ")\n"
+                   if _stack else "")
+                + "\n"
+            )
             return None, (
-                "❌ Не понял ввод. Ожидаю JSON-команду, например:\n"
+                "❌ Не понял ввод.\n"
+                + _json_err_hint
+                + "Ожидаю JSON-команду, например:\n"
                 "```text\n"
                 f"{_ex_str}\n"
                 "```\n"
@@ -622,7 +807,7 @@ def _parse_part(part):
                 '```text\n'
                 '{"помощь": {"команда": "<имя>"}}\n'
                 '```'
-             + _extra_hint + _tormoza + _session_hint + _capability_hint + _ending_hint)
+             + _python_hint + _extra_hint + _tormoza + _session_hint + _capability_hint + _ending_hint)
     return cmd, None
 
 
@@ -659,7 +844,7 @@ SOLO_COMMANDS = {
     "показать_картинку",
     "рассмотреть_поближе", "увеличить_часть_изображения",
     "кроп", "вырезать_часть", "обрезка", "вырезать",
-    "смотреть_видео", "кадр+субтитр", "слушать_видео",
+    "смотреть_видео", "кадр+субтитр", "кадр", "слушать_видео",
     "слушать_аудио", "слушать_звук", "аудио",
     "стабилдиф", "нарисуй", "сгенерировать", "txt2img",
     "перерисуй", "нарисуй_по", "img2img",
@@ -680,12 +865,17 @@ SOLO_COMMANDS = {
 # Для них подсказка не должна советовать в_контекст:false.
 NO_CTX_FALSE = {
     "смотреть_видео", "посмотреть_движение",
+    # read-into-context: единственный эффект — отдать файл агенту.
+    # в_контекст:false делает команду бессмысленной (clipboard-эффект
+    # только маскирует ошибку вызова).
+    "прочитать_полностью", "читать_полностью", "рендер",
+    "отрендерить", "открыть",
 }
 
 # Команды, у которых в_контекст:false допустим ТОЛЬКО с "сохранить".
 # Тогда результат уходит на диск, буфер не трогаем.
 NO_CTX_FALSE_NEEDS_SAVE = {
-    "слушать_видео",
+    "слушать_видео", "кадр+субтитр", "кадр",
 }
 
 
@@ -707,6 +897,34 @@ def _params_are_safe(params, name=None):
             return _v is False
     return False
 
+
+# read_full-команды: не борются за контекст, а складывают файлы в один
+# буфер (CF_HDROP с несколькими файлами). В параллельно разрешены без
+# "в_контекст": false — system_parallel сольёт их в один вызов.
+_READ_FULL_SOLO = {
+    "прочитать_полностью", "читать_полностью", "открыть",
+    "посмотреть_файл", "посмотреть_картинку",
+    "рендер", "отрендерить", "svg_в_буфер", "рендер_svg",
+}
+
+
+def _is_all_read_full_batch(solo_positions):
+    """True, если ВСЕ SOLO внутри параллельно — read_full с непустым путём."""
+    _par = [(n, p) for pos, n, inside, p in solo_positions if inside]
+    if not _par:
+        return False
+    for n, p in _par:
+        if n not in _READ_FULL_SOLO:
+            return False
+        if not isinstance(p, dict):
+            return False
+        pv = p.get("путь") or p.get("файл") or ""
+        if isinstance(pv, list):
+            if not any(str(x).strip() for x in pv):
+                return False
+        elif not (isinstance(pv, str) and pv.strip()):
+            return False
+    return True
 
 def _iter_solo_checks(cmd, inside_parallel=False):
     """Yield (name, params, inside_parallel) для всех команд в cmd.
@@ -765,13 +983,19 @@ def _collect_all_actions(parsed):
             if _params_are_safe(params, name):
                 continue
             tag = name
-            solo_positions.append((total, tag, inside_parallel))
+            solo_positions.append((total, tag, inside_parallel, params))
     return total, solo_positions
 
 
-def process_command_input(input_str: str) -> None:
+def process_command_input(input_str: str, pre_notes=None) -> None:
     try:
-        _process_command_input_inner(input_str)
+        _process_command_input_inner(input_str, pre_notes=pre_notes)
+    except KeyboardInterrupt:
+        try:
+            print("\n⛔ Прервано пользователем (Ctrl+C). Возврат в REPL.")
+        except Exception:
+            pass
+        return
     except Exception as _e:
         import traceback as _tb
         _tb.print_exc()
@@ -781,12 +1005,14 @@ def process_command_input(input_str: str) -> None:
             pass
 
 
-def _process_command_input_inner(input_str: str) -> None:
+def _process_command_input_inner(input_str: str, pre_notes=None) -> None:
     """Обрабатывает строку ввода — возможно несколько команд через |||.
 
     Валидация имён всех команд ДО выполнения: если хоть одна неизвестна,
     остальные не выполняются, показывается только она.
     """
+    _LAST_PARSE_WARNINGS.clear()
+
     # --- отказ: ||| на отдельной строке ---
     for _ln in input_str.split("\n"):
         _st = _ln.strip()
@@ -855,7 +1081,10 @@ def _process_command_input_inner(input_str: str) -> None:
         if _self_mod is not None:
             _new_fn = getattr(_self_mod, "process_command_input", None)
             if _new_fn is not None and _new_fn is not _self_before:
-                return _new_fn(input_str)
+                try:
+                    return _new_fn(input_str, pre_notes=pre_notes)
+                except TypeError:
+                    return _new_fn(input_str)
     except Exception:
         pass
 
@@ -898,6 +1127,50 @@ def _process_command_input_inner(input_str: str) -> None:
                     _errors.append(f"❌ Неизвестная команда: {action}" + _sug)
                 else:
                     _errors.append(f"❌ Неизвестная команда: {action}")
+    # NO_CTX_FALSE: эти команды пишут только в контекст; в_контекст:false
+    # для них = ошибка вызова. Пропускаем только эту |||-часть,
+    # остальные команды батча выполняются.
+    _skip_idx = set()
+    _warnings = []
+    for _idx, _part, _cmd2, _err2 in parsed:
+        if _err2 or _cmd2 is None:
+            continue
+        _bad_here = False
+        for _n2, _p2, _ins2 in _iter_solo_checks(_cmd2):
+            if _n2 not in NO_CTX_FALSE:
+                continue
+            if not isinstance(_p2, dict):
+                continue
+            _is_false = False
+            for _k2 in ("в_контекст", "в_буфер"):
+                if _k2 in _p2:
+                    _v2 = _p2[_k2]
+                    if isinstance(_v2, str):
+                        if _v2.strip().lower() in ("0", "false", "нет", "off", "no", ""):
+                            _is_false = True
+                    elif _v2 is False:
+                        _is_false = True
+            if _is_false:
+                _bad_here = True
+                _warnings.append(
+                    f'⛔ "{_n2}": в_контекст:false не поддерживается — '
+                    f'эта команда пишет только в контекст. '
+                    f'Выполни её без этого параметра или убери пока.'
+                )
+        if _bad_here:
+            _skip_idx.add(_idx)
+
+    if _warnings:
+        parsed = [_e for _e in parsed if _e[0] not in _skip_idx]
+        if not parsed:
+            _wmsg = "\n".join(_warnings)
+            print(color_red("\n" + _wmsg))
+            try:
+                pyperclip.copy(_wmsg)
+                print(color_yellow("📋 Скопировано в буфер обмена."))
+            except Exception:
+                pass
+            return
     if _errors:
         msg = "\n".join(_errors)
         print(color_red("\n" + msg))
@@ -907,6 +1180,46 @@ def _process_command_input_inner(input_str: str) -> None:
         except Exception:
             pass
         return
+
+    # === Склейка read_full-батча: несколько «прочитать_полностью» через ||| ===
+    # read_full принимает список путей и кладёт их одним CF_HDROP (как
+    # Ctrl+C на группе в проводнике). Если ВСЕ команды в parsed — read_full
+    # с непустым путём, сливаем их в одну. Иначе три подряд затрут буфер,
+    # а SOLO-проверка завалит цепочку как «SOLO нельзя в |||».
+    # Только для верхнего уровня ||| — внутри «параллельно» своя логика
+    # в system_parallel.
+    _read_full_all = len(parsed) >= 2
+    _read_full_paths = []
+    _read_full_name = None
+    if _read_full_all:
+        for _idx, _part, _cmd, _err in parsed:
+            if _err or not isinstance(_cmd, dict):
+                _read_full_all = False
+                break
+            _keys = [k for k in _cmd.keys() if isinstance(k, str)]
+            if len(_keys) != 1 or _keys[0] not in _READ_FULL_SOLO:
+                _read_full_all = False
+                break
+            if _read_full_name is None:
+                _read_full_name = _keys[0]
+            _p = _cmd[_keys[0]]
+            if not isinstance(_p, dict):
+                _read_full_all = False
+                break
+            _pv = _p.get("путь") or _p.get("файл") or ""
+            if isinstance(_pv, list):
+                _flat = [str(x).strip() for x in _pv if str(x).strip()]
+                if not _flat:
+                    _read_full_all = False
+                    break
+                _read_full_paths.extend(_flat)
+            elif isinstance(_pv, str) and _pv.strip():
+                _read_full_paths.append(_pv.strip())
+            else:
+                _read_full_all = False
+                break
+    if _read_full_all and _read_full_paths and _read_full_name:
+        parsed = [(0, "", {_read_full_name: {"путь": _read_full_paths}}, None)]
 
     # === Проверка: SOLO-команды ===
     total_actions, solo_positions = _collect_all_actions(parsed)
@@ -922,10 +1235,15 @@ def _process_command_input_inner(input_str: str) -> None:
 
     # SOLO в ||| запрещён при total>1. Раньше разрешалось "последней",
     # но результат всё равно затирает всё, что было до неё.
-    bad_pipe = [name for pos, name, inside in solo_positions
+    bad_pipe = [name for pos, name, inside, _p in solo_positions
                 if (not inside) and total_actions > 1]
     # SOLO внутри параллельно: порядок не гарантирован, нужен в_контекст:false.
-    bad_par = [name for pos, name, inside in solo_positions if inside]
+    bad_par = [name for pos, name, inside, _p in solo_positions if inside]
+    # Исключение: если ВСЕ SOLO внутри параллельно — read_full с непустым
+    # путём, они не борются за контекст. system_parallel сольёт их в один
+    # Set-Clipboard -Path @(...) — как Ctrl+C на нескольких файлах.
+    if bad_par and _is_all_read_full_batch(solo_positions):
+        bad_par = []
 
     if bad_pipe or bad_par:
         _parts = []
@@ -1035,19 +1353,32 @@ def _process_command_input_inner(input_str: str) -> None:
 
     results = [r for r in results if r and r.strip()]
 
+    _pre_notes = list(pre_notes) if pre_notes else []
+    if _LAST_PARSE_WARNINGS:
+        _pre_notes.extend(_LAST_PARSE_WARNINGS)
+        _LAST_PARSE_WARNINGS.clear()
+
+    if _warnings:
+        results = list(_warnings) + results
+
     has_buf = any(r.lstrip().startswith("[BUF]") for r in results)
     results = [r.replace("[BUF] ", "", 1) if r.lstrip().startswith("[BUF]") else r
                for r in results]
 
     if results:
         print(color_red("\nРезультаты:"))
+        for _n in _pre_notes:
+            print(color_yellow("   " + _n))
         for i, res in enumerate(results, 1):
             print(f"{i}. {res}")
         if has_buf:
             # в буфере уже что-то (картинка/файл) — текст не копируем,
             # чтобы не затереть
             return
-        plain_results = "\n".join([f"{i}. {res}" for i, res in enumerate(results, 1)])
+        _notes_text = ""
+        if _pre_notes:
+            _notes_text = "".join("   " + n + "\n" for n in _pre_notes) + "\n"
+        plain_results = _notes_text + "\n".join([f"{i}. {res}" for i, res in enumerate(results, 1)])
         try:
             pyperclip.copy(plain_results)
             print(color_yellow("📋 Результаты скопированы в буфер обмена."))
@@ -1069,7 +1400,22 @@ def _process_command_input_inner(input_str: str) -> None:
                                 _first_cmd = _ks[0]
                         break
                 if _first_cmd not in ("параллельно",):
-                    if _rnd_hint.random() < 0.10:
+                    _hint_parts = []
+                    # 5% — пакетный режим
+                    if _rnd_hint.random() < 0.05:
+                        _hint_parts.append(
+                            "\n💡 Пакетный режим:\n"
+                            "   • последовательно: в одну строку через |||:\n"
+                            "```text\n"
+                            '{"а": {}}|||{"б": {}}\n'
+                            "```\n"
+                            "   • параллельно:\n"
+                            "```text\n"
+                            '{"параллельно": [{"а": {}}, {"б": {}}]}\n'
+                            "```"
+                        )
+                    # 5% — случайная команда
+                    if _rnd_hint.random() < 0.05:
                         _rnd_cmd = ""
                         try:
                             from _actions import PRIMARY_HANDLERS as _PH
@@ -1082,14 +1428,13 @@ def _process_command_input_inner(input_str: str) -> None:
                                 _rnd_cmd = _rnd_hint.choice(_pool)
                         except Exception:
                             pass
-                        _tail = (f"\n   Ты пробовал(а) команду «{_rnd_cmd}»?"
-                                 if _rnd_cmd else "")
-                        _hint = ("\n💡 Пакетный режим:\n"
-                                 "   • последовательно: в одну строку через |||: "
-                                 '{"а": {}}|||{"б": {}}\n'
-                                 "   • параллельно: "
-                                 '{"параллельно": [{"а": {}}, {"б": {}}]}'
-                                 + _tail)
+                        if _rnd_cmd:
+                            _hint_parts.append(
+                                f"\n   Ты пробовал(а) команду «{_rnd_cmd}»?"
+                                f" Что это: {{\"справка\": \"{_rnd_cmd}\"}}"
+                            )
+                    if _hint_parts:
+                        _hint = "".join(_hint_parts)
                         print(color_yellow(_hint))
                         try:
                             pyperclip.copy(plain_results + "\n" + _hint)

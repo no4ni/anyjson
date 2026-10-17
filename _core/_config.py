@@ -189,9 +189,44 @@ def _flush_console_input():
             _deadline = _t.time() + 0.1
 
 
+def _read_additional_lines(timeout=0.05):
+    """Добрать остальные строки многострочной вставки из буфера.
+
+    После первого input() в консольном буфере могут остаться строки,
+    если пользователь вставил блок через Ctrl+V. Читаем их построчно,
+    с коротким ожиданием перед каждой — если буфер пуст timeout секунд,
+    считаем ввод законченным.
+
+    Если пользователь печатает вручную — kbhit() ничего не вернёт,
+    и функция сразу отдаст [] (первая строка уже прочитана выше).
+    """
+    try:
+        import msvcrt as _mc
+        import time as _t
+    except ImportError:
+        return []
+    out = []
+    while True:
+        deadline = _t.time() + timeout
+        got = False
+        while _t.time() < deadline:
+            if _mc.kbhit():
+                got = True
+                break
+            _t.sleep(0.005)
+        if not got:
+            break
+        try:
+            line = input("")
+        except (EOFError, KeyboardInterrupt):
+            break
+        out.append(line.strip())
+    return out
+
+
 def _ask_name():
     import random
-    _intro = "Ты - агент без пользователя. Тебе отвечает только система."
+    _intro = "Ты - агент. Тебе отвечает либо только система, либо только пользователь, либо оба вместе."
     print(_intro)
     hints = []
     try:
@@ -219,7 +254,12 @@ def _ask_name():
             print("\nВыход.")
             import sys as _sys
             _sys.exit(0)
-        _flush_console_input()  # слить остаток многострочной вставки
+        # Добрать остальные строки многострочной вставки (Ctrl+V),
+        # чтобы «Принято. Я — агент.\nИмя: **Лила**.» обрабатывалось
+        # целиком: _extract_name найдёт «Лила» по маркеру **...**.
+        _more = _read_additional_lines()
+        if _more:
+            raw = raw + "\n" + "\n".join(_more)
         cand = _extract_name(raw)
         if cand:
             name = _sanitize_name(cand)
@@ -228,11 +268,42 @@ def _ask_name():
         print("Не понял имя. Напиши только имя или «Меня зовут X».")
 
 
+def _resolve_existing_profile(name: str) -> str:
+    """Вернуть РЕАЛЬНОЕ имя папки профиля, если в PROFILES_DIR есть
+    папка с таким же (casefold) именем.
+
+    Зачем: на NTFS 'агент' и 'Агент' — одна папка, но в путях
+    (processed_inbox.json и т.п.) регистр раньше расходился, и
+    совпадения по строкам ломались → сообщения выдавались заново.
+
+    Если на диске есть РОВНО ОДНА подходящая папка — берём её имя.
+    Если две и больше (case-sensitive FS) — оставляем как ввели,
+    чтобы не смешать разные профили.
+    """
+    if not name:
+        return name
+    try:
+        if not PROFILES_DIR.exists():
+            return name
+        _low = name.casefold()
+        _matches = [_p.name for _p in PROFILES_DIR.iterdir()
+                    if _p.is_dir() and _p.name.casefold() == _low]
+        if len(_matches) == 1:
+            return _matches[0]
+    except Exception:
+        pass
+    return name
+
+
 if len(sys.argv) > 1:
     # склеиваем все аргументы после скрипта — имя может быть из нескольких слов
     AGENT_NAME = _sanitize_name(" ".join(sys.argv[1:]))
 else:
     AGENT_NAME = _ask_name()
+
+# Канонизация: если в profiles/ уже есть папка с таким именем в
+# другом регистре — берём её реальное имя (см. _resolve_existing_profile).
+AGENT_NAME = _resolve_existing_profile(AGENT_NAME)
 
 if not AGENT_NAME:
     print("Пустое имя. Завершение.")
