@@ -158,14 +158,14 @@ def get_top_downloads_objects(n=10):
 	objects_with_size.sort(key=lambda x: x['size_mb'], reverse=True)
 	return objects_with_size[:n]
 
-def analyze_folder(folder_path, top=15, fast=True):
+def analyze_folder(folder_path, top=15, fast=True, depth=1, min_gb=0.5):
 	folder = Path(folder_path)
 	if not folder.exists() or not folder.is_dir():
 		print(f"❌ Папка не существует: {folder_path}")
 		return
 
 	if not fast:
-		run_treesize(target_path=str(folder), top_level=10, drill_depth=1)
+		run_treesize(target_path=str(folder), top_level=10, drill_depth=depth, min_gb=min_gb)
 		return
 
 	print(f"\n=== АНАЛИЗ ПАПКИ: {folder} ===")
@@ -219,7 +219,7 @@ def print_top_downloads():
 		print(f"  {i:2}. {type_label} {item['name']:<47} {item['size_mb']:>8.2f} МБ")
 	print("\nЗапустить автоматическую очистку диска Windows (cleanmgr /sagerun:1)? [y/N]", flush=True)
 
-def run_treesize(drive_letter=None, target_path=None, top_level=10, drill_depth=1):
+def run_treesize(drive_letter=None, target_path=None, top_level=10, drill_depth=1, min_gb=0.5):
 	script_dir = os.path.dirname(os.path.abspath(__file__))
 	treesize_script = os.path.join(script_dir, "TreeSize.ps1")
 	if not os.path.exists(treesize_script):
@@ -247,7 +247,7 @@ def run_treesize(drive_letter=None, target_path=None, top_level=10, drill_depth=
 				f"-RootPath '{root_path}' "
 				f"-TopLevel {int(top_level)} "
 				f"-DrillDownDepth {int(drill_depth)} "
-				"-ExcludeWindowsMain -MinGB 0.5 -AbsoluteMinGB 0.3 -TimeoutSeconds 10"
+				f"-ExcludeWindowsMain -MinGB {min_gb} -AbsoluteMinGB 0.3 -TimeoutSeconds 10"
 			),
 		]
 		result = subprocess.run(cmd, capture_output=True, timeout=300,
@@ -342,6 +342,8 @@ def main():
 	parser.add_argument('--notreesize', action='store_true', help='Пропустить TreeSize анализ')
 	parser.add_argument('--fast', action='store_true', help='Быстрый анализ вместо TreeSize (без таймаута)')
 	parser.add_argument('--top', type=int, default=15, help='Количество папок для вывода при --fast')
+	parser.add_argument('--depth', type=int, default=1, help='Глубина углублённого анализа TreeSize (по умолчанию 1)')
+	parser.add_argument('--mingb', type=float, default=0.5, help='Порог углубления в ГБ (по умолчанию 0.5)')
 	parser.add_argument('--nodelete', action='store_true', help='Не удалять временные файлы и не запускать cleanmgr (только анализ)')
 	parser.add_argument('--yes-cleanmgr', action='store_true', help='Автоматически запускать cleanmgr, не спрашивая')
 
@@ -351,7 +353,7 @@ def main():
 	if args.path:
 		if _should_show_top(path_arg=args.path):
 			print_top_downloads()
-		analyze_folder(args.path, top=args.top, fast=args.fast)
+		analyze_folder(args.path, top=args.top, fast=args.fast, depth=args.depth, min_gb=args.mingb)
 		return
 
 	# Иначе – старый режим работы с диском
@@ -418,7 +420,7 @@ def main():
 	if args.fast:
 		run_fast_scan(drive_letter=drive, top=args.top)
 	elif not args.notreesize:
-		run_treesize(drive_letter=drive, top_level=10, drill_depth=1)
+		run_treesize(drive_letter=drive, top_level=10, drill_depth=args.depth, min_gb=args.mingb)
 	else:
 		print("\n⚙️ Флаг --notreesize установлен: анализ диска пропущен.", flush=True)
 

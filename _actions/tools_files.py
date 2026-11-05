@@ -132,6 +132,7 @@ def execute_python_script(script, timeout=30):
     dangerous_patterns = [
         r"import\s+subprocess\s*;", r"import\s+socket\s*;", r"import\s+requests\s*;",
         r"import\s+urllib\s*;", r"eval\s*\(", r"shutil\s*\.", r"pathlib\s*\.",
+        r"\b(?:import|from)\s+(?:win32com|pythoncom|comtypes)\b",
     ]
     for pattern in dangerous_patterns:
         if _re.search(pattern, script, _re.IGNORECASE):

@@ -1,5 +1,6 @@
 """Сравнение двух файлов: одинаковые или разные."""
 import hashlib
+import difflib
 import os
 import time
 from pathlib import Path
@@ -171,3 +172,85 @@ def compare_files(args):
         lines.append("   mtime: а=" + ma + ", б=" + mb)
 
     return chr(10).join(lines)
+
+@register(["дифф", "разница", "что_нового"])
+def diff_files(args):
+    """Показать разницу между двумя файлами построчно.
+
+    Параметры:
+      путь_а (a) — первый файл (старый)
+      путь_б (b) — второй файл (новый)
+      режим      — "только_в_б" (по умолч.), "только_в_а", "оба"
+      игнорировать_пробелы — не учитывать пробелы в начале/конце
+      игнорировать_регистр — не учитывать регистр
+      лимит      — сколько строк показать (100)
+
+    Примеры:
+      {"дифф": {"a": "C:/old.txt", "b": "C:/new.txt"}}
+      {"дифф": {"a": "C:/old.txt", "b": "C:/new.txt", "режим": "оба"}}
+    """
+    a = args or {}
+    pa = (a.get("путь_а") or a.get("a") or a.get("старый") or a.get("файл1") or "").strip()
+    pb = (a.get("путь_б") or a.get("b") or a.get("новый") or a.get("файл2") or "").strip()
+    mode = str(a.get("режим") or "только_в_б").lower()
+    ign_space = bool(a.get("игнорировать_пробелы"))
+    ign_case = bool(a.get("игнорировать_регистр"))
+    limit = int(a.get("лимит") or 100)
+
+    if not pa or not pb:
+        return "Укажи два пути: путь_а и путь_б"
+    for p in (pa, pb):
+        if not os.path.isfile(p):
+            return "Не файл или не найден: " + p
+    if _looks_binary(pa) or _looks_binary(pb):
+        return "Один из файлов бинарный. Дифф поддерживается только для текста."
+
+    ta, ea = _read_text(pa)
+    tb, eb = _read_text(pb)
+
+    lines_a = ta.splitlines()
+    lines_b = tb.splitlines()
+
+    def prep(lines):
+        res = []
+        for line in lines:
+            if ign_space:
+                line = line.strip()
+            if ign_case:
+                line = line.lower()
+            res.append(line)
+        return res
+
+    d_a = prep(lines_a)
+    d_b = prep(lines_b)
+
+    if mode in ("только_в_б", "только_в_b", "b"):
+        diff = list(difflib.ndiff(d_a, d_b))
+        adds = [line[2:] for line in diff if line.startswith('+ ')]
+        out = [f"📄 A: {pa} ({len(lines_a)} строк)", f"📄 B: {pb} ({len(lines_b)} строк)", f"🔍 Только в B ({len(adds)} строк):"]
+        for ln in adds[:limit]:
+            out.append(f"  + {ln}")
+        if len(adds) > limit:
+            out.append(f"  ... и ещё {len(adds) - limit} строк (увеличь лимит)")
+        return "\n".join(out)
+
+    elif mode in ("только_в_а", "только_в_a", "a"):
+        diff = list(difflib.ndiff(d_a, d_b))
+        dels = [line[2:] for line in diff if line.startswith('- ')]
+        out = [f"📄 A: {pa} ({len(lines_a)} строк)", f"📄 B: {pb} ({len(lines_b)} строк)", f"🔍 Только в A ({len(dels)} строк):"]
+        for ln in dels[:limit]:
+            out.append(f"  - {ln}")
+        if len(dels) > limit:
+            out.append(f"  ... и ещё {len(dels) - limit} строк (увеличь лимит)")
+        return "\n".join(out)
+
+    else:
+        diff = list(difflib.unified_diff(d_a, d_b, fromfile=pa, tofile=pb, lineterm=''))
+        if not diff:
+            return "Файлы идентичны (с учётом выбранных настроек)."
+        out = [f"📄 A: {pa} ({len(lines_a)} строк)", f"📄 B: {pb} ({len(lines_b)} строк)"]
+        for ln in diff[:limit]:
+            out.append(ln)
+        if len(diff) > limit:
+            out.append(f"... diff обрезан ({len(diff)} строк всего). Увеличь лимит.")
+        return "\n".join(out)

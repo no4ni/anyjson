@@ -16,7 +16,7 @@ from _ps import run_with_wait, run_powershell_with_cwd
 from _storage import reminders, reminders_lock, parse_reminder_time, save_reminders
 
 
-@register(["разведка_системы", "кто_ты"])
+@register(["разведка_системы", "кто_ты", "получить_системную_информацию"])
 def system_recon(args):
     """Собирает сведения о системе. Кроссплатформенно.
     Если передан "команды" — перенаправляет в "запуск" (белый список PS).
@@ -32,11 +32,14 @@ def system_recon(args):
             out.append("")
         return "\n".join(out).rstrip()
 
-    if isinstance(args, dict) and args:
-        keys = ", ".join(repr(k) for k in args)
-        return (f'\u2139\ufe0f "разведка_системы" не принимает параметры ({keys}). '
-                f'Запустите без параметров: {{"разведка_системы": {{}}}}. '
-                f'Для PowerShell-команд: {{"запуск": {{"команда": "dir"}}}}.')
+    _KNOWN = {"команды", "подробно"}
+    if isinstance(args, dict):
+        unknown = [k for k in args if k not in _KNOWN]
+        if unknown:
+            keys = ", ".join(repr(k) for k in unknown)
+            return (f'\u2139\ufe0f "разведка_системы" не принимает параметры ({keys}). '
+                    f'Запустите без параметров: {{"разведка_системы": {{}}}}. '
+                    f'Для PowerShell-команд: {{"запуск": {{"команда": "dir"}}}}.')
 
     import platform
 
@@ -48,10 +51,19 @@ def system_recon(args):
     lines.append(f"CPU ядер:  {os.cpu_count()} логических")
     lines.append(f"Python:    {sys.version.split()[0]}  ({sys.executable})")
 
-    if platform.system() == "Windows":
-        _system_recon_windows(lines)
-    else:
-        _system_recon_unix(lines)
+    detailed = True
+    if isinstance(args, dict) and "подробно" in args:
+        v = args["подробно"]
+        if isinstance(v, str):
+            detailed = v.strip().lower() not in ("0", "false", "no", "нет")
+        else:
+            detailed = bool(v)
+
+    if detailed:
+        if platform.system() == "Windows":
+            _system_recon_windows(lines)
+        else:
+            _system_recon_unix(lines)
 
     return "\n".join(lines)
 

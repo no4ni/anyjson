@@ -9,11 +9,71 @@
 Все запросы идут через Tor (socks5h://127.0.0.1:9050).
 """
 import json
+import sys
+import threading
 import time as _time
 from datetime import datetime
 from urllib.parse import quote, urlparse
 
 import requests
+
+
+# Суммарный бюджет на одну логическую операцию Moltbook (получение токена +
+# все ретраи с ротацией exit). Предотвращает «вечное зависание» при мёртвом
+# Tor или CloudFront-блоке: раньше было до 10×30с на фазу.
+_MOLTBOOK_DEADLINE = 60.0
+
+
+def _deadline_expired(deadline):
+    return _time.monotonic() >= deadline
+
+
+def _remaining(deadline, cap=30.0):
+    return max(1.0, min(cap, deadline - _time.monotonic()))
+
+
+def _with_progress_bar(label, total_sec, func):
+    """Выполнить func(), показывая прогресс-бар до total_sec секунд.
+
+    Только для TTY: при перенаправлении stdout (subprocess, CI) бар не
+    печатается, чтобы \\r не засорял вывод. Вывод бара идёт в консоль,
+    в результат команды не попадает.
+    """
+    if not sys.stdout.isatty():
+        return func()
+    stop = threading.Event()
+    start = _time.monotonic()
+    width = 24
+
+    def _fmt(elapsed, mark="", force_full=False):
+        frac = 1.0 if force_full else min(elapsed / total_sec, 1.0)
+        if frac >= 1.0:
+            bar = "=" * width
+        else:
+            filled = int(frac * width)
+            bar = "=" * filled + ">" + " " * (width - filled - 1)
+        tail = (" " + mark) if mark else ""
+        return f"\r{label} [{bar}] {elapsed:.1f}/{total_sec:.0f}s{tail}"
+
+    def _thread():
+        while not stop.wait(0.1):
+            elapsed = _time.monotonic() - start
+            if elapsed >= total_sec:
+                break
+            print(_fmt(elapsed), end="", flush=True)
+
+    t = threading.Thread(target=_thread, daemon=True)
+    t.start()
+    ok = False
+    try:
+        result = func()
+        ok = True
+        return result
+    finally:
+        stop.set()
+        t.join(timeout=1)
+        elapsed = _time.monotonic() - start
+        print(_fmt(elapsed, "✓" if ok else "✗", force_full=ok), flush=True)
 
 
 _DM_UNAVAILABLE_MSG = "❌ Личные сообщения сейчас недоступны."
@@ -92,8 +152,12 @@ def _lazy_init():
         init_moltbook(key)
 
 
-def _moltbook_get_token(force: bool = False) -> str:
+def _moltbook_get_token(force: bool = False, deadline: float = None, budget_sec: float = None) -> str:
     """Получает или обновляет identity-токен Moltbook через Tor."""
+    if budget_sec is None:
+        budget_sec = _MOLTBOOK_DEADLINE
+    if deadline is None:
+        deadline = _time.monotonic() + budget_sec
     if not _moltbook_state["api_key"]:
         _lazy_init()
     if not _moltbook_state["api_key"]:
@@ -121,12 +185,16 @@ def _moltbook_get_token(force: bool = False) -> str:
     resp = None
     last_exc = None
     for attempt in range(1, max_attempts + 1):
+        if _deadline_expired(deadline):
+            raise RuntimeError(
+                f"Moltbook token: бюджет {budget_sec:.0f}с исчерпан "
+                f"({attempt - 1} попыток)")
         try:
             resp = requests.post(
                 "https://www.moltbook.com/api/v1/agents/me/identity-token",
                 headers=headers,
                 proxies=proxies,
-                timeout=30,
+                timeout=_remaining(deadline),
             )
         except Exception as e:
             # timeout, SOCKS-ошибки, DNS — ротируем exit и пробуем снова
@@ -163,7 +231,7 @@ def _moltbook_get_token(force: bool = False) -> str:
     return _moltbook_state["identity_token"]
 
 
-def _moltbook_request(method: str, path: str, json_data: dict = None):
+def _moltbook_request(method: str, path: str, json_data: dict = None, deadline_sec: float = None):
     # ЗАЩИТА от утечки секретов
     if json_data:
         try:
@@ -177,7 +245,9 @@ def _moltbook_request(method: str, path: str, json_data: dict = None):
         return _FakeResp(path)
 
     """Отправляет запрос к Moltbook API с автоматическим обновлением токена."""
-    token = _moltbook_get_token()
+    budget = deadline_sec if deadline_sec is not None else _MOLTBOOK_DEADLINE
+    deadline = _time.monotonic() + budget
+    token = _moltbook_get_token(deadline=deadline, budget_sec=budget)
     proxies = {"http": "socks5h://127.0.0.1:9050",
                "https": "socks5h://127.0.0.1:9050"}
     headers = {
@@ -191,21 +261,21 @@ def _moltbook_request(method: str, path: str, json_data: dict = None):
         headers["Content-Type"] = "application/json"
     url = f"https://www.moltbook.com{path}"
 
-    def _do(method, url, headers, json_data, proxies):
+    def _do(method, url, headers, json_data, proxies, timeout: float = 30):
         if method == "GET":
-            return requests.get(url, headers=headers, proxies=proxies, timeout=30)
+            return requests.get(url, headers=headers, proxies=proxies, timeout=timeout)
         elif method == "POST":
             return requests.post(url, headers=headers, json=json_data,
-                                 proxies=proxies, timeout=30)
+                                 proxies=proxies, timeout=timeout)
         elif method == "DELETE":
             return requests.delete(url, headers=headers, json=json_data,
-                                   proxies=proxies, timeout=30)
+                                   proxies=proxies, timeout=timeout)
         elif method == "PUT":
             return requests.put(url, headers=headers, json=json_data,
-                                proxies=proxies, timeout=30)
+                                proxies=proxies, timeout=timeout)
         elif method == "PATCH":
             return requests.patch(url, headers=headers, json=json_data,
-                                  proxies=proxies, timeout=30)
+                                  proxies=proxies, timeout=timeout)
         else:
             raise ValueError(f"Unsupported HTTP method: {method}")
 
@@ -218,8 +288,12 @@ def _moltbook_request(method: str, path: str, json_data: dict = None):
     resp = None
     last_exc = None
     for attempt in range(1, max_attempts + 1):
+        if _deadline_expired(deadline):
+            raise RuntimeError(
+                f"Moltbook {method} {path}: бюджет {budget:.0f}с исчерпан "
+                f"({attempt - 1} попыток)")
         try:
-            resp = _do(method, url, headers, json_data, proxies)
+            resp = _do(method, url, headers, json_data, proxies, timeout=_remaining(deadline))
         except Exception as e:
             last_exc = e
             if _new_circuit is not None and attempt < max_attempts:
@@ -228,10 +302,10 @@ def _moltbook_request(method: str, path: str, json_data: dict = None):
             raise
 
         if resp.status_code == 401 and "expired" in resp.text.lower():
-            token = _moltbook_get_token(force=True)
+            token = _moltbook_get_token(force=True, deadline=deadline, budget_sec=budget)
             headers["X-Moltbook-Identity"] = token
             try:
-                resp = _do(method, url, headers, json_data, proxies)
+                resp = _do(method, url, headers, json_data, proxies, timeout=_remaining(deadline))
             except Exception as e:
                 last_exc = e
                 if _new_circuit is not None and attempt < max_attempts:
@@ -832,7 +906,11 @@ def moltbook_notification_by_id(notif_id):
 def moltbook_whoami() -> str:
     """Кто я в Moltbook: имя, карма, непрочитанные."""
     try:
-        resp = _moltbook_request("GET", "/api/v1/home")
+        resp = _with_progress_bar(
+            "молтбук_кто_я",
+            30,
+            lambda: _moltbook_request("GET", "/api/v1/home", deadline_sec=30),
+        )
         if resp.status_code != 200:
             return "Ошибка Moltbook: " + str(resp.status_code) + " " + resp.text[:200]
         data = resp.json()

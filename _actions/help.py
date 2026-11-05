@@ -113,6 +113,27 @@ def show_help(args):
     # синонимов нет — ищем по подстроке, но БЕЗ вываливания полного списка
     matches = sorted([k for k in HANDLERS if query.lower() in k.lower()])
     if not matches:
+        import difflib as _dl
+
+        def _close_names(q, n=5):
+            _ql = q.lower()
+            _pref = [k for k in HANDLERS
+                     if k.lower().startswith(_ql[:4])
+                     or _ql.startswith(k.lower()[:4])]
+            _c = _dl.get_close_matches(q, list(HANDLERS.keys()), n=n, cutoff=0.6)
+            _seen, _out = set(), []
+            for _k in _pref + _c:
+                if _k not in _seen:
+                    _seen.add(_k)
+                    _out.append(_k)
+            return _out[:n]
+
+        _close = _close_names(query)
+        _close_line = None
+        if _close:
+            _close_line = ("🔎 Похожие команды: "
+                           + ", ".join('"' + _k + '"' for _k in _close))
+
         by_param = _find_by_param(query)
         if by_param:
             lines = ["❌ Команды '" + query + "' нет. Но параметр '" + query + "' есть в командах:"]
@@ -120,11 +141,20 @@ def show_help(args):
                 lines.append('  • "' + n + '" — ' + d)
             if len(by_param) > 10:
                 lines.append("  ... и ещё " + str(len(by_param) - 10))
+            if _close_line:
+                lines.append("")
+                lines.append(_close_line)
             lines.append("")
             lines.append("💡 Имя не обязательно точное — можно искать "
                          "по подстроке или по параметру.")
             lines.append('📚 Справка по команде: {"помощь": "имя_команды"}')
             return chr(10).join(lines)
+        if _close_line:
+            return (f"❌ Команда '{query}' не реализована.\n"
+                    f"{_close_line}\n"
+                    f"💡 Имя не обязательно точное — попробуй похожие "
+                    f"слова (короткую подстроку), и anyjson покажет "
+                    f"варианты.")
         return (f"❌ Команда '{query}' не реализована.\n"
                 f"💡 Имя не обязательно точное — попробуй похожие "
                 f"слова (короткую подстроку), и anyjson покажет "

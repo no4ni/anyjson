@@ -269,8 +269,10 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
               search_all: str = "", encoding: str = "utf-8",
               max_file_size: int = 1_000_000, text_extensions: set = None,
               timeout: int = 30, target_num: int = 1,
-              only_files: bool = False, search_mask: str = "",
-              ignore_cache: bool = False) -> str:
+              only_files: bool = False, only_dirs: bool = False,
+              search_mask: str = "",
+              ignore_cache: bool = False,
+              others_limit: int = 30) -> str:
     if text_extensions is None:
         text_extensions = {".txt", ".py", ".md", ".json", ".log", ".csv",
                            ".ini", ".cfg", ".xml", ".html", ".css", ".js"}
@@ -288,6 +290,9 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
 
     search_name = (search_name or "").replace("*", "")
     search_content = (search_content or "").replace("*", "")
+    # Поддержка "a|b" для имени (как уже работает для содержания)
+    search_name_list = ([kw.strip() for kw in search_name.split("|") if kw.strip()]
+                        if search_name else [])
     search_all = (search_all or "").replace("*", "")
     search_mask = search_mask or ""
 
@@ -304,6 +309,8 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
             search_mask = _ls["mask"]
             if _ls["only_files"] is not None:
                 only_files = bool(_ls["only_files"])
+            if _ls.get("only_dirs") is not None:
+                only_dirs = bool(_ls.get("only_dirs"))
         else:
             return ("Ошибка: укажите 'имя', 'содержание', 'всё' или 'маска' "
                     "для поиска.\n"
@@ -319,6 +326,7 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
         "all": search_all or "",
         "mask": search_mask or "",
         "only_files": bool(only_files),
+        "only_dirs": bool(only_dirs),
     })
 
     if search_all:
@@ -347,6 +355,8 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
     _MAX_FOUND = 10000
     _CONTENT_GRACE = 5.0  # сек: сколько ещё искать содержание после первого матча
     _content_deadline = None
+    _content_interrupted = False
+    _files_scanned = 0
 
     skip_dirs = {
         "__pycache__", "node_modules", ".git", ".vs", "site-packages",
@@ -414,13 +424,13 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
     # Папки проверяем, только если есть имя/маска/всё.
     # Если ищем ТОЛЬКО по содержанию — папки не считаем совпадениями.
     _check_dirs = check_name or check_mask or bool(search_all)
-    if not only_files and _check_dirs:
+    if (not only_files or only_dirs) and _check_dirs:
         for dir_full in state["dirs"]:
             dirname = os.path.basename(dir_full)
             if search_all:
                 m = target in dirname.lower()
             elif check_name:
-                m = search_name.lower() in dirname.lower()
+                m = any(kw.lower() in dirname.lower() for kw in search_name_list)
             else:
                 m = True
             if m and _mask_match(dirname):
@@ -428,8 +438,12 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
                 if len(found_entries) >= _MAX_FOUND:
                     break
 
-    if len(found_entries) < _MAX_FOUND:
+    if not only_dirs and len(found_entries) < _MAX_FOUND:
         for file_path in state["files"]:
+            if deadline and time.perf_counter() > deadline:
+                _content_interrupted = True
+                break
+            _files_scanned += 1
             file = os.path.basename(file_path)
             ext = os.path.splitext(file)[1].lower()
             if check_content and ext not in text_extensions:
@@ -440,7 +454,7 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
                 if search_all:
                     name_match = target in file.lower()
                 else:
-                    name_match = search_name.lower() in file.lower()
+                    name_match = any(kw.lower() in file.lower() for kw in search_name_list)
             if not _mask_match(file):
                 continue
 
@@ -504,6 +518,9 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
     if not complete and deadline:
         prefix = (f"⛔ Лимит {timeout} сек на этот вызов. "
                   f"Очередь: {len(state['queue'])} папок.\n")
+    elif _content_interrupted and deadline:
+        prefix = (f"⛔ Лимит {timeout} сек на этот вызов. "
+                  f"Поиск по содержимому прерван после {_files_scanned} файлов.\n")
 
     _prog = _progress_line + "\n"
 
@@ -525,15 +542,60 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
     found_entry, found_type = found_entries[_pick_idx]
     target_num = _real_num
 
+    _others = ""
+    _others_limit = max(1, int(others_limit or 30))
+    _total = len(found_entries)
+    _half = _others_limit // 2
+    _lo = max(0, _pick_idx - _half)
+    _hi = min(_total, _pick_idx + _half + 1)
+    if _total > 1 and (_hi - _lo) > 1:
+        _o_lines = ["\n\n📋 Другие совпадения (пути):"]
+        _before = _lo
+        _after = _total - _hi
+        if _before > 0:
+            _o_lines.append(f"  … и ещё {_before} до")
+        for _oi in range(_lo, _hi):
+            if _oi == _pick_idx:
+                continue
+            _op, _ot = found_entries[_oi]
+            _mark = "📁" if _ot == "directory" else "📄"
+            _o_lines.append(f"  #{_oi + 1}. {_mark} {_op}")
+        if _after > 0:
+            _o_lines.append(f"  … и ещё {_after} после")
+        _others = "\n".join(_o_lines)
+
     if found_type == "directory":
         try:
             items = os.listdir(found_entry)
             preview = "\n".join(items[:10])
             if len(items) > 10:
                 preview += f"\n... и ещё {len(items)-10} элементов"
-            return f"{_prog}{_num_header}{prefix}📁 #{target_num}. Папка: {found_entry}\nСодержимое:\n{preview}"
+            _search_args = []
+            if search_name:
+                _search_args.append(f'"имя": "{search_name}"')
+            if search_content:
+                _search_args.append(f'"содержание": "{search_content}"')
+            if search_all:
+                _search_args.append(f'"всё": "{search_all}"')
+            _search_args.append(f'"корень": "{str(root).replace(chr(92), "/")}"')
+            _search_args_str = ", ".join(_search_args)
+            if only_dirs:
+                _cmd_name = "найти_папку"
+            elif only_files:
+                _cmd_name = "найти_файл"
+            else:
+                _cmd_name = "найти_всё"
+            _next_hint = (
+                '{"' + _cmd_name + '": {' + _search_args_str
+                + ', "номер": ' + str(target_num + 1) + '}}'
+                + '  — следующий результат (если есть)'
+            )
+            _footer = ("\n💡 Другие команды:\n```text\n"
+                       + _next_hint + "\n```")
+            return (f"{_prog}{_num_header}{prefix}📁 #{target_num}. Папка: "
+                    f"{found_entry}\nСодержимое:\n{preview}{_others}{_footer}")
         except Exception as e:
-            return f"{_prog}{_num_header}{prefix}📁 #{target_num}. Папка: {found_entry}\n(не удалось прочитать: {e})"
+            return f"{_prog}{_num_header}{prefix}📁 #{target_num}. Папка: {found_entry}\n(не удалось прочитать: {e}){_others}"
     else:
         content_preview = None
         _is_binary = False
@@ -543,13 +605,34 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
             if b"\x00" in head:
                 _is_binary = True
             else:
-                for _enc in (encoding or "utf-8", "utf-8", "cp1251",
-                             "cp866", "latin-1"):
+                # Сначала пробуем заявленную кодировку (обычно utf-8).
+                # ВАЖНО: head — это ровно 1024 байта, и последний
+                # многобайтовый символ UTF-8 может быть разрезан
+                # пополам. Тогда strict-декод падает, но это НЕ значит,
+                # что файл в другой кодировке. Поэтому:
+                #   • ошибка в самом конце буфера (start >= len-4)
+                #     → декодируем utf-8 с errors="replace";
+                #   • ошибка раньше → это реально другая кодировка,
+                #     перебираем cp1251/cp866/latin-1.
+                _pref = encoding or "utf-8"
+                content_preview = None
+                for _enc in (_pref, "utf-8"):
                     try:
                         content_preview = head.decode(_enc, errors="strict")
                         break
-                    except (UnicodeDecodeError, LookupError):
+                    except UnicodeDecodeError as _e:
+                        if _e.start >= len(head) - 4:
+                            content_preview = head.decode(_enc, errors="replace")
+                            break
+                    except LookupError:
                         continue
+                if content_preview is None:
+                    for _enc in ("cp1251", "cp866", "latin-1"):
+                        try:
+                            content_preview = head.decode(_enc, errors="strict")
+                            break
+                        except (UnicodeDecodeError, LookupError):
+                            continue
                 if content_preview is None:
                     content_preview = head.decode("utf-8", errors="replace")
         except Exception as e:
@@ -585,7 +668,12 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
             _search_args.append(f'"корень": "{str(root).replace(chr(92), "/")}"')
             _search_args_str = ", ".join(_search_args)
 
-            _cmd_name = "найти_файл" if only_files else "найти_всё"
+            if only_dirs:
+                _cmd_name = "найти_папку"
+            elif only_files:
+                _cmd_name = "найти_файл"
+            else:
+                _cmd_name = "найти_всё"
             _next_hint = (
                 '{"' + _cmd_name + '": {' + _search_args_str
                 + ', "номер": ' + str(target_num + 1) + '}}'
@@ -613,7 +701,7 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
             _parts.append("```")
             _footer = "\n".join(_parts)
 
-        return f"{_prog}{_num_header}{prefix}📄 #{target_num}. {found_entry}:\n{content_preview}{_footer}"
+        return f"{_prog}{_num_header}{prefix}📄 #{target_num}. {found_entry}:\n{content_preview}{_others}{_footer}"
 
 
 @register("сбросить_кэш_поиска")

@@ -12,7 +12,7 @@ _tor_process = None
 _tor_available = False
 
 
-def start_tor() -> bool:
+def start_tor(timeout: float = 15.0) -> bool:
     global _tor_process, _tor_available
     if _tor_process is not None:
         if _tor_process.poll() is None:
@@ -34,14 +34,26 @@ def start_tor() -> bool:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        log("Tor запущен, ожидание bootstrap (15 сек)...")
-        time.sleep(15)
-        s = socket.socket()
-        s.settimeout(3)
-        ok = s.connect_ex(('127.0.0.1', 9050)) == 0
-        s.close()
+        log(f"Tor запущен, ожидание bootstrap (до {timeout:.0f} сек)...")
+        ok = False
+        deadline = time.monotonic() + timeout
+        while True:
+            s = socket.socket()
+            s.settimeout(1)
+            try:
+                if s.connect_ex(('127.0.0.1', 9050)) == 0:
+                    ok = True
+                    break
+            finally:
+                s.close()
+            if _tor_process.poll() is not None:
+                log(f"Tor завершился (код {_tor_process.returncode}) до bootstrap")
+                break
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(0.5)
         _tor_available = ok
-        log("Tor готов: порт 9050 слушает" if ok else "Tor запущен, но порт 9050 не слушает")
+        log("Tor готов: порт 9050 слушает" if ok else f"Tor не поднялся за {timeout:.0f} сек — порт 9050 не слушает")
         return ok
     except Exception as e:
         log(f"Ошибка запуска Tor: {e}")
@@ -76,7 +88,7 @@ def new_circuit(wait_sec: float = 2.0) -> bool:
     try:
         from stem import Signal
         from stem.control import Controller
-        with Controller.from_port(port=9051) as c:
+        with Controller.from_port(port=9051, connect_timeout=3) as c:
             c.authenticate()
             c.signal(Signal.NEWNYM)
         if wait_sec > 0:

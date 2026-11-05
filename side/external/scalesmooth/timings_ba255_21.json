@@ -1,0 +1,31 @@
+{
+  "meta": {
+    "budget": 30,
+    "host": "DESKTOP-J6NCBF5",
+    "ladder": [
+      21,
+      20,
+      0
+    ],
+    "scale": 2,
+    "sizes": [
+      128
+    ],
+    "ts": "2026-10-19 17:20:57"
+  },
+  "methods": {
+    "ba255": [
+      {
+        "acc": 21,
+        "ok": true,
+        "out_size": [
+          256,
+          256
+        ],
+        "px": 16384,
+        "scale": 2,
+        "sec": 8.909
+      }
+    ]
+  }
+}

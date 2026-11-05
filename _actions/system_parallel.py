@@ -171,18 +171,8 @@ def parallel(args):
         except Exception as e:
             return {"index": i + 1, "action": action, "result": None, "error": str(e)}
 
-    _quiet = False
-    if isinstance(args, dict):
-        _t = args.get("тихо")
-        if isinstance(_t, str):
-            _quiet = _t.strip().lower() in ("1", "true", "да", "on")
-        else:
-            _quiet = bool(_t)
-
     _print_lock = threading.Lock()
     def _say(msg):
-        if _quiet:
-            return
         with _print_lock:
             try:
                 print(msg, flush=True)

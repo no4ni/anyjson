@@ -1,0 +1,1558 @@
+{
+  "meta": {
+    "budget": 30,
+    "host": "DESKTOP-J6NCBF5",
+    "ladder": [
+      100,
+      50,
+      25,
+      12,
+      6,
+      3,
+      1,
+      0
+    ],
+    "scale": 2,
+    "sizes": [
+      128,
+      256,
+      512,
+      1024,
+      2048
+    ],
+    "ts": "2026-10-19 17:24:16"
+  },
+  "methods": {
+    "baderivative": [
+      {
+        "acc": 100,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 16384,
+        "scale": 2,
+        "sec": 40.031
+      },
+      {
+        "acc": 50,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 16384,
+        "scale": 2,
+        "sec": 40.033
+      },
+      {
+        "acc": 25,
+        "ok": true,
+        "out_size": [
+          256,
+          256
+        ],
+        "px": 16384,
+        "scale": 2,
+        "sec": 32.373
+      },
+      {
+        "acc": 12,
+        "ok": true,
+        "out_size": [
+          256,
+          256
+        ],
+        "px": 16384,
+        "scale": 2,
+        "sec": 8.004
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 65536,
+        "scale": 2,
+        "sec": 40.035
+      },
+      {
+        "acc": 12,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 65536,
+        "scale": 2,
+        "sec": 40.034
+      },
+      {
+        "acc": 6,
+        "ok": true,
+        "out_size": [
+          512,
+          512
+        ],
+        "px": 65536,
+        "scale": 2,
+        "sec": 27.537
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 12,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 6,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 40.025
+      },
+      {
+        "acc": 3,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 40.048
+      },
+      {
+        "acc": 1,
+        "ok": true,
+        "out_size": [
+          1024,
+          1024
+        ],
+        "px": 262144,
+        "scale": 2,
+        "sec": 20.451
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 12,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 6,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 3,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 1,
+        "ok": true,
+        "out_size": [
+          2048,
+          2048
+        ],
+        "px": 1048576,
+        "scale": 2,
+        "sec": 7.238
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 12,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 6,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 3,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 1,
+        "error": "bad-size 1x1 (expected 4096x4096)",
+        "ok": false,
+        "out_size": [
+          1,
+          1
+        ],
+        "px": 4194304,
+        "scale": 2,
+        "sec": 1.149
+      },
+      {
+        "acc": 0,
+        "error": "bad-size 1x1 (expected 4096x4096)",
+        "ok": false,
+        "out_size": [
+          1,
+          1
+        ],
+        "px": 4194304,
+        "scale": 2,
+        "sec": 1.151
+      }
+    ],
+    "baextremum": [
+      {
+        "acc": 100,
+        "ok": true,
+        "out_size": [
+          256,
+          256
+        ],
+        "px": 16384,
+        "scale": 2,
+        "sec": 3.82
+      },
+      {
+        "acc": 100,
+        "ok": true,
+        "out_size": [
+          512,
+          512
+        ],
+        "px": 65536,
+        "scale": 2,
+        "sec": 33.69
+      },
+      {
+        "acc": 50,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 65536,
+        "scale": 2,
+        "sec": 40.028
+      },
+      {
+        "acc": 25,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 65536,
+        "scale": 2,
+        "sec": 40.028
+      },
+      {
+        "acc": 12,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 65536,
+        "scale": 2,
+        "sec": 40.022
+      },
+      {
+        "acc": 6,
+        "ok": true,
+        "out_size": [
+          512,
+          512
+        ],
+        "px": 65536,
+        "scale": 2,
+        "sec": 29.35
+      },
+      {
+        "acc": 100,
+        "error": "no-file: Запуск scalebaextremumgrayauto (масштаб 2, точность 100)...\nОшибка: TargetInvocationException: Exception has been thrown by the target of an invocation.\nВнутренняя: an illegal memory access was encountered\n",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 1.681
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 12,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 6,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 40.032
+      },
+      {
+        "acc": 3,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 40.043
+      },
+      {
+        "acc": 1,
+        "ok": true,
+        "out_size": [
+          1024,
+          1024
+        ],
+        "px": 262144,
+        "scale": 2,
+        "sec": 16.935
+      },
+      {
+        "acc": 100,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 40.067
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 12,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 6,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 3,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 1,
+        "ok": true,
+        "out_size": [
+          2048,
+          2048
+        ],
+        "px": 1048576,
+        "scale": 2,
+        "sec": 3.911
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 12,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 6,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 3,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 1,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 40.033
+      },
+      {
+        "acc": 0,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 40.042
+      }
+    ],
+    "bamonochrome": [
+      {
+        "acc": 100,
+        "ok": true,
+        "out_size": [
+          256,
+          256
+        ],
+        "px": 16384,
+        "scale": 2,
+        "sec": 4.013
+      },
+      {
+        "acc": 100,
+        "ok": true,
+        "out_size": [
+          512,
+          512
+        ],
+        "px": 65536,
+        "scale": 2,
+        "sec": 35.05
+      },
+      {
+        "acc": 50,
+        "ok": true,
+        "out_size": [
+          512,
+          512
+        ],
+        "px": 65536,
+        "scale": 2,
+        "sec": 15.801
+      },
+      {
+        "acc": 100,
+        "error": "no-file: Запуск scalebamonochromegrayauto (масштаб 2, точность 100)...\nОшибка: TargetInvocationException: Exception has been thrown by the target of an invocation.\nВнутренняя: an illegal memory access was encountered\n",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 1.723
+      },
+      {
+        "acc": 50,
+        "error": "no-file: Запуск scalebamonochromegrayauto (масштаб 2, точность 50)...\nОшибка: TargetInvocationException: Exception has been thrown by the target of an invocation.\nВнутренняя: an illegal memory access was encountered\n",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 1.693
+      },
+      {
+        "acc": 25,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 40.029
+      },
+      {
+        "acc": 12,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 40.028
+      },
+      {
+        "acc": 6,
+        "ok": true,
+        "out_size": [
+          1024,
+          1024
+        ],
+        "px": 262144,
+        "scale": 2,
+        "sec": 35.273
+      },
+      {
+        "acc": 3,
+        "ok": true,
+        "out_size": [
+          1024,
+          1024
+        ],
+        "px": 262144,
+        "scale": 2,
+        "sec": 11.402
+      },
+      {
+        "acc": 100,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 40.069
+      },
+      {
+        "acc": 50,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 40.06
+      },
+      {
+        "acc": 25,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 12,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 6,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 40.038
+      },
+      {
+        "acc": 3,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 40.032
+      },
+      {
+        "acc": 1,
+        "ok": true,
+        "out_size": [
+          2048,
+          2048
+        ],
+        "px": 1048576,
+        "scale": 2,
+        "sec": 30.242
+      },
+      {
+        "acc": 0,
+        "ok": true,
+        "out_size": [
+          2048,
+          2048
+        ],
+        "px": 1048576,
+        "scale": 2,
+        "sec": 24.433
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 12,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 6,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 3,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 1,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 40.041
+      },
+      {
+        "acc": 0,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 40.037
+      }
+    ],
+    "bamonochrome2": [
+      {
+        "acc": 100,
+        "ok": true,
+        "out_size": [
+          256,
+          256
+        ],
+        "px": 16384,
+        "scale": 2,
+        "sec": 5.0
+      },
+      {
+        "acc": 100,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 65536,
+        "scale": 2,
+        "sec": 40.049
+      },
+      {
+        "acc": 50,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 65536,
+        "scale": 2,
+        "sec": 40.026
+      },
+      {
+        "acc": 25,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 65536,
+        "scale": 2,
+        "sec": 40.027
+      },
+      {
+        "acc": 12,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 65536,
+        "scale": 2,
+        "sec": 40.03
+      },
+      {
+        "acc": 6,
+        "ok": true,
+        "out_size": [
+          512,
+          512
+        ],
+        "px": 65536,
+        "scale": 2,
+        "sec": 31.151
+      },
+      {
+        "acc": 3,
+        "ok": true,
+        "out_size": [
+          512,
+          512
+        ],
+        "px": 65536,
+        "scale": 2,
+        "sec": 8.574
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 12,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 6,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 40.023
+      },
+      {
+        "acc": 3,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 40.026
+      },
+      {
+        "acc": 1,
+        "ok": true,
+        "out_size": [
+          1024,
+          1024
+        ],
+        "px": 262144,
+        "scale": 2,
+        "sec": 19.511
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 12,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 6,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 3,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 1,
+        "ok": true,
+        "out_size": [
+          2048,
+          2048
+        ],
+        "px": 1048576,
+        "scale": 2,
+        "sec": 8.097
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 12,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 6,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 3,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 1,
+        "error": "bad-size 1x1 (expected 4096x4096)",
+        "ok": false,
+        "out_size": [
+          1,
+          1
+        ],
+        "px": 4194304,
+        "scale": 2,
+        "sec": 1.529
+      },
+      {
+        "acc": 0,
+        "error": "bad-size 1x1 (expected 4096x4096)",
+        "ok": false,
+        "out_size": [
+          1,
+          1
+        ],
+        "px": 4194304,
+        "scale": 2,
+        "sec": 1.5
+      }
+    ],
+    "basmoothcontrast": [
+      {
+        "acc": 100,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 16384,
+        "scale": 2,
+        "sec": 40.033
+      },
+      {
+        "acc": 50,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 16384,
+        "scale": 2,
+        "sec": 40.03
+      },
+      {
+        "acc": 25,
+        "ok": true,
+        "out_size": [
+          256,
+          256
+        ],
+        "px": 16384,
+        "scale": 2,
+        "sec": 29.606
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 65536,
+        "scale": 2,
+        "sec": 40.033
+      },
+      {
+        "acc": 12,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 65536,
+        "scale": 2,
+        "sec": 40.023
+      },
+      {
+        "acc": 6,
+        "ok": true,
+        "out_size": [
+          512,
+          512
+        ],
+        "px": 65536,
+        "scale": 2,
+        "sec": 28.915
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 12,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 6,
+        "error": "no-file: Запуск scalebasmoothcontrastgrayauto (масштаб 2, точность 6)...\nОшибка: TargetInvocationException: Exception has been thrown by the target of an invocation.\nВнутренняя: an illegal memory access was encountered\n",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 1.946
+      },
+      {
+        "acc": 3,
+        "ok": true,
+        "out_size": [
+          1024,
+          1024
+        ],
+        "px": 262144,
+        "scale": 2,
+        "sec": 2.873
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 12,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 6,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 40.056
+      },
+      {
+        "acc": 3,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 40.064
+      },
+      {
+        "acc": 1,
+        "ok": true,
+        "out_size": [
+          2048,
+          2048
+        ],
+        "px": 1048576,
+        "scale": 2,
+        "sec": 7.183
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 12,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 6,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 3,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 1,
+        "error": "bad-size 1x1 (expected 4096x4096)",
+        "ok": false,
+        "out_size": [
+          1,
+          1
+        ],
+        "px": 4194304,
+        "scale": 2,
+        "sec": 1.059
+      },
+      {
+        "acc": 0,
+        "error": "bad-size 1x1 (expected 4096x4096)",
+        "ok": false,
+        "out_size": [
+          1,
+          1
+        ],
+        "px": 4194304,
+        "scale": 2,
+        "sec": 1.036
+      }
+    ],
+    "bathin255": [
+      {
+        "acc": 100,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 16384,
+        "scale": 2,
+        "sec": 40.055
+      },
+      {
+        "acc": 50,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 16384,
+        "scale": 2,
+        "sec": 40.062
+      },
+      {
+        "acc": 25,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 16384,
+        "scale": 2,
+        "sec": 40.028
+      },
+      {
+        "acc": 12,
+        "ok": true,
+        "out_size": [
+          256,
+          256
+        ],
+        "px": 16384,
+        "scale": 2,
+        "sec": 5.282
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 12,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 65536,
+        "scale": 2,
+        "sec": 40.046
+      },
+      {
+        "acc": 6,
+        "ok": true,
+        "out_size": [
+          512,
+          512
+        ],
+        "px": 65536,
+        "scale": 2,
+        "sec": 8.222
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 12,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 6,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 262144,
+        "scale": 2,
+        "sec": 40.076
+      },
+      {
+        "acc": 3,
+        "ok": true,
+        "out_size": [
+          1024,
+          1024
+        ],
+        "px": 262144,
+        "scale": 2,
+        "sec": 19.749
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 12,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 6,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 3,
+        "error": "bad-size 1x1 (expected 2048x2048)",
+        "ok": false,
+        "out_size": [
+          1,
+          1
+        ],
+        "px": 1048576,
+        "scale": 2,
+        "sec": 1.04
+      },
+      {
+        "acc": 1,
+        "error": "bad-size 1x1 (expected 2048x2048)",
+        "ok": false,
+        "out_size": [
+          1,
+          1
+        ],
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.987
+      },
+      {
+        "acc": 0,
+        "error": "bad-size 1x1 (expected 2048x2048)",
+        "ok": false,
+        "out_size": [
+          1,
+          1
+        ],
+        "px": 1048576,
+        "scale": 2,
+        "sec": 0.991
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 12,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 6,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 0.0
+      },
+      {
+        "acc": 3,
+        "error": "bad-size 1x1 (expected 4096x4096)",
+        "ok": false,
+        "out_size": [
+          1,
+          1
+        ],
+        "px": 4194304,
+        "scale": 2,
+        "sec": 1.232
+      },
+      {
+        "acc": 1,
+        "error": "bad-size 1x1 (expected 4096x4096)",
+        "ok": false,
+        "out_size": [
+          1,
+          1
+        ],
+        "px": 4194304,
+        "scale": 2,
+        "sec": 1.111
+      },
+      {
+        "acc": 0,
+        "error": "bad-size 1x1 (expected 4096x4096)",
+        "ok": false,
+        "out_size": [
+          1,
+          1
+        ],
+        "px": 4194304,
+        "scale": 2,
+        "sec": 1.094
+      }
+    ]
+  }
+}

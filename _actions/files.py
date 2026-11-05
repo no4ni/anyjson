@@ -191,18 +191,20 @@ def read_(args):
       • файл ≥ 1 КБ — вернёт размер и подсказку использовать
         "прочитать_полностью" или "читать_по_кб";
       • папка — вернёт листинг (как "список_файлов");
-      • если текст преимущественно латинский — добавит пометку
-        о необходимости перевода.
+      • если указаны начало/конец — вернёт только эти строки.
 
     Параметры:
       путь      — путь к файлу или папке (обязательный)
       кодировка — принудительная (по умолчанию utf-8, с fallback)
       скрытые   — если true, показывать скрытые файлы (для папок)
+      начало    — с какой строки читать (алиас: с_строки)
+      конец     — по какую строку читать включительно (алиас: по_строку)
 
     Примеры:
       {"читать": {"путь": "C:/log.txt"}}
       {"читать": {"путь": "E:/Jericho", "скрытые": true}}
       {"читать": {"путь": "E:/data.csv", "кодировка": "cp1251"}}
+      {"читать": {"путь": "E:/Readme.txt", "начало": 135, "конец": 150}}
     """
     from _actions.tools_files import read_file
     path = args.get("путь") or args.get("файл") or ""
@@ -217,9 +219,7 @@ def read_(args):
 
     if not os.path.exists(path):
         _name = os.path.basename(path)
-        # корень поиска — родительская папка (на уровень выше), а не та же самая
         _parent = os.path.dirname(os.path.dirname(path)) or os.path.dirname(path) or "."
-        # если путь короткий (типа "E:/x.txt") — сразу весь диск
         _drive = "E:/"
         if len(path) > 3 and path[1:3] in (":/", ":\\"):
             _drive = path[:3]
@@ -229,6 +229,34 @@ def read_(args):
             f'  {{"найти_файл": {{"корень": "{_parent}", "имя": "{_name}"}}}}\n'
             f'  {{"найти_файл": {{"корень": "{_drive}", "имя": "{_name}"}}}}'
         )
+
+    # --- НОВОЕ: чтение по строкам ---
+    start_line = args.get("начало") or args.get("с_строки")
+    end_line = args.get("конец") or args.get("по_строку")
+
+    if start_line is not None or end_line is not None:
+        try:
+            start = max(1, int(start_line)) if start_line is not None else 1
+            end = int(end_line) if end_line is not None else None
+            if end is not None and end < start:
+                return "❌ Параметр 'конец' не может быть меньше 'начало'."
+            
+            encoding = args.get("кодировка") or "utf-8"
+            lines_out = []
+            with open(path, "r", encoding=encoding, errors="replace") as f:
+                for i, line in enumerate(f, 1):
+                    if i >= start:
+                        if end is not None and i > end:
+                            break
+                        lines_out.append(line)
+            if not lines_out:
+                return f"⚠️ Файл пуст или диапазон [{start}-{end if end else 'до конца'}] вне границ."
+            
+            _end_str = str(end) if end else 'конца'
+            return f"📄 {path} [строки {start}-{_end_str}]:\n" + "".join(lines_out)
+        except ValueError:
+            return "❌ Параметры 'начало' и 'конец' должны быть целыми числами."
+    # --- КОНЕЦ НОВОГО ---
 
     size = os.path.getsize(path)
     KB = 1024
@@ -293,6 +321,7 @@ _SUPPORTED_CATEGORIES = [
                 "CS", "JAVA", "GO", "RS", "RB", "PHP", "SWIFT", "KT",
                 "SH", "BASH", "PS1", "BAT", "CMD", "SQL", "R", "LUA",
                 "PL", "VUE", "SVELTE"]),
+    ("Проекты и конфиги", ["CSPROJ", "SLN", "XML", "CONFIG", "PROPS", "TARGETS", "NUSPEC"]),
 ]
 
 
@@ -350,7 +379,7 @@ def _read_full_many(paths):
         ok.append(p)
 
     if not ok:
-        lines = ["❌ Ни один файл не подошёл:"]
+        lines = ["❌ Не удалось прочитать ни один файл:"]
         # Группируем по причине, чтобы заголовок не врал.
         _by_reason = {}
         for p, why in bad:
@@ -381,7 +410,7 @@ def _read_full_many(paths):
         msg += chr(10) + "   ⚠️ пропущено " + str(len(bad)) + ": " + _tail
     return msg
 
-@register(["прочитать_полностью", "читать_полностью", "открыть", "показать_картинку"])
+@register(["прочитать_полностью", "читать_полностью", "открыть", "показать_картинку", "показать_файл"])
 def read_full(args):
     """Прочитать файл целиком, если его формат поддерживается.
 
@@ -452,15 +481,68 @@ def read_full(args):
     return chr(10).join(lines)
 
 
-@register("читать_по_кб")
+def _read_kb_lines(path, start, end, encoding):
+    """Строчный режим читать_по_кб: с / по (1-based номера строк)."""
+    try:
+        with open(path, encoding=encoding, errors="replace") as f:
+            lines = f.readlines()
+    except Exception as e:
+        return f"❌ Ошибка чтения: {e}"
+    total = len(lines)
+    try:
+        s = int(start) if start is not None else 1
+    except (TypeError, ValueError):
+        s = 1
+    try:
+        e = int(end) if end is not None else total
+    except (TypeError, ValueError):
+        e = total
+    if s < 1:
+        s = 1
+    if e > total:
+        e = total
+    if s > e or s > total:
+        return (f"❌ Диапазон строк пуст: с={s}, по={e} "
+                f"(всего строк: {total})")
+    block = lines[s - 1:e]
+    width = max(3, len(str(e)))
+    numbered = "".join(
+        f"{str(s + i).rjust(width)}| {ln}"
+        for i, ln in enumerate(block))
+    header = (f"📄 {path} — строки {s}..{e} "
+              f"(всего {total}, показано {len(block)})")
+    _win = str(path).replace("/", "\\")
+    footer = ""
+    step = e - s + 1
+    if e < total:
+        ns, ne = e + 1, min(total, e + step)
+        footer += (f'\n\n▶ Дальше: ```text\n'
+                   f'{{"читать_по_кб": {{"путь": "{_win}", '
+                   f'"с": {ns}, "по": {ne}}}}}\n```')
+    if s > 1:
+        ps, pe = max(1, s - step), s - 1
+        footer += (f'\n\n◀ Назад: ```text\n'
+                   f'{{"читать_по_кб": {{"путь": "{_win}", '
+                   f'"с": {ps}, "по": {pe}}}}}\n```')
+    return f"{header}\n{'-' * 50}\n{numbered}{footer}"
+
+
+@register(["читать_по_кб", "прочитать_по_кб"])
 def read_kb(args):
-    """Постраничное чтение файла блоками по КБ.
+    """Постраничное чтение файла блоками по КБ (или по строкам).
 
     Параметры:
       путь      — путь к файлу (обязательный)
       кб        — размер блока в КБ (по умолчанию 1)
       скролл    — номер блока (0 = начало), алиас: страница
-      смещение  — абсолютное смещение в байтах (переопределяет скролл)
+      смещение  — абсолютное смещение в байтах (переопределяет скролл),
+                  алиас: от
+      до        — конечный байт, полуинтервал [от, до). При заданном
+                  «до» читается ровно этот диапазон; «кб» и «скролл»
+                  игнорируются. «до» без «от» — от начала файла.
+      с         — первая строка (1-based). Включает строчный режим;
+                  приоритет над кб/скролл/от/до
+      по        — последняя строка (включительно). Без «по» — до конца
       кодировка — принудительная (по умолчанию utf-8 с fallback)
 
     Возвращает заголовок, блок текста и подсказки навигации
@@ -470,6 +552,7 @@ def read_kb(args):
       {"читать_по_кб": {"путь": "C:/log.txt"}}
       {"читать_по_кб": {"путь": "C:/big.txt", "кб": 5, "скролл": 2}}
       {"читать_по_кб": {"путь": "C:/big.txt", "кб": 1, "смещение": 40000}}
+      {"читать_по_кб": {"путь": "C:/big.txt", "от": 0, "до": 4000}}  # байты 0..3999
     """
     path = args.get("путь") or args.get("файл") or ""
     if not path:
@@ -488,6 +571,11 @@ def read_kb(args):
             _sz = None
         return _binary_redirect_msg(path, _sz)
 
+    # Строчный режим: с / по (1-based). Приоритет над байтовыми от/до.
+    if args.get("с") is not None or args.get("по") is not None:
+        return _read_kb_lines(path, args.get("с"), args.get("по"),
+                              args.get("кодировка") or "utf-8")
+
     try:
         kb = int(args.get("кб", 1) or 1)
     except (TypeError, ValueError):
@@ -503,21 +591,50 @@ def read_kb(args):
     if scroll < 0:
         scroll = 0
 
-    # Смещение — абсолютная байтовая позиция, если задано
-    use_offset = "смещение" in args and args.get("смещение") is not None
+    # Смещение — абсолютная байтовая позиция, если задано.
+    # «от» — алиас «смещение».
+    _off_raw = args.get("смещение")
+    if _off_raw is None:
+        _off_raw = args.get("от")
+    use_offset = _off_raw is not None
     offset = None
     if use_offset:
         try:
-            offset = int(args.get("смещение") or 0)
+            offset = int(_off_raw or 0)
         except (TypeError, ValueError):
             use_offset = False
             offset = None
         if use_offset and offset < 0:
             offset = 0
 
-    chunk = kb * 1024
+    # «до» — конечный байт [от, до). Включает range-режим.
+    _to_raw = args.get("до")
+    use_to = _to_raw is not None
+    to_pos = None
+    if use_to:
+        try:
+            to_pos = int(_to_raw or 0)
+        except (TypeError, ValueError):
+            use_to = False
+            to_pos = None
+        if use_to and to_pos < 0:
+            to_pos = 0
+    # «до» без «от» — от начала файла.
+    if use_to and not use_offset:
+        use_offset = True
+        offset = 0
+    if use_to and to_pos is not None and offset is not None and to_pos <= offset:
+        return (f"❌ Диапазон пуст: «до» ({to_pos}) должно быть больше "
+                f"«от» ({offset})")
+
+    _orig_chunk = kb * 1024
+    chunk = _orig_chunk
     size = os.path.getsize(path)
-    total_pages = max(1, (size + chunk - 1) // chunk)
+    total_pages = max(1, (size + _orig_chunk - 1) // _orig_chunk)
+
+    # Range-режим: длина ровно до-от (переопределяет кб).
+    if use_to:
+        chunk = to_pos - offset
 
     if use_offset:
         start = offset
@@ -550,7 +667,9 @@ def read_kb(args):
     # Нумерация страниц — 0-based, как и параметр «скролл»:
     # скролл 0 → страница 0, скролл 10 → страница 10.
     _last_page = max(0, total_pages - 1)
-    if use_offset:
+    if use_to:
+        header = f"📄 {path} — байты {start}..{start + len(data) - 1} ({len(data)} Б, всего {size} Б)"
+    elif use_offset:
         header = f"📄 {path} — смещение {start} Б (стр. ~{scroll_display}/{_last_page}, {kb} КБ, всего {size} Б)"
     else:
         header = f"📄 {path} — страница {scroll_display}/{_last_page} ({kb} КБ/стр, всего {size} Б)"
@@ -601,6 +720,9 @@ def list_files(args):
       страница — номер страницы, 1-based (по умолчанию 1)
       размер   — элементов на странице (по умолчанию 100, максимум 500)
       маска    — glob-фильтр по имени файла/папки (*.py, checkpoint-*, *log*)
+      рекурсивно — true: обходить подпапки. Показывает только файлы
+                   с путями относительно «путь». Маска применяется
+                   к имени и к относительному пути. По умолчанию false.
 
     Постраничный вывод: если элементов больше «размер», показываются
     только текущая страница и навигация ▶/◀. На огромных папках
@@ -628,6 +750,7 @@ def list_files(args):
 
     show_hidden = args.get("скрытые", False)
     mask = (args.get("маска", "") or "").strip()
+    recursive = bool(args.get("рекурсивно", False))
 
     # --- параметры пагинации ---
     try:
@@ -648,25 +771,43 @@ def list_files(args):
     # --- быстрый первый проход: только имена и типы ---
     dirs_all = []
     files_all = []
-    try:
-        with os.scandir(path) as it:
-            for entry in it:
-                if not show_hidden and entry.name.startswith("."):
-                    continue
-                try:
-                    if entry.is_dir(follow_symlinks=False):
-                        dirs_all.append(entry.name)
-                    else:
-                        files_all.append(entry.name)
-                except OSError:
-                    continue
-    except PermissionError:
-        return f"❌ Нет доступа: {path}"
+    if recursive:
+        try:
+            for root, dirs, files in os.walk(path):
+                if not show_hidden:
+                    dirs[:] = [d for d in dirs if not d.startswith(".")]
+                for fn in files:
+                    if not show_hidden and fn.startswith("."):
+                        continue
+                    full = os.path.join(root, fn)
+                    files_all.append(os.path.relpath(full, path))
+        except PermissionError:
+            return f"❌ Нет доступа: {path}"
+    else:
+        try:
+            with os.scandir(path) as it:
+                for entry in it:
+                    if not show_hidden and entry.name.startswith("."):
+                        continue
+                    try:
+                        if entry.is_dir(follow_symlinks=False):
+                            dirs_all.append(entry.name)
+                        else:
+                            files_all.append(entry.name)
+                    except OSError:
+                        continue
+        except PermissionError:
+            return f"❌ Нет доступа: {path}"
 
     if mask:
         import fnmatch
-        dirs_all = [n for n in dirs_all if fnmatch.fnmatch(n, mask)]
-        files_all = [n for n in files_all if fnmatch.fnmatch(n, mask)]
+        if recursive:
+            files_all = [n for n in files_all
+                         if fnmatch.fnmatch(n, mask)
+                         or fnmatch.fnmatch(os.path.basename(n), mask)]
+        else:
+            dirs_all = [n for n in dirs_all if fnmatch.fnmatch(n, mask)]
+            files_all = [n for n in files_all if fnmatch.fnmatch(n, mask)]
 
     dirs_all.sort(key=lambda n: n.lower())
     files_all.sort(key=lambda n: n.lower())
@@ -712,7 +853,8 @@ def list_files(args):
         _header += f"  (из «{path}»)"
     out = [_header]
     out.append(f"   папок: {len(dirs_all)}, файлов: {len(files_all)}, "
-               f"всего: {total}")
+               f"всего: {total}"
+               + (" (рекурсивно)" if recursive else ""))
     if total_pages > 1:
         _to = min(end_idx, total)
         out.append(f"   страница {page}/{total_pages}, "
@@ -768,10 +910,21 @@ def rewrite(args):
     ok, err = _check_write_path(path)
     if not ok:
         return f"⛔ Запись в системную папку {err} запрещена" if (":\\" in err or ":/" in err) else f"⛔ Запись запрещена: {err}"
+    # Бэкап существующего файла перед перезаписью (как у заменить_текст).
+    # Если бэкап не удался — запись отменяем, файл не трогаем.
+    try:
+        from pathlib import Path as _Path
+        if path and _Path(path).is_file():
+            from _actions.tools_backups import create_backup
+            _bk = create_backup({"путь": path})
+            if not str(_bk).startswith("✅"):
+                return f"⛔ Бэкап не создан, запись отменена: {_bk}"
+    except Exception as _e:
+        return f"⛔ Бэкап не создан, запись отменена: {_e}"
     return write_file(path, args.get("содержание") or args.get("содержимое", ""))
 
 
-@register(["добавить", "дописать_файл", "записать_файл", "создать_файл"])
+@register(["добавить", "дописать_файл", "записать_в_файл", "создать_файл"])
 def append_(args):
     """Дописать текст в конец файла (создаст, если файла нет).
 
@@ -799,7 +952,7 @@ def append_(args):
       ```
 
     Альтернативное имя:
-      {"записать_файл": {"путь": "E:/tmp/x.txt", "содержание": "привет"}}
+      {"записать_в_файл": {"путь": "E:/tmp/x.txt", "содержание": "привет"}}
       {"создать_файл": {"путь": "E:/tmp/new.txt"}}     — создать пустой файл
 
     Важно: команда ДОПИСЫВАЕТ в конец, не перезаписывает.

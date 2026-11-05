@@ -1,0 +1,909 @@
+{
+  "meta": {
+    "budget": 30,
+    "host": "DESKTOP-J6NCBF5",
+    "ladder": [
+      100,
+      50,
+      25,
+      12,
+      6,
+      3,
+      1,
+      0
+    ],
+    "scale": 8,
+    "sizes": [
+      32,
+      64,
+      128,
+      256
+    ],
+    "ts": "2026-10-19 18:08:56"
+  },
+  "methods": {
+    "ba255": [
+      {
+        "acc": 100,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 1024,
+        "scale": 8,
+        "sec": 40.055
+      },
+      {
+        "acc": 50,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 1024,
+        "scale": 8,
+        "sec": 40.051
+      },
+      {
+        "acc": 25,
+        "ok": true,
+        "out_size": [
+          256,
+          256
+        ],
+        "px": 1024,
+        "scale": 8,
+        "sec": 4.614
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4096,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4096,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 4096,
+        "scale": 8,
+        "sec": 40.048
+      },
+      {
+        "acc": 12,
+        "ok": true,
+        "out_size": [
+          512,
+          512
+        ],
+        "px": 4096,
+        "scale": 8,
+        "sec": 6.241
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 16384,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 16384,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 16384,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 12,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 16384,
+        "scale": 8,
+        "sec": 40.059
+      },
+      {
+        "acc": 6,
+        "ok": true,
+        "out_size": [
+          1024,
+          1024
+        ],
+        "px": 16384,
+        "scale": 8,
+        "sec": 11.349
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 12,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 6,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 40.071
+      },
+      {
+        "acc": 3,
+        "ok": true,
+        "out_size": [
+          2048,
+          2048
+        ],
+        "px": 65536,
+        "scale": 8,
+        "sec": 26.159
+      }
+    ],
+    "baderivative": [
+      {
+        "acc": 100,
+        "ok": true,
+        "out_size": [
+          256,
+          256
+        ],
+        "px": 1024,
+        "scale": 8,
+        "sec": 8.076
+      },
+      {
+        "acc": 100,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 4096,
+        "scale": 8,
+        "sec": 40.039
+      },
+      {
+        "acc": 50,
+        "ok": true,
+        "out_size": [
+          512,
+          512
+        ],
+        "px": 4096,
+        "scale": 8,
+        "sec": 31.421
+      },
+      {
+        "acc": 25,
+        "ok": true,
+        "out_size": [
+          512,
+          512
+        ],
+        "px": 4096,
+        "scale": 8,
+        "sec": 6.395
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 16384,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 16384,
+        "scale": 8,
+        "sec": 40.039
+      },
+      {
+        "acc": 25,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 16384,
+        "scale": 8,
+        "sec": 40.024
+      },
+      {
+        "acc": 12,
+        "ok": true,
+        "out_size": [
+          1024,
+          1024
+        ],
+        "px": 16384,
+        "scale": 8,
+        "sec": 19.824
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 12,
+        "ok": true,
+        "out_size": [
+          2048,
+          2048
+        ],
+        "px": 65536,
+        "scale": 8,
+        "sec": 8.89
+      }
+    ],
+    "baextremum": [
+      {
+        "acc": 100,
+        "ok": true,
+        "out_size": [
+          256,
+          256
+        ],
+        "px": 1024,
+        "scale": 8,
+        "sec": 1.562
+      },
+      {
+        "acc": 100,
+        "ok": true,
+        "out_size": [
+          512,
+          512
+        ],
+        "px": 4096,
+        "scale": 8,
+        "sec": 2.167
+      },
+      {
+        "acc": 100,
+        "ok": true,
+        "out_size": [
+          1024,
+          1024
+        ],
+        "px": 16384,
+        "scale": 8,
+        "sec": 12.233
+      },
+      {
+        "acc": 100,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 40.078
+      },
+      {
+        "acc": 50,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 40.073
+      },
+      {
+        "acc": 25,
+        "ok": true,
+        "out_size": [
+          2048,
+          2048
+        ],
+        "px": 65536,
+        "scale": 8,
+        "sec": 15.608
+      }
+    ],
+    "bamonochrome": [
+      {
+        "acc": 100,
+        "ok": true,
+        "out_size": [
+          256,
+          256
+        ],
+        "px": 1024,
+        "scale": 8,
+        "sec": 1.653
+      },
+      {
+        "acc": 100,
+        "ok": true,
+        "out_size": [
+          512,
+          512
+        ],
+        "px": 4096,
+        "scale": 8,
+        "sec": 5.398
+      },
+      {
+        "acc": 100,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 16384,
+        "scale": 8,
+        "sec": 40.055
+      },
+      {
+        "acc": 50,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 16384,
+        "scale": 8,
+        "sec": 40.049
+      },
+      {
+        "acc": 25,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 16384,
+        "scale": 8,
+        "sec": 40.059
+      },
+      {
+        "acc": 12,
+        "ok": true,
+        "out_size": [
+          1024,
+          1024
+        ],
+        "px": 16384,
+        "scale": 8,
+        "sec": 38.582
+      },
+      {
+        "acc": 6,
+        "ok": true,
+        "out_size": [
+          1024,
+          1024
+        ],
+        "px": 16384,
+        "scale": 8,
+        "sec": 10.657
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 12,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 40.025
+      },
+      {
+        "acc": 6,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 40.041
+      },
+      {
+        "acc": 3,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 40.043
+      },
+      {
+        "acc": 1,
+        "ok": true,
+        "out_size": [
+          2048,
+          2048
+        ],
+        "px": 65536,
+        "scale": 8,
+        "sec": 10.859
+      }
+    ],
+    "bamonochrome2": [
+      {
+        "acc": 100,
+        "ok": true,
+        "out_size": [
+          256,
+          256
+        ],
+        "px": 1024,
+        "scale": 8,
+        "sec": 2.355
+      },
+      {
+        "acc": 100,
+        "ok": true,
+        "out_size": [
+          512,
+          512
+        ],
+        "px": 4096,
+        "scale": 8,
+        "sec": 9.24
+      },
+      {
+        "acc": 100,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 16384,
+        "scale": 8,
+        "sec": 40.049
+      },
+      {
+        "acc": 50,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 16384,
+        "scale": 8,
+        "sec": 40.053
+      },
+      {
+        "acc": 25,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 16384,
+        "scale": 8,
+        "sec": 40.028
+      },
+      {
+        "acc": 12,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 16384,
+        "scale": 8,
+        "sec": 40.051
+      },
+      {
+        "acc": 6,
+        "ok": true,
+        "out_size": [
+          1024,
+          1024
+        ],
+        "px": 16384,
+        "scale": 8,
+        "sec": 14.417
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 12,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 6,
+        "ok": true,
+        "out_size": [
+          2048,
+          2048
+        ],
+        "px": 65536,
+        "scale": 8,
+        "sec": 12.207
+      }
+    ],
+    "basmoothcontrast": [
+      {
+        "acc": 100,
+        "ok": true,
+        "out_size": [
+          256,
+          256
+        ],
+        "px": 1024,
+        "scale": 8,
+        "sec": 5.477
+      },
+      {
+        "acc": 100,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 4096,
+        "scale": 8,
+        "sec": 40.029
+      },
+      {
+        "acc": 50,
+        "ok": true,
+        "out_size": [
+          512,
+          512
+        ],
+        "px": 4096,
+        "scale": 8,
+        "sec": 19.66
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 16384,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 16384,
+        "scale": 8,
+        "sec": 40.025
+      },
+      {
+        "acc": 25,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 16384,
+        "scale": 8,
+        "sec": 40.028
+      },
+      {
+        "acc": 12,
+        "ok": true,
+        "out_size": [
+          1024,
+          1024
+        ],
+        "px": 16384,
+        "scale": 8,
+        "sec": 20.753
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 12,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 40.034
+      },
+      {
+        "acc": 6,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 40.027
+      },
+      {
+        "acc": 3,
+        "ok": true,
+        "out_size": [
+          2048,
+          2048
+        ],
+        "px": 65536,
+        "scale": 8,
+        "sec": 22.911
+      }
+    ],
+    "bathin255": [
+      {
+        "acc": 100,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 1024,
+        "scale": 8,
+        "sec": 40.06
+      },
+      {
+        "acc": 50,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 1024,
+        "scale": 8,
+        "sec": 40.086
+      },
+      {
+        "acc": 25,
+        "ok": true,
+        "out_size": [
+          256,
+          256
+        ],
+        "px": 1024,
+        "scale": 8,
+        "sec": 35.963
+      },
+      {
+        "acc": 12,
+        "ok": true,
+        "out_size": [
+          256,
+          256
+        ],
+        "px": 1024,
+        "scale": 8,
+        "sec": 3.939
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4096,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 4096,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 4096,
+        "scale": 8,
+        "sec": 40.048
+      },
+      {
+        "acc": 12,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 4096,
+        "scale": 8,
+        "sec": 40.028
+      },
+      {
+        "acc": 6,
+        "ok": true,
+        "out_size": [
+          512,
+          512
+        ],
+        "px": 4096,
+        "scale": 8,
+        "sec": 5.727
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 16384,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 16384,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 16384,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 12,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 16384,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 6,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 16384,
+        "scale": 8,
+        "sec": 40.06
+      },
+      {
+        "acc": 3,
+        "ok": true,
+        "out_size": [
+          1024,
+          1024
+        ],
+        "px": 16384,
+        "scale": 8,
+        "sec": 12.998
+      },
+      {
+        "acc": 100,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 50,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 25,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 12,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 6,
+        "error": "inferred: timeout at smaller px",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 0.0
+      },
+      {
+        "acc": 3,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 65536,
+        "scale": 8,
+        "sec": 40.053
+      },
+      {
+        "acc": 1,
+        "ok": true,
+        "out_size": [
+          2048,
+          2048
+        ],
+        "px": 65536,
+        "scale": 8,
+        "sec": 20.958
+      }
+    ]
+  }
+}

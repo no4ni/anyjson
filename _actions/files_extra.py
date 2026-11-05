@@ -16,8 +16,8 @@ from _ps import run_with_wait
 #  запрет на запись в системные папки
 # ============================================================
 
-def _find_common(args, only_files):
-    """Общий вызов find_file для «найти_файл» и «найти_всё»."""
+def _find_common(args, only_files, only_dirs=False):
+    """Общий вызов find_file для «найти_файл», «найти_всё» и «найти_папку»."""
     from _actions.tools_dataset import find_file
     if not isinstance(args, dict):
         args = {}
@@ -33,8 +33,10 @@ def _find_common(args, only_files):
         timeout=min(int(args.get("таймаут", 30) or 30), 60),
         target_num=int(args.get("номер", 1) or 1),
         only_files=only_files,
+        only_dirs=only_dirs,
         search_mask=args.get("маска") or "",
         ignore_cache=bool(args.get("свежий")),
+        others_limit=args.get("других_путей", 30),
     )
 
 
@@ -55,6 +57,7 @@ def find_file_cmd(args):
       макс_размер — максимальный размер файла для поиска (байт)
       таймаут     — секунд (по умолчанию 30, максимум 60)
       свежий      — true: не использовать кэш обхода (искать заново)
+      других_путей — сколько соседних путей показать в списке (30)
 
     Примеры:
       {"найти_файл": {"корень": "E:/", "имя": "log"}}
@@ -78,18 +81,110 @@ def find_all_cmd(args):
 
 
 
+def _run_dupes_ps1(paths, what_if=False):
+    """Запуск delete_duplicates_safe.ps1."""
+    from _config import PUBLIC_TOOLS_DIR
+    script = PUBLIC_TOOLS_DIR / "delete_duplicates_safe.ps1"
+    if not script.exists():
+        return f"❌ Скрипт не найден: {script}"
+
+    if isinstance(paths, str):
+        paths = [paths]
+    if not paths:
+        return "Укажите путь к папке (путь или пути)."
+
+    # Формируем массив для PowerShell: -Path 'a','b'
+    ps_paths = ",".join(f"'{p}'" for p in paths)
+    ps_cmd = f"& '{script}' -Path {ps_paths}"
+    if what_if:
+        ps_cmd += " -WhatIf"
+    cmd = [
+        "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-Command", ps_cmd
+    ]
+
+    env = os.environ.copy()
+    env['PYTHONIOENCODING'] = 'utf-8'
+
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                text=True, encoding='utf-8', env=env, bufsize=1)
+        out = []
+        for line in proc.stdout:
+            print(line, end='')
+            sys.stdout.flush()
+            out.append(line)
+        proc.wait(timeout=600)
+        return ''.join(out).strip() or "Скрипт выполнен (вывод пуст)."
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        return "❌ Таймаут (10 мин)."
+    except Exception as e:
+        return f"❌ Ошибка запуска: {e}"
+
+
+@register(["найти_дубликаты", "поиск_дубликатов"])
+def find_dupes_cmd(args):
+    """Найти дубликаты (безопасно, без удаления).
+
+    Параметры:
+      путь  — папка или список папок (обязательно)
+      пути  — алиас для списка
+    """
+    if isinstance(args, str):
+        args = {"путь": args}
+    paths = args.get("путь") or args.get("пути") or args.get("папка") or ""
+    return _run_dupes_ps1(paths, what_if=True)
+
+
+@register(["удалить_дубликаты", "чистка_дубликатов"])
+def delete_dupes_cmd(args):
+    """Удалить дубликаты (оставляя файлы с кратчайшим путём).
+
+    Параметры:
+      путь      — папка или список папок (обязательно)
+      безопасно — true: только посмотреть (аналог найти_дубликаты)
+    """
+    if isinstance(args, str):
+        args = {"путь": args}
+    paths = args.get("путь") or args.get("пути") or args.get("папка") or ""
+    safe = bool(args.get("безопасно", False))
+    return _run_dupes_ps1(paths, what_if=safe)
+
+
+@register(["найти_папку", "поиск_папок", "найти_директорию"])
+def find_folder_cmd(args):
+    """Поиск ПАПОК по имени. Файлы не показываются.
+
+    Параметры — как у «найти_всё»: корень, имя, маска, кодировка,
+    таймаут, свежий, номер. Поиск по содержимому не работает —
+    папки текста не имеют.
+
+    Примеры:
+      {"найти_папку": {"корень": "E:/Jericho", "имя": "patterns"}}
+      {"найти_папку": {"корень": "E:/", "маска": "*backup*"}}
+    """
+    return _find_common(args, only_files=False, only_dirs=True)
+
+
 @register("анализ_папки")
 def analyze_folder(args):
     """Анализ занятого места в папке через cleanDrive.py.
 
     Параметры:
-      путь   — анализируемая папка (обязательный)
-      быстро — true (по умолчанию) — быстро, false — через TreeSize.ps1
-      топ    — сколько крупнейших показать (по умолчанию 50)
+      путь    — анализируемая папка (обязательный)
+      быстро  — true (по умолчанию) — быстро, false — через TreeSize.ps1
+      топ     — сколько крупнейших показать в быстром режиме (по умолчанию 50);
+                в режиме TreeSize («быстро: false») не используется
+      глубина — глубина углублённого анализа TreeSize, 1..10 (по умолч. 1).
+                Работает только при «быстро: false».
+      порог   — порог углубления в ГБ, по умолч. 0.5 (TreeSize).
+                Работает только при «быстро: false».
 
     Примеры:
       {"анализ_папки": {"путь": "E:/Downloads"}}
       {"анализ_папки": {"путь": "D:/Games", "быстро": false, "топ": 20}}
+      {"анализ_папки": {"путь": "D:/Games", "быстро": false, "глубина": 3, "порог": 1.0}}
     """
     if isinstance(args, str):
         target_path, fast = args, True
@@ -114,6 +209,10 @@ def analyze_folder(args):
     cmd = [sys.executable, str(script), "--path", target_path, "--nodelete", "--nocleanmgr"]
     if fast:
         cmd.append("--fast")
+    else:
+        depth = args.get("глубина", 1) if isinstance(args, dict) else 1
+        mingb = args.get("порог", 0.5) if isinstance(args, dict) else 0.5
+        cmd.extend(["--depth", str(depth), "--mingb", str(mingb)])
     top = args.get("топ", 50) if isinstance(args, dict) else 50
     cmd.extend(["--top", str(top)])
     env = os.environ.copy()
@@ -134,6 +233,20 @@ def analyze_folder(args):
         return "Ошибка: таймаут (5 мин)"
     except Exception as e:
         return f"Ошибка cleanDrive.py: {e}"
+
+
+@register(["дерево", "древовидный_список", "структура_папки"])
+def tree_view(args):
+    """Дерево папки с размерами (углублённый анализ TreeSize.ps1).
+
+    Синоним «анализ_папки» с «быстро: false» по умолчанию.
+    Параметры — как у «анализ_папки»: путь, топ, глубина, порог.
+    """
+    if isinstance(args, str):
+        args = {"путь": args}
+    if isinstance(args, dict):
+        args = {"быстро": False, **args}
+    return analyze_folder(args)
 
 
 @register(["убраться_в", "очистка_диска"])
@@ -241,7 +354,7 @@ def _inspect_cache_set(key, value):
         del _INSPECT_CACHE[oldest[0]]
 
 
-@register("осмотреть")
+@register(["осмотреть", "осмотр"])
 def inspect(args):
     """Осмотр файла или URL: поиск по ключевым словам.
 
@@ -253,6 +366,8 @@ def inspect(args):
       кодировка      — utf8 / cp1251 (по умолчанию utf8)
       вокруг         — контекстных строк вокруг совпадения
       таймаут        — секунд (по умолчанию 30)
+      маска          — glob-фильтр имён файлов при обходе папки
+                       ("*.py", "log*.txt"); для файла/URL игнорируется
       страница       — номер страницы вывода (1-based, по умолчанию 1)
       размер         — символов на страницу (по умолчанию 4000, мин 500)
       обновить       — true: обойти кэш (заново запустить inspect.ps1)
@@ -303,7 +418,11 @@ def inspect(args):
                   ".css", ".json", ".xml", ".csv", ".ini", ".cfg",
                   ".yaml", ".yml", ".toml", ".rst", ".tex", ".sql",
                   ".sh", ".bat", ".ps1", ".tsv", ".env",
-                  ".svg", ".vtt", ".srt", ".ass", ".reg", ".m3u"}
+                  ".svg", ".vtt", ".srt", ".ass", ".reg", ".m3u",
+                  ".cs", ".cpp", ".c", ".h", ".hpp", ".java", ".go",
+                  ".rs", ".rb", ".php", ".ts", ".tsx", ".jsx", ".vue",
+                  ".svelte", ".csproj", ".sln", ".config", ".props",
+                  ".targets", ".nuspec"}
     if not file_path.startswith(("http://", "https://")) and os.path.isfile(file_path):
         _ext = os.path.splitext(file_path)[1].lower()
         if _ext and _ext not in _TEXT_EXTS:
@@ -337,13 +456,16 @@ def inspect(args):
         file_path = str(temp_file)
 
     if os.path.isdir(file_path) and keywords:
+        import fnmatch as _fnmatch
+        _mask_raw = args.get("маска")
+        _mask = (_mask_raw or "").strip() or None
         start_time = time.time()
         all_matches = []
         timed_out = False
         scanned = 0
         last_tick = 0.0
         _cap_limit = (target_count * 10) if target_count > 0 else 10000
-        text_exts = {'.txt', '.log', '.py', '.js', '.html', '.css', '.json', '.xml', '.csv', '.md'}
+        text_exts = _TEXT_EXTS
         try:
             for root, dirs, files in os.walk(file_path):
                 if timeout and (time.time() - start_time) > timeout:
@@ -353,6 +475,8 @@ def inspect(args):
                     if timeout and (time.time() - start_time) > timeout:
                         timed_out = True
                         break
+                    if _mask is not None and not _fnmatch.fnmatch(f, _mask):
+                        continue
                     scanned += 1
                     _fname_low = f.lower()
                     _name_hit = any(kw.lower() in _fname_low for kw in kw_list)
@@ -958,20 +1082,52 @@ def archive_list(args):
 def _find_function_range(src, name):
     """Найти границы функции по имени. Возвращает (start, end) в строках или None.
     start — индекс строки с decorator/def (0-based).
-    end — индекс ПОСЛЕ последней строки функции (0-based, exclusive)."""
+    end — индекс ПОСЛЕ последней строки функции (0-based, exclusive).
+
+    Если имя содержит точку (Класс.функция), ищет только в этом классе.
+    Если найдено несколько совпадений без класса — ValueError (просит уточнить).
+    """
     import ast as _ast
     try:
         tree = _ast.parse(src)
     except SyntaxError as e:
         raise ValueError(f"синтаксическая ошибка в файле: {e}")
-    for node in _ast.walk(tree):
-        if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)) and node.name == name:
-            start = node.lineno - 1
-            if node.decorator_list:
-                start = min(d.lineno for d in node.decorator_list) - 1
-            end = node.end_lineno  # 1-based, inclusive
-            return start, end
-    return None
+
+    has_dot = "." in name
+    target_cls = None
+    target_func = name
+    if has_dot:
+        target_cls, target_func = name.split(".", 1)
+
+    matches = []  # (node, parent_class)
+
+    def _walk(node, parent_cls=None):
+        for child in _ast.iter_child_nodes(node):
+            if isinstance(child, _ast.ClassDef):
+                _walk(child, child.name)
+            elif isinstance(child, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+                if child.name == target_func:
+                    if not has_dot or parent_cls == target_cls:
+                        matches.append((child, parent_cls))
+                # Идём глубже (вложенные функции)
+                _walk(child, parent_cls)
+
+    _walk(tree)
+
+    if not matches:
+        return None
+    if len(matches) > 1:
+        opts = []
+        for n, c in matches:
+            opts.append(f"{c}.{n.name}" if c else n.name)
+        raise ValueError(f"Найдено несколько '{name}': {', '.join(opts)}. Уточни имя как 'Класс.функция'.")
+
+    node, _ = matches[0]
+    start = node.lineno - 1
+    if node.decorator_list:
+        start = min(d.lineno for d in node.decorator_list) - 1
+    end = node.end_lineno  # 1-based, inclusive
+    return start, end
 
 
 def _find_class_range(src, name):
@@ -1116,17 +1272,25 @@ def replace_function_cmd(args):
     """Заменить функцию в .py-файле на новое содержимое.
 
     Находит функцию по имени (через AST), заменяет её целиком.
+    Если в «содержание» нет декораторов, а у оригинала они были —
+    сохраняются (например @register).
     Перед заменой создаётся бэкап <файл>.bak.
     После замены файл проверяется парсером — если синтаксис сломан, откат.
 
     Параметры:
-      имя         — имя функции (обязательный)
+      имя         — имя функции (обязательный). Можно указать как
+                    "Класс.функция" (например, "EncoderBlock.forward"),
+                    если в файле несколько методов с одинаковым именем.
+                    Если имя без класса, а совпадений несколько — замена
+                    НЕ выполняется, возвращается список "Класс.функция".
       путь        — путь к .py-файлу (обязательный)
-      содержание  — новый текст функции (обязательный), алиас: содержимое
+      содержание  — новый текст функции (обязательный), алиасы: содержимое, код
 
     Пример:
       {"заменить_функцию": {"имя": "load_all", "путь": "C:/project/example.py",
                             "содержание": "def load_all():\n    ..."}}
+      {"заменить_функцию": {"имя": "EncoderBlock.forward", "путь": "C:/model.py",
+                            "содержание": "def forward(self, x):\n    ..."}}
     """
     import ast as _ast
     import shutil as _sh
@@ -1135,7 +1299,7 @@ def replace_function_cmd(args):
             or args.get("функция") or "").strip()
     path = (args.get("путь")
             or args.get("файл") or "").strip()
-    new_code = args.get("содержание") or args.get("содержимое") or ""
+    new_code = args.get("содержание") or args.get("содержимое") or args.get("код") or ""
     if not name:
         return "Укажите 'имя' функции."
     if not path:
@@ -1160,14 +1324,24 @@ def replace_function_cmd(args):
     start, end = rng
     lines = src.splitlines(keepends=True)
 
-    # определить отступ оригинальной def-строки
-    def_line = lines[start]
+    # start может указывать на первый декоратор — найти реальную строку def
+    def_start = start
+    for i in range(start, end):
+        s = lines[i].lstrip()
+        if s.startswith("def ") or s.startswith("async def "):
+            def_start = i
+            break
+
+    # отступ оригинальной def-строки (не декоратора)
+    def_line = lines[def_start]
     indent = ""
     for ch in def_line:
         if ch in " \t":
             indent += ch
         else:
             break
+
+    old_decorators = "".join(lines[start:def_start])
 
     # нормализовать new_code: убрать общий отступ, применить indent
     new_lines = new_code.splitlines()
@@ -1184,10 +1358,21 @@ def replace_function_cmd(args):
     if min_ind:
         new_lines = [ln[min_ind:] if ln.strip() else ln for ln in new_lines]
 
+    has_new_decorators = any(ln.lstrip().startswith("@") for ln in new_lines)
+
     indented = [(indent + ln if ln.strip() else ln) for ln in new_lines]
     new_block = chr(10).join(indented)
     if not new_block.endswith(chr(10)):
         new_block += chr(10)
+
+    decor_note = ""
+    if old_decorators and not has_new_decorators:
+        # в новом содержании нет декораторов — сохранить оригинальные
+        new_block = old_decorators + new_block
+        dec_lines = [l for l in old_decorators.splitlines() if l.strip()]
+        if dec_lines:
+            decor_note = (f" Сохранены декораторы ({len(dec_lines)}): "
+                          + dec_lines[0].strip())
 
     # собрать новый файл
     new_src = "".join(lines[:start]) + new_block + "".join(lines[end:])
@@ -1213,6 +1398,7 @@ def replace_function_cmd(args):
 
     return (f"✅ Функция '{name}' в {path} заменена. "
             f"Синтаксис проверен (ast.parse). "
-            f"Было строк {end - start}, стало {len(indented)}. "
+            f"Было строк {end - start}, стало {len(indented)}."
+            f"{decor_note} "
             f"Бэкап: {bak}")
 

@@ -1,0 +1,43 @@
+{
+  "meta": {
+    "budget": 30,
+    "host": "DESKTOP-J6NCBF5",
+    "ladder": [
+      11,
+      10,
+      9,
+      8,
+      7,
+      6,
+      0
+    ],
+    "scale": 2,
+    "sizes": [
+      128
+    ],
+    "ts": "2026-10-19 20:17:51"
+  },
+  "methods": {
+    "ba255color": [
+      {
+        "acc": 11,
+        "error": "no-file: Запуск scale255bacolorauto (масштаб 2, точность 11)...\nОшибка: TargetInvocationException: Exception has been thrown by the target of an invocation.\nВнутренняя: an illegal memory access was encountered\n",
+        "ok": false,
+        "px": 16384,
+        "scale": 2,
+        "sec": 1.51
+      },
+      {
+        "acc": 10,
+        "ok": true,
+        "out_size": [
+          256,
+          256
+        ],
+        "px": 16384,
+        "scale": 2,
+        "sec": 3.732
+      }
+    ]
+  }
+}

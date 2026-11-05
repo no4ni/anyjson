@@ -104,7 +104,7 @@ def _file_ts(full: Path, fname: str):
         return None
 
 
-@register(["удалить_старые_бэкапы", "чистить_бэкапы", "старые_бэкапы"])
+@register(["удалить_старые_бэкапы", "чистить_бэкапы", "почистить_бэкапы", "почисти_бэкапы", "старые_бэкапы", "убрать_старые_бэкапы"])
 def delete_old_backups(args: dict) -> str:
     """Команда "удалить_старые_бэкапы".
 
@@ -125,7 +125,8 @@ def delete_old_backups(args: dict) -> str:
 
     Параметры:
       • папка         — корневая папка (обязательно), алиас: путь
-      • старше_дней   — порог в днях (по умолчанию 7)
+      • старше_дней   — порог в днях (по умолчанию 14, минимум 7;
+                        0..6 поднимаются до 7 с предупреждением)
       • безопасно     — true: показать, что было бы удалено, но не удалять
     """
     root_arg = (args.get("папка") or args.get("путь")
@@ -142,11 +143,20 @@ def delete_old_backups(args: dict) -> str:
         return f"❌ удалить_старые_бэкапы: системная папка запрещена: {root}"
 
     try:
-        days = int(args.get("старше_дней", 7) or 7)
+        days = int(args.get("старше_дней", 14) or 14)
     except (TypeError, ValueError):
+        days = 14
+    # Минимум 7 дней: 0..6 — почти всегда ошибка ввода (или попытка
+    # снести свежие бэкапы разом). Не молчим — поднимаем до 7.
+    if days < 7:
+        _orig_days = days
         days = 7
-    if days < 0:
-        days = 0
+        _days_note = (f"⚠️ старше_дней={_orig_days} — недопустимо, "
+                      f"поднято до 7 дней (минимум).\n"
+                      f"   Если нужно удалить ВСЕ бэкапы — удаляй по одному "
+                      f"или через {'удалить_файл'}.\n")
+    else:
+        _days_note = ""
 
     dry = bool(args.get("безопасно", False))
 
@@ -228,6 +238,8 @@ def delete_old_backups(args: dict) -> str:
     n_del = len(to_delete)
 
     out = []
+    if _days_note:
+        out.append(_days_note)
     out.append(f"🧹 Чистка бэкапов: {root}")
     out.append(f"   Порог: {days} дн. (старше {cutoff_dt})")
     out.append("")

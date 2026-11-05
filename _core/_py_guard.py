@@ -126,7 +126,7 @@ def _trusted_ffmpeg_roots():
 _TRUSTED_FFMPEG_ROOTS = _trusted_ffmpeg_roots()
 
 _FFMPEG_LIKE_RE = re.compile(
-    r"^(ffmpeg|ffprobe)(-[A-Za-z0-9._-]+)?(\\.exe)?$", re.IGNORECASE
+    r"^(ffmpeg|ffprobe)(-[A-Za-z0-9._-]+)?(\.exe)?$", re.IGNORECASE
 )
 
 
@@ -138,11 +138,10 @@ def _popen_target(args):
 
     Формат события: (executable, argv, cwd, env).
       • argv — список: [exe, arg1, ...]. Бинарь — argv[0] (или executable).
-      • argv — строка: Windows-форма Popen("prog -a -b") без shell=True,
-        либо shell=True. Audit hook не отличает одно от другого, поэтому
-        проверяем сами: если в строке есть shell-метасимволы (& | ; < >
-        скобки, перевод строки) — блокируем без имени. Иначе — первое
-        слово (с кавычками убираем).
+      • argv — строка: Windows-форма Popen("prog -a -b") без shell=True.
+        shell=True всегда даёт список ['/c', cmd], поэтому строка здесь
+        означает shell=False, где метасимволы (& | ;) не интерпретируются.
+        Блокируем только если executable сам является shell (cmd.exe/powershell).
     """
     if not args or len(args) < 2:
         return "", ""
@@ -150,7 +149,10 @@ def _popen_target(args):
     a = args[1]
     cand = None
     if isinstance(a, str):
-        if _SHELL_META_RE.search(a):
+        # shell=True всегда даёт список ['/c', cmd].
+        # Если здесь строка — это shell=False, метасимволы не опасны.
+        # Блокируем только если executable сам является shell.
+        if exe and isinstance(exe, str) and any(s in exe.lower() for s in ("cmd.exe", "powershell", "pwsh")):
             return "", ""
         _s = a.strip()
         if _s[:1] in ('"', "'"):
@@ -223,21 +225,40 @@ _HINTS = {
     "exec": (
         'Запуск внешних процессов — через встроенные команды:\n'
         '   {"запуск": {"команда": "..."}}              — PowerShell с whitelist\n'
-        '   {"питон": {"скрипт": "..."}}                — вложенный Python-скрипт'
+        '   {"питон": {"скрипт": "demo.py"}}            — запустить .py-файл\n'
+        '   {"питон": {"скрипт": "demo.py", "аргументы": ["a", "b"]}} — то же с аргументами'
     ),
 }
 
 
-def _fail(what, path, hint_key=None):
+def _fail(what, path, hint_key=None, soft=False):
+    """Заблокировать действие.
+
+    soft=False (по умолчанию): стереть stderr и os._exit(3) — жёстко.
+      Для записи/удаления/переименования в защищённых папках.
+
+    soft=True: стереть stderr и бросить PermissionError — скрипт может
+      поймать и продолжить. Для запуска внешних процессов: библиотеки
+      часто "проверяют наличие" инструмента (rocm-sdk, nvcc, git...) и
+      не должны валить весь скрипт из-за отсутствия. Реальный запуск
+      всё равно не произойдёт.
+    """
+    _msg = what + (": " + str(path) if path else "")
     try:
-        _tail = (": " + str(path)) if path else ""
-        sys.stderr.write(
-            "⛔ питон: " + what + " запрещено" + _tail + "\n")
+        sys.stderr.write("⛔ питон: " + _msg + " запрещено\n")
         if hint_key and hint_key in _HINTS:
             sys.stderr.write("💡 " + _HINTS[hint_key] + "\n")
         sys.stderr.flush()
     except Exception:
         pass
+    if soft:
+        # Двойное наследование: библиотеки (triton, vllm) при проверке
+        # наличия бинаря ловят FileNotFoundError, а не PermissionError.
+        # Наследуемся от обоих — скрипт поймает и пойдёт дальше (как
+        # будто бинаря нет), при этом тип остаётся PermissionError.
+        class _BlockedExecutableError(FileNotFoundError, PermissionError):
+            pass
+        raise _BlockedExecutableError("⛔ " + _msg + " запрещено")
     os._exit(3)
 
 
@@ -274,12 +295,117 @@ def _audit(event, args):
         _label = "subprocess.Popen"
         if _name:
             _label += " (" + _name + ")"
-        _fail(_label, "", "exec")
+        else:
+            _raw = ""
+            try:
+                if len(args) > 1:
+                    _r = args[1]
+                    if isinstance(_r, (list, tuple)):
+                        _raw = " ".join(repr(x) for x in _r)
+                    else:
+                        _raw = repr(_r)
+                if len(_raw) > 240:
+                    _raw = _raw[:240] + "..."
+            except Exception:
+                _raw = "?"
+            if _raw:
+                _label += " → " + _raw
+        _fail(_label, "", "exec", soft=True)
     elif event in ("os.system", "os.exec"):
-        _fail(event, "", "exec")
+        _fail(event, "", "exec", soft=True)
 
 
 sys.addaudithook(_audit)
+
+
+def _patch_subprocess():
+    import subprocess
+    import json
+
+    ffprobe_exe = None
+    ffmpeg_exe = None
+    try:
+        here = os.path.dirname(os.path.abspath(__file__))
+        cfg_path = os.path.join(os.path.dirname(here), "side", "config.json")
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        paths = cfg.get("paths") or {}
+        ffprobe_exe = paths.get("ffprobe_exe")
+        ffmpeg_exe = paths.get("ffmpeg_exe")
+    except Exception:
+        pass
+
+    def _rewrite_cmd(args):
+        if isinstance(args, (list, tuple)) and args:
+            head = str(args[0])
+            low = head.lower()
+            if low in ("ffprobe", "ffprobe.exe") and ffprobe_exe:
+                return [ffprobe_exe] + list(args[1:])
+            elif low in ("ffmpeg", "ffmpeg.exe") and ffmpeg_exe:
+                return [ffmpeg_exe] + list(args[1:])
+        elif isinstance(args, str):
+            low = args.lower()
+            if low.startswith(("ffprobe ", "ffprobe.exe ")) and ffprobe_exe:
+                return ffprobe_exe + args[len(args.split(None, 1)[0]):]
+            elif low.startswith(("ffmpeg ", "ffmpeg.exe ")) and ffmpeg_exe:
+                return ffmpeg_exe + args[len(args.split(None, 1)[0]):]
+        return args
+
+    _orig_popen = subprocess.Popen
+    # Popen должен быть КЛАССОМ (а не функцией): иначе
+    # `class Foo(subprocess.Popen)` падает с TypeError
+    # (asyncio.windows_utils, yt_dlp.utils.Popen и др.).
+    class _PatchedPopen(_orig_popen):
+        def __init__(self, *a, **kw):
+            if a:
+                a = (_rewrite_cmd(a[0]),) + a[1:]
+            elif "args" in kw:
+                kw["args"] = _rewrite_cmd(kw["args"])
+            if "executable" in kw and isinstance(kw["executable"], str):
+                exe = kw["executable"]
+                low = exe.lower()
+                if low in ("ffprobe", "ffprobe.exe") and ffprobe_exe:
+                    kw["executable"] = ffprobe_exe
+                elif low in ("ffmpeg", "ffmpeg.exe") and ffmpeg_exe:
+                    kw["executable"] = ffmpeg_exe
+            super().__init__(*a, **kw)
+    subprocess.Popen = _PatchedPopen
+
+    _orig_run = subprocess.run
+    def _patched_run(*a, **kw):
+        if a:
+            a = (_rewrite_cmd(a[0]),) + a[1:]
+        elif "args" in kw:
+            kw["args"] = _rewrite_cmd(kw["args"])
+        return _orig_run(*a, **kw)
+    subprocess.run = _patched_run
+
+    _orig_call = subprocess.call
+    def _patched_call(*a, **kw):
+        if a:
+            a = (_rewrite_cmd(a[0]),) + a[1:]
+        elif "args" in kw:
+            kw["args"] = _rewrite_cmd(kw["args"])
+        return _orig_call(*a, **kw)
+    subprocess.call = _patched_call
+
+    _orig_check_output = subprocess.check_output
+    def _patched_check_output(*a, **kw):
+        if a:
+            a = (_rewrite_cmd(a[0]),) + a[1:]
+        elif "args" in kw:
+            kw["args"] = _rewrite_cmd(kw["args"])
+        return _orig_check_output(*a, **kw)
+    subprocess.check_output = _patched_check_output
+
+    _orig_check_call = subprocess.check_call
+    def _patched_check_call(*a, **kw):
+        if a:
+            a = (_rewrite_cmd(a[0]),) + a[1:]
+        elif "args" in kw:
+            kw["args"] = _rewrite_cmd(kw["args"])
+        return _orig_check_call(*a, **kw)
+    subprocess.check_call = _patched_check_call
 
 
 def _main():
@@ -291,6 +417,7 @@ def _main():
     tdir = os.path.dirname(os.path.abspath(target))
     if tdir and tdir not in sys.path:
         sys.path.insert(0, tdir)
+    _patch_subprocess()
     import runpy
     try:
         runpy.run_path(target, run_name="__main__")

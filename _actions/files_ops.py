@@ -77,9 +77,27 @@ def delete_file(args):
       {"удалить_файл": {"путь": "E:/tmp/x.txt"}}
     """
     from _actions.tools_files import safe_delete_file
+    import os as _os_bak
+    import re as _re_bak
     path = args.get("путь", "")
     if not path:
         return "Укажите путь в поле 'путь'"
+    _base = _os_bak.path.basename(path)
+    if _re_bak.search(
+            r"\.bak_\d{8}_\d{6}$|_\d{8}_\d{6}\.bak$|\.bak\d{8}_\d{6}$",
+            _base):
+        _dir = (_os_bak.path.dirname(path) or ".").replace(chr(92), "/")
+        return ("⛔ Это файл бэкапа (штатная метка anyjson): " + _base + "\n"
+                "   Для чистки бэкапов — команда «удалить_старые_бэкапы»:\n"
+                '   {"удалить_старые_бэкапы": {"папка": "' + _dir
+                + '", "безопасно": true}}\n'
+                "   безопасно: true — только предпросмотр.\n"
+                "   ⛔ Не обходи защиту (переименование, перемещение,\n"
+                "   питон, архивы): бэкапы существуют ровно для того, чтобы\n"
+                "   их можно было восстановить. Свежий бэкап подберёт\n"
+                "   «удалить_старые_бэкапы», когда истечёт срок.\n"
+                "   Параметры: папка (алиас путь/корень), старше_дней (7), "
+                "безопасно.")
     return safe_delete_file(path)
 
 

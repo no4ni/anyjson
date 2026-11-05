@@ -19,7 +19,10 @@ def _fmt_size(b):
 
 
 def _download_curl(url, dst_p, use_tor, timeout):
-    """Скачать через curl.exe с живым прогрессом. Возвращает True/None."""
+    """Скачать через curl.exe с живым прогрессом.
+
+    Возвращает rc (int, 0 = успех), False при Ctrl+C, None при исключении.
+    """
     curl = shutil.which("curl") or shutil.which("curl.exe")
     if not curl:
         return None
@@ -45,7 +48,7 @@ def _download_curl(url, dst_p, use_tor, timeout):
     except Exception as e:
         sys.stderr.write(f"\n[!] curl error: {e}\n")
         return None
-    return rc == 0
+    return rc
 
 
 def _download_requests(url, dst_p, use_tor, timeout):
@@ -119,8 +122,13 @@ def download_file(args):
 
     Примеры:
       {"скачать": {"адрес": "https://example.com/file.zip",
-                   "путь": "C:/downloads/file.zip"}}
-      {"скачать": {"url": "https://...", "путь": "C:/file.bin", "тор": true}}
+                   "путь": "E:/Jericho/downloads/file.zip"}}
+      {"скачать": {"url": "https://...", "путь": "E:/tmp/file.bin", "тор": true}}
+
+    Куда сохранять: корень C:\\ и системные папки (Program Files,
+    Windows, ProgramData) требуют прав администратора — запись туда
+    упадёт с PermissionError. Используй E:/, D:/, папку профиля
+    (C:/Users/<ты>/...) или MY_DIR агента.
     """
     url = (args.get("адрес") or args.get("url")
            or args.get("ссылка") or args.get("target") or "").strip()
@@ -149,13 +157,32 @@ def download_file(args):
     if isinstance(use_tor, str):
         use_tor = use_tor.strip().lower() not in ("0", "false", "нет", "off", "")
 
+    # пре-проверка: пробная запись в целевую папку
+    # (os.access на Windows не проверяет ACL и всегда True для существующих папок)
+    if dst_p.parent.exists():
+        import os as _os
+        _probe = dst_p.parent / (".__dl_probe_" + str(_os.getpid()))
+        try:
+            _probe.write_bytes(b"")
+        except (PermissionError, OSError) as _e:
+            return ("❌ Нет прав на запись в " + str(dst_p.parent)
+                    + " (" + type(_e).__name__ + ": " + str(_e) + "). "
+                    "Корень C:\\ и системные папки требуют прав админа — "
+                    "укажи E:/Jericho/... или C:/Users/<ты>/Downloads/...")
+        finally:
+            try:
+                if _probe.exists():
+                    _probe.unlink()
+            except Exception:
+                pass
+
     tor_s = " (через Tor)" if use_tor else ""
 
     # 1. curl — живой прогресс
     curl_result = _download_curl(url, dst_p, use_tor, timeout)
     if curl_result is False:
-        return "⏹ Скачивание прервано."
-    if curl_result is True and dst_p.exists():
+        return "⏹ Скачивание прервано (Ctrl+C)."
+    if curl_result == 0 and dst_p.exists():
         size = dst_p.stat().st_size
         return ("✅ Скачано: " + _fmt_size(size) + tor_s
                 + " -> " + str(dst_p))

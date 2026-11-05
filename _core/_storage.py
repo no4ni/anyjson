@@ -198,6 +198,18 @@ def check_inbox():
     if new_messages:
         save_processed_messages()
 
+    # --- Подсказка про prompt.txt (если есть в профиле) ---
+    _pf = PROFILES_DIR / AGENT_NAME / "prompt.txt"
+    if _pf.exists():
+        try:
+            _sz = _pf.stat().st_size
+            print(f"\n📄 У профиля {AGENT_NAME} есть prompt.txt ({_sz} байт).")
+            print(f"Чтобы восстановить себя как этого агента, прочитай его:")
+            print(f'  {{"мой_промпт": {{}}}}')
+            print(f'  или {{"прочитать_полностью": {{"путь": "{_pf.as_posix()}"}}}}')
+        except Exception:
+            pass
+
 
 def send_msg(agent: str, text: str) -> str:
     profile = PROFILES_DIR / agent

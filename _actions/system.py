@@ -142,7 +142,8 @@ def _collapse_tqdm(text):
     if "\r" in text:
         text = text.replace("\r\n", "\n").replace("\r", "\n")
     _ansi_re = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
-    _tqdm_re = re.compile(r"^\s*([^\s:]+(?:\s+[^\s:]+)*?)\s*:\s+\d+%\|")
+    # Ищем формат tqdm: «[префикс:] N%|...» (префикс может отсутствовать)
+    _tqdm_re = re.compile(r"^\s*(?:.*?:\s*)?\d+%\|")
     out = []
     last_idx = {}
     for ln in text.split("\n"):
@@ -153,7 +154,7 @@ def _collapse_tqdm(text):
             # слой 1: ANSI-маркер
             clean = _ansi_re.sub("", ln).replace("[A", "").rstrip()
         else:
-            # слой 2: сам формат tqdm «имя: N%|»
+            # слой 2: сам формат tqdm «имя: N%|» или «N%|»
             m = _tqdm_re.match(ln)
             if m:
                 clean = ln.rstrip()
@@ -162,11 +163,15 @@ def _collapse_tqdm(text):
             continue
         if not clean:
             continue
-        colon = clean.find(":")
-        if colon < 0:
-            out.append(clean)
-            continue
-        prefix = clean[:colon].strip()
+        
+        # Ищем префикс ТОЛЬКО до знака "%|", чтобы не поймать 
+        # двоеточие в таймере [00:00<?, ?it/s]
+        prefix = ""
+        _pct_idx = clean.find("%|")
+        if _pct_idx > 0:
+            _before_pct = clean[:_pct_idx]
+            if ":" in _before_pct:
+                prefix = _before_pct.split(":")[0].strip()
         if prefix in last_idx:
             out[last_idx[prefix]] = clean
         else:
@@ -200,17 +205,37 @@ def _file_not_found_msg(path_str):
     return (
         f"❌ Файл не найден: {_miss}\n\n"
         f"💡 Варианты:\n"
-        f"   1. Создать файл через heredoc (тело запишется в файл и выполнится):\n"
-        f'      {{"питон": {{"скрипт": "{_miss}"}}}}\n'
-        f"      <<<\n"
+        f"   1. Создать файл через переписать, затем запустить:\n"
+        f'      {{"переписать": {{"путь": "{_miss}", "содержание": <<<\n'
         f"      ...содержимое...\n"
-        f"      >>>\n\n"
+        f"      >>>}}}}\n"
+        f'      {{"питон": {{"скрипт": "{_miss}"}}}}\n\n'
         f"   2. Inline-код (тело идёт как код):\n"
-        f'      {{"питон": {{}}}}\n'
-        f"      <<<\n"
+        f'      {{"питон": {{"скрипт": <<<\n'
         f"      ...код...\n"
-        f"      >>>\n\n"
+        f"      >>>}}}}\n\n"
         f'   3. Найти файл: {{"найти_файл": {{"имя": "{_name}"}}}}'
+    )
+
+
+def _walk_hint(script):
+    """Подсказка при kill по тишине, если в исходнике скрипта есть os.walk."""
+    try:
+        if script and os.path.isfile(script):
+            with open(script, encoding="utf-8", errors="replace") as f:
+                src = f.read()
+        else:
+            src = script or ""
+    except Exception:
+        return ""
+    if "os.walk" not in src:
+        return ""
+    return (
+        "\n\n💡 Похоже, скрипт обходит большое дерево через os.walk —\n"
+        "   это медленно и легко вешает движок по тишине.\n"
+        "   Есть быстрые готовые команды:\n"
+        '   {"помощь": {"команда": "анализ_папки"}}\n'
+        '   {"помощь": {"команда": "дерево"}}'
     )
 
 
@@ -219,19 +244,19 @@ def run_python(args):
     """Выполнить Python-скрипт или .py-файл.
 
     Параметры:
-      скрипт         — код или путь к .py-файлу (обязательный), алиас: код
+      скрипт         — код или путь к .py-файлу (обязательный), алиасы: код, путь, файл
       аргументы      — список строк-аргументов для скрипта (опционально),
                        альтернатива «хвосту» в скрипт через пробел
       таймаут        — секунд до принудительного kill (по умолчанию 60)
       тишина         — секунд без вывода до kill (по умолчанию 30)
       замер_времени  — true: в ответ добавить «⏱ N.NN сек» — чистое время
                        работы скрипта (без старта Python и guard'а)
-      в_файл         — путь к файлу: вывод скрипта пойдёт туда, а не в
-                       консоль и не в результат (в ответе — только
-                       короткая сводка). Родительские папки создаются.
+      в_файл         — путь к файлу: вывод скрипта идёт и в консоль
+                       оператора, и в этот файл; в ответе — только
+                       короткая сводка. Родительские папки создаются.
                        Если скрипт упал сам (SyntaxError, Traceback,
                        non-zero exit) — файл не создаётся, вывод идёт
-                       в консоль как у обычного «питон».
+                       в результат как у обычного «питон».
 
     Примеры:
       {"питон": {"скрипт": "print(2+2)"}}
@@ -240,7 +265,8 @@ def run_python(args):
       {"питон": {"скрипт": "E:/scripts/x.py --predict 0.5"}}
       {"питон": {"скрипт": "print('hi')", "замер_времени": true}}
     """
-    script = args.get("скрипт") or args.get("код") or ""
+    script = (args.get("скрипт") or args.get("код") or
+              args.get("путь") or args.get("файл") or "")
     try:
         timeout = int(args.get("таймаут", 60) or 60)
     except (TypeError, ValueError):
@@ -273,6 +299,8 @@ def run_python(args):
     _FORBIDDEN = [
         (re.compile(r"\beval\s*\("), "eval("),
         (re.compile(r"\bexec\s*\("), "exec("),
+        (re.compile(r"\b(?:import|from)\s+(?:win32com|pythoncom|comtypes)\b"),
+         "win32com"),
     ]
     _HINT_MAP = {
         "os.system": (
@@ -283,7 +311,7 @@ def run_python(args):
         ),
         "subprocess": (
             'Запуск внешних процессов — через {"запуск": {"команда": "..."}}\n'
-            '   или вложенный {"питон": {"скрипт": "..."}}. Прямой subprocess '
+            '   или {"питон": {"скрипт": "demo.py"}}. Прямой subprocess '
             'из скрипта не разрешён.\n'
             '   Если subprocess встречается в якорях патча (в old/new-строках) —\n'
             '   правь файл через {"заменить_текст": {...}} или {"заменить_функцию": {...}}:\n'
@@ -298,6 +326,13 @@ def run_python(args):
             'exec() не поддерживается. Код должен быть статическим — передай '
             'его как обычный .py-файл.\n'
             '   Если встречается в якорях патча — правь через {"заменить_текст": {...}}.'
+        ),
+        "win32com": (
+            'COM/ActiveX (win32com, pythoncom, comtypes) — через встроенные команды:\n'
+            '   {"создать_ярлык": {...}}  — ярлык .lnk\n'
+            '   {"озвучить": {"текст": "..."}} — речь\n'
+            '   {"скачать": {"url": "..."}} — файл по URL\n'
+            '   Если нужно другое — уточни у оператора.'
         ),
         "shutil.rmtree": (
             'Удаление папки — через встроенные команды:\n'
@@ -413,8 +448,6 @@ def run_python(args):
             for line in proc.stdout:
                 last_output[0] = time.time()
                 output_lines.append(line.rstrip('\n'))
-                if _out_file:
-                    continue
                 try:
                     print(line, end='')
                     sys.stdout.flush()
@@ -582,7 +615,8 @@ def run_python(args):
                     f"Вывод сохранён{_tail}{_time_suffix}")
         if killed_silence[0]:
             return (f"⛔ Нет вывода ({silence_timeout} сек, процесс убит). "
-                    f"Вывод сохранён{_tail}{_time_suffix}")
+                    f"Вывод сохранён{_tail}{_time_suffix}"
+                    f"{_walk_hint(script)}")
         if killed_timeout[0]:
             _hint = (f"\n\n💡 Увеличь «таймаут», если скрипт не успевает:\n"
                      f"   {{\"питон\": {{\"скрипт\": \"...\", \"таймаут\": {timeout * 4}, "
@@ -604,7 +638,8 @@ def run_python(args):
                 f"Строк вывода: {len(output_lines)}.\n{output}{_time_suffix}")
     if killed_silence[0]:
         return (f"⛔ Нет вывода ({silence_timeout} сек, процесс убит).\n"
-                f"Строк: {len(output_lines)}.\n{output}{_time_suffix}")
+                f"Строк: {len(output_lines)}.\n{output}{_time_suffix}"
+                f"{_walk_hint(script)}")
     if killed_timeout[0]:
         _hint = (f"\n\n💡 Увеличь «таймаут», если скрипт не успевает:\n"
                  f"   {{\"питон\": {{\"скрипт\": \"...\", \"таймаут\": {timeout * 4}, "

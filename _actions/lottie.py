@@ -32,7 +32,11 @@ def _run_py(cmd, timeout):
     killed_timeout = False
     try:
         for line in proc.stdout:
-            lines.append(line.rstrip("\n"))
+            # Фильтруем прогресс-бар tqdm: выводим в консоль, но не копим в контекст.
+            # tqdm использует \r (возврат каретки), поэтому в lines он не нужен.
+            _is_progress = ("%|" in line or "it/s]" in line or "s/it]" in line or "\r" in line)
+            if not _is_progress:
+                lines.append(line.rstrip("\n"))
             try:
                 _sys.stdout.write(line)
                 _sys.stdout.flush()

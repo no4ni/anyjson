@@ -93,6 +93,45 @@ def _normalize_for_search(text):
     return t
 
 
+def _flexible_pattern(find_s: str) -> str:
+    """Regex-паттерн для «гибкого» поиска find_s в ОРИГИНАЛЬНОМ тексте.
+
+    Каждый типографский вариант символа из find_s превращается в класс:
+      пробел  → [пробел|NBSP]
+      дефис   → [дефис|–|—]
+      "       → ["|«|»|“|”]
+      '       → ['|‘|’]
+    Остальные символы экранируются. Смысл: искать «смысл» find_s
+    в оригинале БЕЗ перезаписи всего файла нормализованной версией
+    (багфикс нестрогого режима в replace_text).
+    """
+    _map = {
+        ' ': r'[ \u00A0]',
+        '\u00A0': r'[ \u00A0]',
+        '-': r'[-\u2013\u2014]',
+        '\u2013': r'[-\u2013\u2014]',
+        '\u2014': r'[-\u2013\u2014]',
+        '"': r'["\u00AB\u00BB\u201C\u201D]',
+        '\u00AB': r'["\u00AB\u00BB\u201C\u201D]',
+        '\u00BB': r'["\u00AB\u00BB\u201C\u201D]',
+        '\u201C': r'["\u00AB\u00BB\u201C\u201D]',
+        '\u201D': r'["\u00AB\u00BB\u201C\u201D]',
+        "'": r"['\u2018\u2019]",
+        '\u2018': r"['\u2018\u2019]",
+        '\u2019': r"['\u2018\u2019]",
+    }
+    parts = []
+    for ch in find_s:
+        parts.append(_map.get(ch) or re.escape(ch))
+    _pat = ''.join(parts)
+    # Границы слова: если find_s — одно слово (\w+), не матчить подстроки.
+    # Иначе «записать_файл» зацепит «перезаписать_файл», «файл» — «подфайл».
+    # Для фраз/JSON (с пробелами, кавычками) границы не нужны.
+    if re.fullmatch(r"\w+", find_s):
+        return r"(?<!\w)" + _pat + r"(?!\w)"
+    return _pat
+
+
 def _build_diff_out(old_text, new_text, examples, limit=40):
     """Общий diff-хвост для боевого режима и предпросмотра.
 
@@ -132,6 +171,38 @@ def _build_diff_out(old_text, new_text, examples, limit=40):
     return out
 
 
+def _check_py_syntax(text: str, path: Path):
+    """Возвращает строку ошибки, если text — сломанный Python, иначе None.
+
+    Только для *.py. Сообщение содержит строку/позицию/сниппет.
+    """
+    if path.suffix.lower() != ".py":
+        return None
+    try:
+        compile(text, str(path), "exec")
+    except SyntaxError as e:
+        _loc = "строка " + str(e.lineno)
+        if e.offset:
+            _loc += ", поз. " + str(e.offset)
+        _msg = "⛔ Синтаксическая ошибка в " + path.name + " (" + _loc + "): " + str(e.msg)
+        if e.text:
+            _msg += chr(10) + "    " + e.text.rstrip()
+            if e.offset:
+                _msg += chr(10) + "    " + " " * (e.offset - 1) + "^"
+        _msg += chr(10) + "Файл НЕ изменён. Для промежуточной правки — «без_проверки»: true."
+        return _msg
+    except Exception as e:
+        return "⛔ Ошибка компиляции " + path.name + ": " + str(e) + chr(10) + "Файл НЕ изменён."
+    return None
+
+
+def _syn_ok_note(path: Path, skip_check: bool) -> str:
+    """Пометка «· синтаксис OK» для .py, когда проверка реально была."""
+    if skip_check or path.suffix.lower() != ".py":
+        return ""
+    return " · синтаксис OK"
+
+
 @register(["заменить_текст", "замена_текста", "заменить_в_тексте"])
 def replace_text(args: dict) -> str:
     """Заменить X на Y в текстовом файле.
@@ -144,14 +215,21 @@ def replace_text(args: dict) -> str:
       регулярка         — трактовать «найти» как regex (по умолчанию false)
       регистр           — учитывать регистр (по умолчанию true)
       предпросмотр      — не писать файл, только показать diff и счётчик
-      нестрого          — если точный поиск не нашёл, попробовать огрубить
-                          текст: NBSP->пробел, тире->дефис, «»->"", 3+ пустых
-                          строк->2 (по умолчанию true). При срабатывании
-                          в файл пишется НОРМАЛИЗОВАННЫЙ текст.
       показать_близкое  — при «не найдено» показать похожие строки
                           (по умолчанию true)
       порог             — 0..1, минимальное сходство (по умолчанию 0.5)
       строк_в_контексте — сколько похожих строк показать (по умолчанию 3)
+      без_проверки      — для *.py: отключить предварительную проверку
+                          синтаксиса перед записью (по умолчанию false).
+                          Без этого правка .py, ломающая компиляцию,
+                          НЕ записывается: возвращается «⛔ Синтаксическая
+                          ошибка» с позицией и сниппетом. Обход нужен для
+                          промежуточных правок в два прохода.
+
+    Нестрогий поиск: если точное совпадение не найдено, движок всегда
+    пробует «гибкий» вариант — NBSP/пробел, тире/дефис, кавычки
+    «»/""/'' считаются взаимозаменяемыми. При срабатывании правится
+    ТОЛЬКО найденный фрагмент, остальной файл не изменяется.
 
     Пример:
       {"заменить_текст": {"путь": "C:/temp/a.txt",
@@ -180,6 +258,7 @@ def replace_text(args: dict) -> str:
     replace_all = _as_bool(args.get("все"), True)
     case_sensitive = _as_bool(args.get("регистр"), True)
     preview = _as_bool(args.get("предпросмотр"), False)
+    skip_check = _as_bool(args.get("без_проверки"), False)
 
     path = Path(file_arg).expanduser()
     if not path.exists():
@@ -248,35 +327,23 @@ def replace_text(args: dict) -> str:
             return repl_s
         new_text, cnt = pattern.subn(_repl, text, count=_limit)
     else:
-        if case_sensitive:
-            if replace_all:
-                _start = 0
-                while len(examples) < MAX_SAMPLES:
-                    _i = text.find(find_s, _start)
-                    if _i < 0:
-                        break
-                    examples.append(_ctx_pair(text, _i, len(find_s), repl_s))
-                    _start = _i + len(find_s)
-                cnt = text.count(find_s)
-                new_text = text.replace(find_s, repl_s)
-            else:
-                _i = text.find(find_s)
-                if _i >= 0:
-                    examples.append(_ctx_pair(text, _i, len(find_s), repl_s))
-                    cnt = 1
-                    new_text = text.replace(find_s, repl_s, 1)
-                else:
-                    cnt = 0
-                    new_text = text
-        else:
-            pattern = re.compile(re.escape(find_s), re.IGNORECASE)
-            _limit = 0 if replace_all else 1
-            def _repl2(m):
-                if len(examples) < MAX_SAMPLES:
-                    examples.append(_ctx_pair(text, m.start(),
-                                              m.end() - m.start(), repl_s))
-                return repl_s
-            new_text, cnt = pattern.subn(_repl2, text, count=_limit)
+        # Точный поиск — через regex, с теми же границами слова.
+        # Так «записать_файл» не цепляет «перезаписать_файл»,
+        # а «файл» — «подфайл». Фразы/JSON не затрагиваются.
+        _word_find = bool(re.fullmatch(r"\w+", find_s))
+        _pat_src = re.escape(find_s)
+        if _word_find:
+            _pat_src = r"(?<!\w)" + _pat_src + r"(?!\w)"
+        _pat_plain = re.compile(_pat_src, flags)
+        _limit_plain = 0 if replace_all else 1
+
+        def _repl_plain(m):
+            if len(examples) < MAX_SAMPLES:
+                examples.append(_ctx_pair(text, m.start(),
+                                          m.end() - m.start(), repl_s))
+            return repl_s
+
+        new_text, cnt = _pat_plain.subn(_repl_plain, text, count=_limit_plain)
 
     if cnt == 0:
         # --- попытка 2: нормализация переводов строк (CRLF <-> LF) ---
@@ -301,40 +368,75 @@ def replace_text(args: dict) -> str:
                         _out = ("👁 [предпросмотр] Заменилось бы " + str(_cnt2)
                                 + " вхождений в " + path.name
                                 + " (нашлось после нормализации переводов строк):")
+                        if not skip_check:
+                            _pe = _check_py_syntax(_new2, path)
+                            if _pe:
+                                _out = _pe + "\n\n" + _out
+                            else:
+                                _out += _syn_ok_note(path, skip_check)
                         return _out + _build_diff_out(text, _new2, [])
+                    if not skip_check:
+                        _we = _check_py_syntax(_new2, path)
+                        if _we:
+                            return _we
                     try:
                         _write_text(path, _new2, enc)
                     except Exception as e:
                         return "❌ Не удалось записать файл: " + str(e)
                     return ("✅ Заменено " + str(_cnt2) + " вхождений в "
                             + path.name + " (нашлось после нормализации "
-                            "переводов строк)")
+                            "переводов строк)" + _syn_ok_note(path, skip_check))
 
-        # --- попытка 3: нестрогий поиск (нестрого=true по умолчанию) ---
-        notstrict = _as_bool(args.get("нестрого"), True)
-        if notstrict and not use_regex:
-            _tn = _normalize_for_search(text)
-            _fn = _normalize_for_search(find_s)
-            if _fn and _fn in _tn:
-                _cnt3 = _tn.count(_fn) if replace_all else 1
-                if replace_all:
-                    _new3 = _tn.replace(_fn, repl_s)
-                else:
-                    _new3 = _tn.replace(_fn, repl_s, 1)
-                if preview:
-                    _out = ("👁 [предпросмотр, нестрого] Заменилось бы "
-                            + str(_cnt3) + " вхождений в " + path.name
-                            + " (формат будет нормализован):")
-                    return _out + _build_diff_out(text, _new3, [])
-                if _orig_crlf:
-                    _new3 = _new3.replace(NL, CR + NL)
+        # --- попытка 3: нестрогий поиск (всегда как fallback) ---
+        # ВАЖНО (багфикс): раньше здесь нормализовали ВЕСЬ файл и
+        # записывали нормализованную версию — терялась типографика
+        # (тире, кавычки, NBSP) во всём файле, а не только в месте
+        # правки. Теперь строим «гибкий» regex из find_s и ищем его
+        # в ОРИГИНАЛЬНОМ тексте. Замена — только в найденном
+        # фрагменте, остальной файл не трогается.
+        if not use_regex:
+            _flex = _flexible_pattern(find_s) if find_s else ""
+            _pat = None
+            if _flex:
                 try:
-                    _write_text(path, _new3, enc)
-                except Exception as e:
-                    return "❌ Не удалось записать файл: " + str(e)
-                return ("✅ Заменено " + str(_cnt3) + " вхождений в "
-                        + path.name + " (нестрогий режим — "
-                        "NBSP/тире/кавычки/3+ пустых строк нормализованы)")
+                    _pat = re.compile(_flex, flags)
+                except re.error:
+                    _pat = None
+            if _pat is not None:
+                _limit3 = 0 if replace_all else 1
+                _ex3 = []
+                def _repl3(m):
+                    if len(_ex3) < MAX_SAMPLES:
+                        _ex3.append(_ctx_pair(text, m.start(),
+                                              m.end() - m.start(), repl_s))
+                    return repl_s
+                _new3, _cnt3 = _pat.subn(_repl3, text, count=_limit3)
+                if _cnt3 > 0:
+                    if preview:
+                        _out = ("👁 [предпросмотр, нестрого] Заменилось бы "
+                                + str(_cnt3) + " вхождений в " + path.name
+                                + " (гибкий поиск: NBSP/тире/кавычки):")
+                        if not skip_check:
+                            _pe = _check_py_syntax(_new3, path)
+                            if _pe:
+                                _out = _pe + "\n\n" + _out
+                            else:
+                                _out += _syn_ok_note(path, skip_check)
+                        return _out + _build_diff_out(text, _new3, _ex3)
+                    if not skip_check:
+                        _we = _check_py_syntax(_new3, path)
+                        if _we:
+                            return _we
+                    _new3w = _new3.replace(NL, CR + NL) if _orig_crlf else _new3
+                    try:
+                        _write_text(path, _new3w, enc)
+                    except Exception as e:
+                        return "❌ Не удалось записать файл: " + str(e)
+                    return ("✅ Заменено " + str(_cnt3) + " вхождений в "
+                            + path.name + " (нестрогий режим — гибкий "
+                            "поиск NBSP/тире/кавычек; остальной файл "
+                            "не изменён)"
+                            + _syn_ok_note(path, skip_check))
 
         # --- попытка 4: показать похожие строки ---
         out = "❌ Совпадений не найдено в " + path.name
@@ -508,7 +610,18 @@ def replace_text(args: dict) -> str:
 
     if preview:
         _out = f"👁 [предпросмотр] Заменилось бы {cnt} вхождений в {path.name}:"
+        if not skip_check:
+            _pe = _check_py_syntax(new_text, path)
+            if _pe:
+                _out = _pe + "\n\n" + _out
+            else:
+                _out += _syn_ok_note(path, skip_check)
         return _out + _build_diff_out(text, new_text, examples)
+
+    if not skip_check:
+        _we = _check_py_syntax(new_text, path)
+        if _we:
+            return _we
 
     try:
         _new_to_write = new_text.replace("\n", "\r\n") if _orig_crlf else new_text
@@ -516,5 +629,6 @@ def replace_text(args: dict) -> str:
     except Exception as e:
         return f"❌ Не удалось записать файл: {e}"
 
-    _out = f"✅ Заменено {cnt} вхождений в {path.name} (кодировка {enc})"
+    _out = (f"✅ Заменено {cnt} вхождений в {path.name} (кодировка {enc})"
+            + _syn_ok_note(path, skip_check))
     return _out + _build_diff_out(text, new_text, examples)

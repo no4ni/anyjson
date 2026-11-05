@@ -181,6 +181,35 @@ def install_guard():
             _check(cmd)
             super().__init__(cmd, *a, **kw)
 
+        def kill(self):
+            try:
+                # /F - принудительно, /T - убить всё дерево (включая внуков)
+                _orig_run(
+                    ['taskkill', '/F', '/T', '/PID', str(self.pid)],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+                )
+            except Exception:
+                pass
+            try:
+                super().kill()
+            except Exception:
+                pass
+
+        def communicate(self, *args, **kwargs):
+            try:
+                return super().communicate(*args, **kwargs)
+            except KeyboardInterrupt:
+                self.kill()
+                raise
+
+        def wait(self, *args, **kwargs):
+            try:
+                return super().wait(*args, **kwargs)
+            except KeyboardInterrupt:
+                self.kill()
+                raise
+
     def call(cmd, *a, **kw):
         _check(cmd); return _orig_call(cmd, *a, **kw)
 

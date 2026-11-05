@@ -24,7 +24,7 @@ ALLOWED_THIRD = {
     "win32clipboard", "win32con", "magic",
     # медиа
     "yt_dlp", "moviepy", "cv2", "imageio", "imageio_ffmpeg",
-    "sounddevice", "pydub", "whisper",
+    "sounddevice", "pydub", "whisper", "faster_whisper",
     # поиск / API
     "ddgs_tool", "duckduckgo_search", "newsapi", "newsdata",
     "weatherapi", "tavily", "wolframalpha", "wikipedia",

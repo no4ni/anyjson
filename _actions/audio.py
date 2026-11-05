@@ -137,6 +137,20 @@ def say_tts(args: dict) -> str:
     if not out_path.is_file():
         return "Ошибка: файл не создан: " + str(out_path)
     size = out_path.stat().st_size
+    dur_sec = None
+    try:
+        import wave
+        with wave.open(str(out_path), "rb") as wf:
+            _n = wf.getnframes()
+            _r = wf.getframerate()
+            if _r > 0:
+                dur_sec = _n / float(_r)
+    except Exception:
+        dur_sec = None
+    _dur_suffix = ""
+    if dur_sec is not None and dur_sec > 0:
+        _dur_suffix = ", " + ("%.2f" % dur_sec) + " сек"
     return ("Готово: " + str(out_path)
-            + " (" + str(size // 1024) + " КБ, голос " + voice + ")")
+            + " (" + str(size // 1024) + " КБ, голос " + voice
+            + _dur_suffix + ")")
 

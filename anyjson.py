@@ -390,6 +390,52 @@ def _shutdown_children():
 
 
 
+def _is_input_complete(text):
+    """True, если JSON закрыт: скобки сошлись, строки и heredoc завершены.
+    Поддерживает вложенные heredoc <<< ... >>>.
+
+    Висящий в конце ||| (последние непустые символы) = «продолжение
+    на следующей строке». Такой ввод не считаем завершённым, даже если
+    скобки уже сошлись: иначе {…}||| выполнилось бы сразу, а следующая
+    команда потерялась бы."""
+    if text.rstrip().endswith("|||"):
+        return False
+    depth = 0
+    in_string = False
+    escape = False
+    heredoc_depth = 0
+    i = 0
+    n = len(text)
+    while i < n:
+        if heredoc_depth > 0:
+            if text.startswith(">>>", i):
+                heredoc_depth -= 1
+                i += 3
+            else:
+                i += 1
+            continue
+        if in_string:
+            if escape:
+                escape = False
+            elif text[i] == "\\":
+                escape = True
+            elif text[i] == '"':
+                in_string = False
+            i += 1
+            continue
+        if text.startswith("<<<", i):
+            heredoc_depth += 1
+            i += 3
+            continue
+        if text[i] == '"':
+            in_string = True
+        elif text[i] in "{[":
+            depth += 1
+        elif text[i] in "}]":
+            depth -= 1
+        i += 1
+    return depth == 0 and not in_string and heredoc_depth == 0
+
 def main():
     # --- init tools: единая точка входа ---
     # _tools_core.init_tools сам вызовет tools.init_tools (временно,
@@ -542,7 +588,7 @@ def main():
             "```\n"
             "Внутри <<<...>>> не оставляй 3 пустые строки подряд.\n"
             "[произвольный текст]\n\n"
-            "Несколько команд — через ||| или через команду \"параллельно\"."
+            "Несколько команд: ||| (последовательно; ||| вплотную к } предыдущей команды) или «параллельно» (одновременно, для зависимых шагов не годится)."
         )
         _full = _banner
         if _inbox_text.strip():
@@ -615,6 +661,23 @@ def main():
                 i = k + 3
 
 
+        def _heredoc_is_open(text):
+            """True если есть незакрытый heredoc (открывашка без пары)."""
+            _op = chr(60) * 3
+            _cl = chr(62) * 3
+            i = 0
+            n = len(text)
+            while i < n:
+                if text.startswith(_op, i):
+                    end = text.find(_cl, i + 3)
+                    if end < 0:
+                        return True
+                    i = end + 3
+                else:
+                    i += 1
+            return False
+
+
         def _brace_balance_outside(text):
             o = 0
             i = 0
@@ -639,17 +702,15 @@ def main():
             return o
 
         _buf_text = "\n".join(buffer) if buffer else ""
-        _buf_clean = _strip_heredoc_bodies(_buf_text)
-        _prev_open = (_brace_balance_outside(_buf_clean) > 0) if _buf_clean else False
+        _prev_open = not _is_input_complete(_buf_text) if _buf_text else False
 
         if _prev_open:
             # Уже внутри незакрытого JSON — добавляем строку.
             buffer.append(line)
-            _now_clean = _strip_heredoc_bodies("\n".join(buffer))
-            _now_open = _brace_balance_outside(_now_clean) > 0
-            if not _now_open:
-                # Скобки закрылись — выполняем целиком.
-                _full = "\n".join(buffer)
+            _raw_now = "\n".join(buffer)
+            if _is_input_complete(_raw_now):
+                # Скобки закрылись и heredoc закрыт — выполняем целиком.
+                _full = _raw_now
                 buffer.clear()
                 empty_line_count = 0
                 prompt = "> "
@@ -711,10 +772,7 @@ def main():
             # Не выполняем сразу, если в буфере ещё открыт JSON или
             # heredoc: иначе открытый heredoc-маркер внутри цепочки
             # ||| обрежет парсер (см. баг: JSONDecodeError на позиции 85).
-            _now_clean = _strip_heredoc_bodies(full_input)
-            _still_open = _brace_balance_outside(_now_clean) > 0
-            _hd_open = _heredoc_open(full_input)
-            if _still_open or _hd_open:
+            if not _is_input_complete(full_input):
                 empty_line_count = 0
                 prompt = "... "
                 continue
@@ -822,6 +880,19 @@ def main():
             empty_line_count = 0
             prompt = "> "
             _cmd_parser.process_command_input(buffer_copy)
+            continue
+
+        # --- Однострочный закрытый JSON — выполняем сразу ---
+        # _is_input_complete проверялся только в _prev_open (когда буфер
+        # уже открыт с прошлой строки) и в |||-ветке. Для однострочного
+        # {"команда": {...}} проверки не было: падал в prompt = "... "
+        # и ждал пустую строку. Многострочный сюда не доходит — у него
+        # первая строка незакрыта, он уходит в _prev_open.
+        if len(buffer) == 1 and _is_input_complete(full_input):
+            buffer.clear()
+            empty_line_count = 0
+            prompt = "> "
+            _cmd_parser.process_command_input(full_input)
             continue
 
         prompt = "... "

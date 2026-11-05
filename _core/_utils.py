@@ -96,9 +96,14 @@ def split_preserving_quotes(text: str) -> List[str]:
     while i < n:
         ch = text[i]
         if in_heredoc:
+            if text.startswith("<<<", i):
+                in_heredoc += 1
+                current.append("<<<")
+                i += 3
+                continue
             if text.startswith(chr(62) * 3, i):
+                in_heredoc -= 1
                 current.append(chr(62) * 3)
-                in_heredoc = False
                 i += 3
                 continue
             current.append(ch)
@@ -116,7 +121,7 @@ def split_preserving_quotes(text: str) -> List[str]:
             continue
         if not in_double and not in_single and text.startswith("<<<", i):
             current.append("<<<")
-            in_heredoc = True
+            in_heredoc += 1
             i += 3
             continue
         if ch == '"' and not in_single:

@@ -136,21 +136,6 @@ def _fill_bare_keys(text: str) -> str:
 
 
 def _expand_inline_heredocs(text: str) -> str:
-    """Заменить inline-heredoc внутри JSON на JSON-escaped строки.
-
-    Открывающий маркер — три символа <, закрывающий — три >.
-    Один ведущий и один хвостовой перевод строки обрезаются.
-
-    Правила:
-      • многострочное тело (в исходнике был перевод строки внутри
-        маркеров) сохраняет отступы как есть;
-      • однострочное тело (без переводов внутри маркеров) — strip()
-        снимает крайние пробелы;
-      • внутри тела ничего не экранируется — литерал-закрыватель
-        в теле закроет блок раньше времени;
-      • если открывающий маркер есть, а закрывающего нет — текст
-        не меняем, дальше сработает обычная ошибка JSON.
-    """
     _OPEN = chr(60) * 3
     _CLOSE = chr(62) * 3
     if _OPEN not in text:
@@ -160,20 +145,34 @@ def _expand_inline_heredocs(text: str) -> str:
     n = len(text)
     while i < n:
         if text.startswith(_OPEN, i):
-            end = text.find(_CLOSE, i + 3)
-            if end < 0:
+            start_body = i + 3
+            depth = 1
+            j = start_body
+            while j < n:
+                if text.startswith(_OPEN, j):
+                    depth += 1
+                    j += 3
+                elif text.startswith(_CLOSE, j):
+                    depth -= 1
+                    if depth == 0:
+                        break
+                    j += 3
+                else:
+                    j += 1
+            if depth > 0:
                 out.append(text[i:])
                 break
-            raw_body = text[i + 3:end]
-            is_multiline = ("\n" in raw_body or "\r" in raw_body)
+            end = j
+            raw_body = text[start_body:end]
+            is_multiline = ('\n' in raw_body or '\r' in raw_body)
             body = raw_body
-            if body.startswith("\r\n"):
+            if body.startswith('\r\n'):
                 body = body[2:]
-            elif body.startswith("\n"):
+            elif body.startswith('\n'):
                 body = body[1:]
-            if body.endswith("\r\n"):
+            if body.endswith('\r\n'):
                 body = body[:-2]
-            elif body.endswith("\n"):
+            elif body.endswith('\n'):
                 body = body[:-1]
             if not is_multiline:
                 body = body.strip()
@@ -182,7 +181,7 @@ def _expand_inline_heredocs(text: str) -> str:
         else:
             out.append(text[i])
             i += 1
-    return "".join(out)
+    return ''.join(out)
 
 
 # Общие алиасы параметров: если команда ждёт одно, а пришло
@@ -197,6 +196,8 @@ _PARAM_ALIAS_PAIRS = [
     ("шаблон", "маска"),
     ("код", "скрипт"),
     ("новое_имя", "имя"),
+    ("старый", "найти"),
+    ("новый", "заменить"),
 ]
 
 
@@ -210,6 +211,22 @@ def _apply_param_aliases(params):
         elif _b in out and _a not in out:
             out[_a] = out[_b]
     return out
+
+
+# Файловые команды: единственный строковый аргумент — это путь.
+# Единый источник правды: используется и в _normalize_params, и в
+# препроцессинге _process_command_input_inner (короткая запись).
+_PATH_COMMANDS = {
+    "читать", "прочитать", "прочитай",
+    "читать_полностью", "прочитать_полностью",
+    "читать_по_кб", "прочитать_по_кб",
+    "открыть", "показать_файл", "посмотреть_файл",
+    "посмотреть_картинку", "показать_картинку",
+    "рендер", "отрендерить", "svg_в_буфер", "рендер_svg",
+    "удалить_файл", "удалить_папку", "удалить_путь",
+    "список_файлов", "осмотреть",
+    "заменить_текст", "добавить", "переписать",
+}
 
 
 def _normalize_params(action: str, params) -> Dict[str, Any]:
@@ -230,6 +247,21 @@ def _normalize_params(action: str, params) -> Dict[str, Any]:
         if action in ("профиль", "кто_ты", "подписки", "подписчики",
                       "мои_сообщения", "входящие", "профиль_агента"):
             return {"агент": params}
+        if action in _PATH_COMMANDS:
+            return {"путь": params}
+        # Универсальная эвристика: главный параметр — из AST хендлера.
+        # "текст" приоритетнее (эхо, озвучить, паста, ...).
+        try:
+            from _actions import HANDLERS as _H
+            _fn = _H.get(action)
+            if _fn is not None:
+                _cands = _extract_params_ast(_fn)
+                if "текст" in _cands:
+                    return {"текст": params}
+                if len(_cands) == 1:
+                    return {_cands[0]: params}
+        except Exception:
+            pass
         return {"запрос": params}
     if isinstance(params, dict):
         _p = _apply_param_aliases(params)
@@ -341,7 +373,8 @@ def _extract_params_ast(fn):
                 _collect(stmt)
             break
 
-    BAD = ("key", "token", "secret", "password", "passwd", "pwd", "буфер", "шаблон")
+    BAD = ("key", "token", "secret", "password", "passwd", "pwd", "буфер", "шаблон",
+           "video", "delay", "mp3", "wav", "sounds", "аудио")
     def _ok(n):
         low = n.lower()
         return not any(b in low for b in BAD)
@@ -476,7 +509,8 @@ def _wrap_error(action, result):
         _skip_doc = ("недоступн" in _low
                      or "not available" in _low
                      or "not implemented" in _low
-                     or "не реализован" in _low)
+                     or "не реализован" in _low
+                     or action in ("помощь", "справка", "хелп", "help"))
         if not _skip_doc:
             _doc = _doc_for(action, error_text=msg)
             if _doc:
@@ -535,14 +569,16 @@ def _check_unknown_params(action, params):
             return ""
     except Exception:
         return ""
-    _alias_to = {"лимит": "количество", "url": "адрес",
-                 "урл": "адрес", "ссылка": "адрес",
-                 "количество": "limit", "запрос": "query",
-                 "шаблон": "маска", "код": "скрипт",
-                 "новое_имя": "имя"}
     def _is_known_alias(k):
-        _c = _alias_to.get(k)
-        return bool(_c and _c in known)
+        # Единый источник — _PARAM_ALIAS_PAIRS (не дублируем пары
+        # в валидаторе: иначе новая пара в _apply_param_aliases
+        # не узнаётся здесь — расхождение двух точек правды).
+        for _pa, _pb in _PARAM_ALIAS_PAIRS:
+            if k == _pa and _pb in known:
+                return True
+            if k == _pb and _pa in known:
+                return True
+        return False
     unknown = [k for k in params
                if k not in known and k not in _UNKNOWN_PARAM_SKIP
                and not _is_known_alias(k)]
@@ -557,6 +593,36 @@ def _check_unknown_params(action, params):
     if _doc:
         msg += "\n\n📖 Справка:\n" + _doc
     return msg
+
+
+_BATCH_NO_CLIP = {"найти_картинку", "поиск_картинок", "поиск_изображений"}
+
+
+def _inject_no_clip(cmd):
+    """В пакете (>1 команда) найти_картинку не трогает буфер.
+
+    Рекурсивно проходит по cmd и для найти_картинку (и алиасов)
+    добавляет в_контекст: false, если ни в_контекст, ни в_буфер
+    не заданы явно. Внутрь параллельно и actions/commands — тоже.
+    """
+    if isinstance(cmd, list):
+        return [_inject_no_clip(_it) for _it in cmd]
+    if not isinstance(cmd, dict):
+        return cmd
+    _out = {}
+    for _k, _v in cmd.items():
+        if isinstance(_k, str) and _k in _BATCH_NO_CLIP and isinstance(_v, dict):
+            _nv = dict(_v)
+            if "в_контекст" not in _nv and "в_буфер" not in _nv:
+                _nv["в_контекст"] = False
+            _out[_k] = _nv
+        elif isinstance(_k, str) and _k in ("параллельно", "actions", "commands") and isinstance(_v, list):
+            _out[_k] = [_inject_no_clip(_it) for _it in _v]
+        elif isinstance(_v, (dict, list)):
+            _out[_k] = _inject_no_clip(_v)
+        else:
+            _out[_k] = _v
+    return _out
 
 
 def _process_single_command(cmd) -> List[str]:
@@ -634,6 +700,7 @@ def _parse_part(part):
     """Разбирает одну часть ввода. Возвращает (cmd, err)."""
     part_normalized = normalize_input(part)
     cleaned = ""
+    _parse_text = ""  # текст, который последним ушёл в safe_json_parse
     try:
         # Сначала inline-heredoc: внутри <<<...>>> может быть любой
         # текст, включая // и #. Только после этого — strip_trailing_comments,
@@ -645,18 +712,120 @@ def _parse_part(part):
         cleaned = cleaned.encode('utf-8').decode('utf-8-sig')
         cleaned = _fill_bare_keys(cleaned)
         cleaned = _fix_bad_escapes(cleaned)
+        # ВАЖНО: json.loads первичен. safe_json_parse внутри мангляет
+        # \" в строках: regex "(.*?)" не уважает escape и принимает
+        # \" за закрывающую кавычку — тело JSON-строки разваливается
+        # на r\\"E:/..., e.pos уезжает внутрь тела. Настоящая ошибка
+        # (Extra data в конце) теряется. Поэтому: сначала plain
+        # json.loads; safe_json_parse — только как fallback для
+        # одиночных \ в Windows-путях.
+        _parse_text = cleaned
         try:
-            cmd = safe_json_parse(cleaned)
-        except json.JSONDecodeError:
-            fixed = fix_multiline_json(cleaned)
-            cmd = safe_json_parse(fixed)
+            cmd = json.loads(cleaned)
+        except json.JSONDecodeError as _e1:
+            try:
+                cmd = safe_json_parse(cleaned)
+            except json.JSONDecodeError:
+                if "control character" in str(_e1).lower():
+                    fixed = fix_multiline_json(cleaned)
+                    _parse_text = fixed
+                    try:
+                        cmd = safe_json_parse(fixed)
+                    except json.JSONDecodeError:
+                        raise _e1
+                else:
+                    raise _e1
     except json.JSONDecodeError as e:
-        error_pos = e.pos if hasattr(e, 'pos') else '?'
+        error_pos = getattr(e, 'pos', -1)
         _err_msg = str(e)
-        _err_frag = (cleaned[max(0, error_pos-30):error_pos+30]
-                     if isinstance(error_pos, int) else "")
-        print(f"[DEBUG] Ошибка JSON (позиция {error_pos}): {e}")
-        print(f"[DEBUG] Фрагмент: ...{_err_frag}...")
+        # e.doc — именно то, что реально парсил json.loads; e.pos валиден
+        # для e.doc, а НЕ для _parse_text: safe_json_parse может внутри
+        # нормализовать вход (strip и т.п.), и тогда позиция указывает
+        # за пределы _parse_text — срез пустой, «Фрагмент: ......».
+        _doc = getattr(e, "doc", None)
+        if isinstance(_doc, str) and _doc:
+            _src = _doc
+        else:
+            _src = _parse_text or cleaned or ""
+        _n = len(_src)
+        _err_frag = ""
+        _err_hint = ""
+        if isinstance(error_pos, int) and error_pos >= 0 and _n > 0:
+            _pos = min(error_pos, _n)
+            _lo = max(0, _pos - 40)
+            _hi = min(_n, _pos + 40)
+            _pre = _src[_lo:_pos]
+            _post = _src[_pos:_hi]
+            _vis_pre = _pre.replace("\r", "").replace("\n", "\\n")
+            _vis_post = _post.replace("\r", "").replace("\n", "\\n")
+            _at = _src[_pos] if _pos < _n else ""
+            _mark = ((_vis_pre + " ") if _vis_pre else "") + "<-!!ТУТ!!->" + ((" " + _vis_post) if _vis_post else "")
+            _err_frag = _mark
+            _hint = ""
+            if _pos >= _n:
+                _hint = "  <- позиция = конец строки (лишний хвост?)"
+            elif _err_msg.startswith("Extra data") and _at == "}":
+                _hint = ("  <- лишняя } в конце, но это СИМПТОМ. "
+                         "Объект закрылся раньше времени (см. ниже).")
+            elif _at == "}":
+                _hint = "  <- лишняя } ?"
+            elif _at == "]":
+                _hint = "  <- лишняя ] ?"
+            elif _at == ",":
+                _hint = "  <- лишняя , ?"
+            elif _at == "|":
+                _hint = "  <- лишняя | (ожидалась , ?)"
+            _err_hint = _hint
+            print(f"[DEBUG] Ошибка JSON (позиция {_pos} из {_n}): {e}")
+            print(f"[DEBUG] Фрагмент: ...{_mark}...{_hint}")
+        else:
+            print(f"[DEBUG] Ошибка JSON (позиция {error_pos}): {e}")
+            _short = (_src[:120] + "…") if _n > 120 else (_src or "(пусто)")
+            _err_frag = _short
+            print(f"[DEBUG] Фрагмент: ...{_short}...")
+        # --- Узкий автотрим: Extra data на "}" ---
+        # Только если: ошибка Extra data, позиция валидна, и символ
+        # в позиции — "}". Режем по error_pos, пробуем распарсить
+        # _src[:error_pos]. При успехе — предупреждение в результаты,
+        # команда всё равно выполняется. При неудаче — обычная ошибка,
+        # без среза (не угадываем).
+        _trim_suspect_names = []
+        if (_err_msg.startswith("Extra data")
+                and isinstance(error_pos, int)
+                and 0 <= error_pos < _n
+                and _src[error_pos] == "}"):
+            _trimmed = _src[:error_pos]
+            try:
+                _cmd_trim = safe_json_parse(_trimmed)
+                # Проверка: после среза не появились ли неизвестные
+                # команды? Если да — реальная лишняя "}" стоит раньше
+                # (например, сразу после маркера конца heredoc), и срез
+                # в конце только маскирует проблему. Тогда откат + hint.
+                _trim_ok = True
+                try:
+                    from _actions import HANDLERS as _H_trim
+                    _names_trim = (_extract_actions(_cmd_trim)
+                                   if _cmd_trim is not None else [])
+                    for _nm in _names_trim:
+                        if not _nm:
+                            continue
+                        if re.search(r"[a-zA-Z]", _nm):
+                            _trim_ok = False
+                            break
+                        if (_nm not in _H_trim
+                                and _nm not in ("параллельно", "actions", "commands")):
+                            _trim_suspect_names.append(_nm)
+                    if _trim_suspect_names:
+                        _trim_ok = False
+                except Exception:
+                    _trim_ok = True
+                if _trim_ok:
+                    _LAST_PARSE_WARNINGS.append(
+                        "⚠️ Убрал лишнюю \"}\" в конце (Extra data). Проверь ввод."
+                    )
+                    return _cmd_trim, None
+            except json.JSONDecodeError:
+                pass
         # Автопочин: если скобки не сбалансированы и мы не внутри строки —
         # пробуем дописать недостающие закрывающие в конец.
         _stack, _in_str = _brace_balance(cleaned)
@@ -686,7 +855,8 @@ def _parse_part(part):
             # подсказка: если это длинный текст, предложить сохранить в память
             _extra_hint = ""
             _stripped = part.strip().replace(chr(10), " ")
-            if len(_stripped) > 30:
+            _looks_like_json = _stripped[:1] in ("{", "[")
+            if len(_stripped) > 30 and not _looks_like_json:
                 _preview = _stripped[:50] + ("…" if len(_stripped) > 50 else "")
                 _preview = _preview.replace(chr(92), '/').replace(chr(34), chr(39))
                 _rnd_cmd = ""
@@ -787,13 +957,55 @@ def _parse_part(part):
                                  "```text\n"
                                  '{"осталось_сессии": {}}\n'
                                  "```")
+            _trim_hint = ""
+            if _trim_suspect_names:
+                _trim_hint = (
+                    "   Настоящая лишняя \"}\" — НЕ в конце, а РАНЬШЕ.\n"
+                    "   В конце — симптом: объект закрылся раньше времени\n"
+                    "   (этой самой лишней \"}\"), и параметры после неё\n"
+                    "   выпали на верхний уровень (стали отдельными\n"
+                    "   ключами верхнего JSON). После их среза появились\n"
+                    "   неизвестные команды: "
+                    + ", ".join(_trim_suspect_names[:5]) + ".\n"
+                    "   Проверь закрывающие \"}\" внутри и сразу после\n"
+                    "   тела heredoc. Скорее всего, у тебя лишняя \"}\"\n"
+                    "   стоит между маркером конца heredoc и запятой.\n"
+                    "   Правильная структура: тело heredoc, потом маркер\n"
+                    "   конца, запятая, параметры — и только в самом\n"
+                    "   конце две \"}\" (внутренний и внешний объект).\n"
+                )
+            # --- детект литерала из трёх ">" внутри heredoc-тела ---
+            # _expand_inline_heredocs не различает настоящий закрывающий
+            # маркер и такой литерал внутри тела: первый же закрывает
+            # heredoc, остаток скрипта попадает вне строки. Счётчик
+            # ">" * 3 > "<" * 3 — надёжный признак. При срабатывании
+            # сообщение про «Открыто без закрытия» подавляем: это
+            # симптом, а не причина.
+            _heredoc_gt_hint = ""
+            try:
+                _OPEN3 = chr(60) * 3
+                _CLOSE3 = chr(62) * 3
+                _open_c = part.count(_OPEN3)
+                _close_c = part.count(_CLOSE3)
+                if _close_c > _open_c:
+                    _heredoc_gt_hint = (
+                        "⚠️ Внутри " + _OPEN3 + "..." + _CLOSE3
+                        + " встретился литерал " + _CLOSE3
+                        + " — он закрыл heredoc раньше времени.\n"
+                        "   💡 Замени в теле: chr(62)*3, "
+                        "\"\\x3e\\x3e\\x3e\" или \">\"*3.\n"
+                    )
+            except Exception:
+                pass
             _json_err_hint = (
-                "⚠️ JSON не разобран: " + _err_msg + "\n"
-                + ("   Фрагмент: ..." + _err_frag + "...\n"
+                _heredoc_gt_hint
+                + "⚠️ JSON не разобран: " + _err_msg + "\n"
+                + ("   Фрагмент: ..." + _err_frag + "..." + _err_hint + "\n"
                    if _err_frag else "")
+                + _trim_hint
                 + ("   Открыто без закрытия: " + str(len(_stack))
                    + " (" + "".join(reversed(_stack)) + ")\n"
-                   if _stack else "")
+                   if _stack and not _heredoc_gt_hint else "")
                 + "\n"
             )
             return None, (
@@ -838,7 +1050,7 @@ def _extract_actions(cmd):
 # Одна такая команда - отдельным запросом,
 # либо с "в_контекст": false — тогда не трогает контекст.
 SOLO_COMMANDS = {
-    "прочитать_полностью", "читать_полностью",
+    "прочитать_полностью", "читать_полностью", "показать_файл",
     "посмотреть_файл", "посмотреть_картинку",
     "рендер", "отрендерить", "svg_в_буфер", "рендер_svg",
     "показать_картинку",
@@ -851,6 +1063,7 @@ SOLO_COMMANDS = {
     "стилизация", "обработка_картинки",
     "дорисуй", "закрась", "inpaint", "дорисовать",
     "убрать_фон", "удалить_фон", "вырезать_фон", "remove_bg",
+    "расширить_картинку", "расширить_изображение", "расширить_поля",
     "зеркало", "отразить", "зеркалить", "mirror",
     "слои", "склей", "склеить", "композит", "композитинг", "наложить",
     "цветокоррекция", "цветокор", "цвет",
@@ -868,7 +1081,7 @@ NO_CTX_FALSE = {
     # read-into-context: единственный эффект — отдать файл агенту.
     # в_контекст:false делает команду бессмысленной (clipboard-эффект
     # только маскирует ошибку вызова).
-    "прочитать_полностью", "читать_полностью", "рендер",
+    "прочитать_полностью", "читать_полностью", "показать_файл", "рендер",
     "отрендерить", "открыть",
 }
 
@@ -880,21 +1093,22 @@ NO_CTX_FALSE_NEEDS_SAVE = {
 
 
 def _params_are_safe(params, name=None):
-    """True если в params стоит в_контекст:false (или в_буфер:false)."""
+    """True если результат не попадёт в контекст (буфер)."""
     if name in NO_CTX_FALSE:
         return False
-    if name in NO_CTX_FALSE_NEEDS_SAVE:
-        # нужен "сохранить" — иначе некуда девать результат
-        if not isinstance(params, dict) or not params.get("сохранить"):
-            return False
     if not isinstance(params, dict):
         return False
+    if name in NO_CTX_FALSE_NEEDS_SAVE:
+        if not params.get("сохранить"):
+            return False
     for _k in ("в_контекст", "в_буфер"):
         if _k in params:
             _v = params[_k]
             if isinstance(_v, str):
                 return _v.strip().lower() in ("0", "false", "нет", "off", "no", "")
             return _v is False
+    if name in NO_CTX_FALSE_NEEDS_SAVE:
+        return True
     return False
 
 
@@ -902,7 +1116,7 @@ def _params_are_safe(params, name=None):
 # буфер (CF_HDROP с несколькими файлами). В параллельно разрешены без
 # "в_контекст": false — system_parallel сольёт их в один вызов.
 _READ_FULL_SOLO = {
-    "прочитать_полностью", "читать_полностью", "открыть",
+    "прочитать_полностью", "читать_полностью", "открыть", "показать_файл",
     "посмотреть_файл", "посмотреть_картинку",
     "рендер", "отрендерить", "svg_в_буфер", "рендер_svg",
 }
@@ -925,6 +1139,24 @@ def _is_all_read_full_batch(solo_positions):
         elif not (isinstance(pv, str) and pv.strip()):
             return False
     return True
+
+
+def _parallel_has_non_solo(parsed):
+    """True если внутри параллельно есть не-SOLO команды.
+
+    Нужно, чтобы отличать «чистый read_full-батч» (только read_full
+    в параллели) от смешанного (read_full + обычные команды).
+    Смешанный батч нельзя выполнять: read_full уйдёт в буфер,
+    обычные команды — в контекст, агент получит [BUF] вместо файла.
+    """
+    for _idx, _part, cmd, err in parsed:
+        if err or cmd is None:
+            continue
+        for name, params, inside in _iter_solo_checks(cmd):
+            if inside and name not in SOLO_COMMANDS:
+                return True
+    return False
+
 
 def _iter_solo_checks(cmd, inside_parallel=False):
     """Yield (name, params, inside_parallel) для всех команд в cmd.
@@ -1017,10 +1249,15 @@ def _process_command_input_inner(input_str: str, pre_notes=None) -> None:
     for _ln in input_str.split("\n"):
         _st = _ln.strip()
         if _st and all(_c in "| \t" for _c in _st):
-            _msg = ("❌ Разделитель ||| должен быть на одной строке "
-                    "с командами.\n"
-                    "Укладывай всё в одну строку, например:\n"
-                    '{"a": {}}|||{"b": {}}|||{"c": {}}')
+            _msg = ("❌ Разделитель ||| не может быть на отдельной "
+                    "строке (строка из одних | и пробелов).\n"
+                    "Он должен стоять вплотную к } предыдущей команды:\n"
+                    '{"a": {}}|||{"b": {}}|||{"c": {}}\n'
+                    "После ||| можно перейти на новую строку — "
+                    "многострочные цепочки разрешены:\n"
+                    '{"a": {}}|||\n'
+                    '{"b": {}}|||\n'
+                    '{"c": {}}')
             print(color_red("\n" + _msg))
             try:
                 pyperclip.copy(_msg)
@@ -1105,6 +1342,20 @@ def _process_command_input_inner(input_str: str, pre_notes=None) -> None:
             _tb.print_exc()
             cmd, err = None, f"❌ Внутренняя ошибка парсера: {_e}"
         parsed.append((idx, part, cmd, err))
+
+    # === Нормализация строковых аргументов ===
+    # Поддерживаем интуитивный ввод: {"команда": "строка"}
+    # Превращаем в {"команда": {"путь": "строка"}} или {"текст": "строка"}
+    for _p_idx, _p_part, _p_cmd, _p_err in parsed:
+        if _p_err or not isinstance(_p_cmd, dict):
+            continue
+        for _action in list(_p_cmd.keys()):
+            _args = _p_cmd[_action]
+            if isinstance(_args, str):
+                if _action in _PATH_COMMANDS:
+                    _p_cmd[_action] = {"путь": _args}
+                # остальные строки не трогаем: _normalize_params решит,
+                # какой главный параметр (текст / запрос / команда / ...).
 
     # === Фаза 2: валидация имён ДО выполнения ===
     from _actions import HANDLERS
@@ -1242,7 +1493,8 @@ def _process_command_input_inner(input_str: str, pre_notes=None) -> None:
     # Исключение: если ВСЕ SOLO внутри параллельно — read_full с непустым
     # путём, они не борются за контекст. system_parallel сольёт их в один
     # Set-Clipboard -Path @(...) — как Ctrl+C на нескольких файлах.
-    if bad_par and _is_all_read_full_batch(solo_positions):
+    if (bad_par and _is_all_read_full_batch(solo_positions)
+            and not _parallel_has_non_solo(parsed)):
         bad_par = []
 
     if bad_pipe or bad_par:
@@ -1251,8 +1503,7 @@ def _process_command_input_inner(input_str: str, pre_notes=None) -> None:
             _need_save = [n for n in bad_pipe if n in NO_CTX_FALSE_NEEDS_SAVE]
             _hard = [n for n in bad_pipe if n in NO_CTX_FALSE]
             if _need_save and not _hard:
-                _parts.append("⛔ SOLO в ||| только с \"в_контекст\": false + "
-                              + "\"сохранить\": "
+                _parts.append("⛔ SOLO в ||| только с \"сохранить\": "
                               + ", ".join(_dedup_labels(_need_save))
                               + ".\n"
                               + "   Без сохранения результат идёт в контекст "
@@ -1264,16 +1515,14 @@ def _process_command_input_inner(input_str: str, pre_notes=None) -> None:
                 _hard_only = False
             _no_false = _hard_only if _hard_only else all(_n in NO_CTX_FALSE for _n in bad_pipe)
             if _no_false and not _hard_only:
-                _parts.append("⛔ SOLO нельзя в ||| ни в каком месте: "
-                              + ", ".join(_dedup_labels(bad_pipe))
-                              + ".\n"
+                _parts.append(", ".join(_dedup_labels(bad_pipe))
+                              + " нельзя смешивать с другими командами\n"
                               + "   Результат идёт только в контекст — "
                               + "если их несколько, они затрут друг друга.\n"
                               + "   Выполни отдельным запросом.")
-            else:
-                _parts.append("⛔ SOLO нельзя в ||| ни в каком месте: "
-                              + ", ".join(_dedup_labels(bad_pipe))
-                              + ".\n"
+            elif not _hard_only:
+                _parts.append(", ".join(_dedup_labels(bad_pipe))
+                              + " нельзя смешивать с другими командами\n"
                               + "   Они переписывают контекст — если их "
                               + "несколько, они затрут друг друга.\n"
                               + "   Выполни отдельным запросом или добавь "
@@ -1282,11 +1531,17 @@ def _process_command_input_inner(input_str: str, pre_notes=None) -> None:
         if bad_par:
             _no_false = all(_n in NO_CTX_FALSE for _n in bad_par)
             if _no_false:
-                _parts.append("⛔ Эти команды нельзя в параллельно: "
+                _parts.append("⛔ Нельзя смешивать в одном параллельно обычные "
+                              + "команды и read_full: "
                               + ", ".join(_dedup_labels(bad_par))
                               + ".\n"
-                              + "   Они пишут результат только в контекст. "
-                              + "Выполни отдельно.")
+                              + "   read_full пишет только в буфер, обычные — "
+                              + "в контекст; агент получит [BUF] вместо файла.\n"
+                              + "   Раздели на два вызова:\n"
+                              + "   1) параллельно без read_full — обычные команды;\n"
+                              + "   2) отдельный параллельно ТОЛЬКО с read_full — "
+                              + "это разрешено.\n"
+                              + "   Либо одиночный вызов read_full.")
             else:
                 _parts.append("⛔ Внутри параллельно только с \"в_контекст\": false: "
                               + ", ".join(_dedup_labels(bad_par))
@@ -1338,11 +1593,27 @@ def _process_command_input_inner(input_str: str, pre_notes=None) -> None:
     parsed = [_e for _e in _new_parsed if _e is not None]
 
     # === Фаза 3: выполнение ===
+    # Прогресс-метка оператору: X/Y · имя_команды перед каждой командой.
+    # Только для пакета (Y>1), только в консоль — в results/clipboard
+    # не попадает. Y = число parsed-записей после склеек (read_full-merge,
+    # web_search-merge), то есть столько, сколько ввёл оператор через |||.
     results = []
-    for _idx, _part, cmd, err in parsed:
+    _total_cmds = len(parsed)
+    for _i, (_idx, _part, cmd, err) in enumerate(parsed, 1):
+        if _total_cmds > 1:
+            if err:
+                _tag = "[ошибка разбора]"
+            else:
+                _names = _extract_actions(cmd) if cmd else []
+                _tag = _names[0] if _names else "?"
+                if len(_names) > 1:
+                    _tag += " +" + str(len(_names) - 1)
+            print(color_blue(f"{_i}/{_total_cmds} · {_tag}"))
         if err:
             results.append(err)
             continue
+        if total_actions > 1:
+            cmd = _inject_no_clip(cmd)
         if isinstance(cmd, dict):
             actions_list = cmd.get("actions") or cmd.get("commands")
             if actions_list is not None and isinstance(actions_list, list):
@@ -1405,7 +1676,8 @@ def _process_command_input_inner(input_str: str, pre_notes=None) -> None:
                     if _rnd_hint.random() < 0.05:
                         _hint_parts.append(
                             "\n💡 Пакетный режим:\n"
-                            "   • последовательно: в одну строку через |||:\n"
+                            "   • последовательно: через ||| (вплотную к } предыдущей\n"
+                            "     команды; после ||| можно перейти на новую строку):\n"
                             "```text\n"
                             '{"а": {}}|||{"б": {}}\n'
                             "```\n"

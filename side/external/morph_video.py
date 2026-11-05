@@ -10,8 +10,16 @@
 Ядро взято из E:\\Jericho\\Private\\tasks\\Morphing\\morph8.py без изменений.
 """
 
-import argparse
+# ВАЖНО: env vars ДО import cv2/mediapipe. glog читает их один раз
+# при первой инициализации — если она случится раньше, GLOG игнорируется.
 import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["GLOG_minloglevel"] = "3"
+os.environ["GLOG_logtostderr"] = "0"
+os.environ["ABSL_MIN_LOG_LEVEL"] = "3"
+os.environ["GRPC_VERBOSITY"] = "ERROR"
+
+import argparse
 import sys
 import time as _time
 
@@ -19,8 +27,34 @@ import cv2
 import numpy as np
 from scipy.spatial import cKDTree
 
+# В системе есть сломанный tensorflow (Python <3.7, async как имя параметра).
+# mediapipe импортирует его как опциональную зависимость — блокируем через
+# sys.modules, чтобы mediapipe пошёл по fallback-ветке (ImportError в его
+# optional_dependencies.py ловится и подменяется своим doc_controls).
+if "tensorflow" not in sys.modules:
+    sys.modules["tensorflow"] = None
 
-_IS_TTY = sys.stderr.isatty() if hasattr(sys.stderr, "isatty") else False
+try:
+    import mediapipe as mp
+    _MP_AVAILABLE = True
+except Exception as _mp_err:
+    print(f"  [mediapipe import failed: {type(_mp_err).__name__}: "
+          f"{_mp_err}]", file=sys.stderr)
+    _MP_AVAILABLE = False
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_FACE_MODEL = os.path.join(_HERE, "models", "face_landmarker.task")
+_FACE_LANDMARKER = None
+
+
+# MORPH_FORCE_TTY=1 — родитель (morph.py) запускает нас через pipe,
+# isatty() вернёт False, и прогресс стал бы построчным. Форсируем \r.
+_IS_TTY = os.environ.get("MORPH_FORCE_TTY", "").strip() in ("1", "true", "yes")
+if not _IS_TTY:
+    _IS_TTY = sys.stderr.isatty() if hasattr(sys.stderr, "isatty") else False
+
+_TPS_METHOD = "none"
+_TPS_DIAG_PRINTED = False
 
 
 def _progress(text):
@@ -127,51 +161,133 @@ def _polarity_ok(gray1, gray2, p1, p2, radius=6, min_corr=0.0,
     return corr >= min_corr
 
 
+def _get_face_landmarker():
+    """Ленивая инициализация FaceLandmarker (mediapipe 1.x)."""
+    global _FACE_LANDMARKER
+    if _FACE_LANDMARKER is not None:
+        return _FACE_LANDMARKER
+    if not _MP_AVAILABLE:
+        return None
+    if not os.path.isfile(_FACE_MODEL):
+        print(f"  [FaceLandmarker: нет модели {_FACE_MODEL}]",
+              file=sys.stderr)
+        _FACE_LANDMARKER = False
+        return None
+    try:
+        from mediapipe.tasks import python as mp_python
+        from mediapipe.tasks.python import vision
+        base_options = mp_python.BaseOptions(model_asset_path=_FACE_MODEL)
+        options = vision.FaceLandmarkerOptions(
+            base_options=base_options,
+            num_faces=1,
+            running_mode=vision.RunningMode.IMAGE,
+        )
+        _FACE_LANDMARKER = vision.FaceLandmarker.create_from_options(options)
+        return _FACE_LANDMARKER
+    except Exception as e:
+        print(f"  [FaceLandmarker init error: {type(e).__name__}: {e}]",
+              file=sys.stderr)
+        _FACE_LANDMARKER = False
+        return None
+
+
+def _face_mesh_points(img):
+    """Возвращает список (x, y) точек лица через MediaPipe FaceLandmarker.
+    Возвращает None, если лицо не найдено или mediapipe недоступен.
+    """
+    if not _MP_AVAILABLE:
+        return None
+    landmarker = _get_face_landmarker()
+    if landmarker is None:
+        return None
+    try:
+        rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        result = landmarker.detect(mp_image)
+        if not result.face_landmarks:
+            return None
+        h, w = img.shape[:2]
+        pts = []
+        for lm in result.face_landmarks[0]:
+            pts.append((int(lm.x * w), int(lm.y * h)))
+        return pts
+    except Exception as e:
+        print(f"  [FaceMesh error: {type(e).__name__}: {e}]",
+              file=sys.stderr)
+        return None
+
+
 def find_matches(img1, img2, min_dist, progress_callback=None):
     gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
     gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
 
     sift = cv2.SIFT_create()
-    keypoints1, descriptors1 = sift.detectAndCompute(gray1, None)
-    keypoints2, descriptors2 = sift.detectAndCompute(gray2, None)
+    kps1, des1 = sift.detectAndCompute(gray1, None)
+    kps2, des2 = sift.detectAndCompute(gray2, None)
 
-    if descriptors1 is None or descriptors2 is None:
+    if des1 is None or des2 is None:
         return [], []
 
-    bf = cv2.BFMatcher(cv2.NORM_L2)
-    matches = bf.knnMatch(descriptors1, descriptors2, k=2)
+    def _match(ratio, use_polarity):
+        bf = cv2.BFMatcher(cv2.NORM_L2)
+        matches = bf.knnMatch(des1, des2, k=2)
+        good = []
+        for pair in matches:
+            if len(pair) < 2:
+                continue
+            m, n = pair
+            if m.distance < ratio * n.distance:
+                good.append(m)
+        combined = []
+        for m in good:
+            p1 = kps1[m.queryIdx].pt
+            p2 = kps2[m.trainIdx].pt
+            if use_polarity and not _polarity_ok(gray1, gray2, p1, p2):
+                continue
+            combined.append((m.distance,
+                             (int(p1[0]), int(p1[1])),
+                             (int(p2[0]), int(p2[1]))))
+        combined.sort(key=lambda x: x[0])
+        return combined
 
-    good = []
-    for pair in matches:
-        if len(pair) < 2:
-            continue
-        m, n = pair
-        if m.distance < 0.75 * n.distance:
-            good.append(m)
+    def _nms(combined):
+        sel1, sel2 = [], []
+        for dist, p1, p2 in combined:
+            too_close = False
+            for s1 in sel1:
+                if np.sqrt((p1[0] - s1[0]) ** 2
+                           + (p1[1] - s1[1]) ** 2) < min_dist:
+                    too_close = True
+                    break
+            if not too_close:
+                sel1.append(p1)
+                sel2.append(p2)
+        return sel1, sel2
 
-    if not good:
-        return [], []
+    # Только strict (ratio 0.75 + polarity). Loose (0.85) давал
+    # геометрически хаотичные точки — для морфа лица он вреден.
+    sel1, sel2 = _nms(_match(ratio=0.75, use_polarity=True))
 
-    combined = []
-    for m in good:
-        p1 = keypoints1[m.queryIdx].pt
-        p2 = keypoints2[m.trainIdx].pt
-        if not _polarity_ok(gray1, gray2, p1, p2):
-            continue
-        combined.append((m.distance, (int(p1[0]), int(p1[1])), (int(p2[0]), int(p2[1]))))
-
-    combined.sort(key=lambda x: x[0])
-
-    sel1, sel2 = [], []
-    for dist, p1, p2 in combined:
-        too_close = False
-        for s1 in sel1:
-            if np.sqrt((p1[0] - s1[0]) ** 2 + (p1[1] - s1[1]) ** 2) < min_dist:
-                too_close = True
-                break
-        if not too_close:
-            sel1.append(p1)
-            sel2.append(p2)
+    # Шаг 3: RANSAC — отсеять геометрически несогласованные точки.
+    # Ложные матчи не ложатся на одну гомографию, настоящие — ложатся.
+    if len(sel1) >= 4:
+        try:
+            _src = np.float32(sel1).reshape(-1, 1, 2)
+            _dst = np.float32(sel2).reshape(-1, 1, 2)
+            _H, _mask = cv2.findHomography(
+                _src, _dst, cv2.RANSAC, ransacReprojThreshold=5.0)
+            if _mask is not None:
+                _m = _mask.ravel().astype(bool)
+                _n1 = len(sel1)
+                _sel1 = [p for p, ok in zip(sel1, _m) if ok]
+                _sel2 = [p for p, ok in zip(sel2, _m) if ok]
+                if _sel1:
+                    print(f"  [RANSAC] {_n1} -> {len(_sel1)} inlier",
+                          file=sys.stderr)
+                    sel1, sel2 = _sel1, _sel2
+        except Exception as _e:
+            print(f"  [RANSAC error: {type(_e).__name__}: {_e}]",
+                  file=sys.stderr)
 
     if progress_callback:
         progress_callback(100)
@@ -179,11 +295,50 @@ def find_matches(img1, img2, min_dist, progress_callback=None):
     return sel1, sel2
 
 
+def _farthest_point_sampling(points, k):
+    """FPS: k точек, максимально разнесённых по геометрии.
+
+    В отличие от linspace (равномерно по индексу массива, но случайно
+    по геометрии), FPS гарантирует равномерное покрытие: на глазах
+    (там точки плотно) возьмёт 2-3, на носу (там редко) — оставит
+    всё что есть, включая кончик. Нос не останется без контроля.
+    """
+    n = len(points)
+    if n <= k:
+        return list(range(n))
+    pts = np.array(points, dtype=np.float64)
+    centroid = pts.mean(axis=0)
+    start = int(np.argmin(np.linalg.norm(pts - centroid, axis=1)))
+    selected = [start]
+    dists = np.linalg.norm(pts - pts[start], axis=1)
+    for _ in range(k - 1):
+        next_idx = int(np.argmax(dists))
+        selected.append(next_idx)
+        new_d = np.linalg.norm(pts - pts[next_idx], axis=1)
+        dists = np.minimum(dists, new_d)
+    return selected
+
+
 def morph_image(img1, img2, points1, points2, t, w, h):
+    global _TPS_METHOD, _TPS_DIAG_PRINTED
+    if len(points1) < 3:
+        return cv2.addWeighted(img1, 1 - t, img2, t, 0)
+
+    # IDW на 1/2 разрешения: смещения плавные, после апскейла разницы
+    # не видно. cKDTree-запрос на 99k точках вместо 396k, blur в 4
+    # раза быстрее. Скорость: ~2-3 сек вместо 5-10.
+    scale = 2
+    wc, hc = max(1, w // scale), max(1, h // scale)
+
+    _TPS_METHOD = f"IDW 1/{scale} ({len(points1)} pts, K=16, blur=15)"
+    if not _TPS_DIAG_PRINTED:
+        _TPS_DIAG_PRINTED = True
+        print(f"\n  [morph: {_TPS_METHOD}]", file=sys.stderr)
+
     interp_points = []
     for p1, p2 in zip(points1, points2):
-        ix = int((1 - t) * p1[0] + t * p2[0])
-        iy = int((1 - t) * p1[1] + t * p2[1])
+        ix = (1 - t) * p1[0] + t * p2[0]
+        iy = (1 - t) * p1[1] + t * p2[1]
         interp_points.append((ix, iy))
 
     corners = [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)]
@@ -191,10 +346,12 @@ def morph_image(img1, img2, points1, points2, t, w, h):
     all_points2 = points2 + corners
     all_interp = interp_points + corners
 
-    X, Y = np.meshgrid(np.arange(w), np.arange(h))
-    pts_grid = np.column_stack((X.ravel(), Y.ravel()))
+    # Прореженная сетка: координаты полного разрешения (шаг scale),
+    # но точек в scale^2 меньше.
+    Xc, Yc = np.meshgrid(np.arange(wc) * scale, np.arange(hc) * scale)
+    pts_grid = np.column_stack((Xc.ravel(), Yc.ravel()))
 
-    K = min(8, len(all_interp))
+    K = min(16, len(all_interp))
     tree = cKDTree(np.array(all_interp))
     dist, idx = tree.query(pts_grid, k=K)
 
@@ -208,18 +365,25 @@ def morph_image(img1, img2, points1, points2, t, w, h):
     interp_x = np.array([p[0] for p in all_interp], dtype=np.float32)
     interp_y = np.array([p[1] for p in all_interp], dtype=np.float32)
 
-    offset1_x = np.sum(w_norm * (dx1[idx] - interp_x[idx]), axis=1)
-    offset1_y = np.sum(w_norm * (dy1[idx] - interp_y[idx]), axis=1)
-    map1_x = (X.ravel() + offset1_x).reshape(h, w).astype(np.float32)
-    map1_y = (Y.ravel() + offset1_y).reshape(h, w).astype(np.float32)
-    warped1 = cv2.remap(img1, map1_x, map1_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT_101)
+    offset1_x = np.sum(w_norm * (dx1[idx] - interp_x[idx]), axis=1).reshape(hc, wc)
+    offset1_y = np.sum(w_norm * (dy1[idx] - interp_y[idx]), axis=1).reshape(hc, wc)
+    offset2_x = np.sum(w_norm * (dx2[idx] - interp_x[idx]), axis=1).reshape(hc, wc)
+    offset2_y = np.sum(w_norm * (dy2[idx] - interp_y[idx]), axis=1).reshape(hc, wc)
 
-    offset2_x = np.sum(w_norm * (dx2[idx] - interp_x[idx]), axis=1)
-    offset2_y = np.sum(w_norm * (dy2[idx] - interp_y[idx]), axis=1)
-    map2_x = (X.ravel() + offset2_x).reshape(h, w).astype(np.float32)
-    map2_y = (Y.ravel() + offset2_y).reshape(h, w).astype(np.float32)
-    warped2 = cv2.remap(img2, map2_x, map2_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT_101)
+    X_full, Y_full = np.meshgrid(np.arange(w), np.arange(h))
 
+    def _smooth_remap(img, ox, oy):
+        ox = cv2.GaussianBlur(ox, (15, 15), 0)
+        oy = cv2.GaussianBlur(oy, (15, 15), 0)
+        ox = cv2.resize(ox, (w, h), interpolation=cv2.INTER_CUBIC)
+        oy = cv2.resize(oy, (w, h), interpolation=cv2.INTER_CUBIC)
+        mx = (X_full + ox).astype(np.float32)
+        my = (Y_full + oy).astype(np.float32)
+        return cv2.remap(img, mx, my, cv2.INTER_CUBIC,
+                         borderMode=cv2.BORDER_REFLECT_101)
+
+    warped1 = _smooth_remap(img1, offset1_x, offset1_y)
+    warped2 = _smooth_remap(img2, offset2_x, offset2_y)
     return cv2.addWeighted(warped1, 1 - t, warped2, t, 0)
 
 
@@ -295,7 +459,10 @@ def main():
     imgs = [fit_to_canvas(im, w0, h0) for im in orig_imgs]
 
     max_h_natural = max(im.shape[0] for im in orig_imgs)
-    detect_h = min(args.детект_высота, max_h_natural) if args.детект_высота else 0
+    # Детект на разрешении из --детект_высота (если задано), даже если
+    # оно больше исходного. Раньше стоял min(..., max_h_natural),
+    # из-за чего при 840x472 SIFT работал на 472p и не находил точки.
+    detect_h = args.детект_высота if args.детект_высота else 0
 
     detect_scale = 1.0
     det_imgs = imgs
@@ -351,15 +518,32 @@ def main():
             if args.без_морфа or seg in _no_morph_set:
                 pts1, pts2 = [], []
             else:
+                _progress(_fmt_progress(written, total_frames, f"детект {label}"))
+                fm1 = _face_mesh_points(det_imgs[seg])
+                fm2 = _face_mesh_points(det_imgs[seg + 1])
+                
+                # SIFT (strict + RANSAC) запускаем всегда — даже если
+                # FaceMesh нашёл лицо. Даёт 3-5 «честных» точек на фоне,
+                # чтобы фон тоже деформировался согласованно.
                 det_h_nms = det_imgs[0].shape[0]
                 min_dist = args.мин_дист or max(5, det_h_nms // 12)
-                _progress(_fmt_progress(written, total_frames, f"детект {label}"))
-                pts1, pts2 = find_matches(det_imgs[seg], det_imgs[seg + 1], min_dist=min_dist)
+                sift1, sift2 = find_matches(det_imgs[seg], det_imgs[seg + 1], min_dist=min_dist)
+                
+                if (fm1 and fm2 and len(fm1) >= 10
+                        and len(fm1) == len(fm2)):
+                    pts1 = fm1 + sift1
+                    pts2 = fm2 + sift2
+                    label += (f" (FaceMesh: {len(fm1)} + SIFT: {len(sift1)})")
+                else:
+                    if _MP_AVAILABLE:
+                        print(f"  [FaceMesh не найден или число лиц не "
+                              f"совпадает, откат на SIFT]", file=sys.stderr)
+                    pts1, pts2 = sift1, sift2
+                    label += f" (SIFT: {len(pts1)} точек)"
                 if detect_scale != 1.0:
                     inv = 1.0 / detect_scale
                     pts1 = [(int(round(x * inv)), int(round(y * inv))) for x, y in pts1]
                     pts2 = [(int(round(x * inv)), int(round(y * inv))) for x, y in pts2]
-                label += f" (точек: {len(pts1)})"
 
             for j in range(n):
                 t = j / n

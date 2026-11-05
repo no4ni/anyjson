@@ -321,8 +321,9 @@ def find_function(args):
     """Найти определение функции в исходниках anyjson.
 
     Параметры:
-      имя       — подстрока имени (обязательно)
-      регулярка — true: имя как regex
+      имя       — подстрока имени. Если не задано — выводятся все
+                  функции (список без тел — для навигации по коду).
+      регулярка — true: имя как regex (только при заданном «имя»)
       точно     — true: только полное совпадение (имени def или алиаса)
       тело      — true: вернуть исходник функции
       путь      — папка или файл (по умолч. _actions, _core, anyjson.py)
@@ -388,13 +389,18 @@ def find_function(args):
         return (40 if is_alias else 60) if (nm.lower() in fn.lower()) else 0
 
     name = args.get("имя") or args.get("name") or ""
-    if not name:
-        return "Укажите 'имя'."
-    is_re = bool(args.get("регулярка"))
-    exact = bool(args.get("точно"))
+    _list_all = not name
+    if _list_all:
+        is_re = False
+        exact = False
+        pat = None
+    else:
+        is_re = bool(args.get("регулярка"))
+        exact = bool(args.get("точно"))
+        pat = _re.compile(name) if is_re else None
     with_body = bool(args.get("тело"))
-    limit = int(args.get("количество") or 20)
-    pat = _re.compile(name) if is_re else None
+    _default_limit = 1000 if _list_all else 20
+    limit = int(args.get("количество") or _default_limit)
 
     _base = pathlib.Path(__file__).resolve().parent.parent
     paths = []
@@ -421,16 +427,20 @@ def find_function(args):
                 continue
             fn = node.name
             aliases = _register_aliases_of(node)
-            score = _match_score(fn, name, exact, pat, is_alias=False)
-            matched_aliases = []
-            for a in aliases:
-                s = _match_score(a, name, exact, pat, is_alias=True)
-                if s > 0:
-                    matched_aliases.append(a)
-                if s > score:
-                    score = s
-            if score == 0:
-                continue
+            if _list_all:
+                score = 100 if aliases else 50
+                matched_aliases = list(aliases)
+            else:
+                score = _match_score(fn, name, exact, pat, is_alias=False)
+                matched_aliases = []
+                for a in aliases:
+                    s = _match_score(a, name, exact, pat, is_alias=True)
+                    if s > 0:
+                        matched_aliases.append(a)
+                    if s > score:
+                        score = s
+                if score == 0:
+                    continue
             try:
                 rel = f.relative_to(_base)
             except ValueError:
@@ -438,10 +448,15 @@ def find_function(args):
             hits.append((score, str(rel), node.lineno, fn, src, node, matched_aliases))
 
     if not hits:
-        return "Не найдено: " + name
+        return "Функций не найдено." if _list_all else ("Не найдено: " + name)
 
-    hits.sort(key=lambda h: (-h[0], h[1], h[2]))
-    out = [f"🔍 Найдено {len(hits)} по «{name}»:"]
+    if _list_all:
+        hits.sort(key=lambda h: (h[1], h[2]))
+        _files = len(set(h[1] for h in hits))
+        out = [f"🔍 Все функции: {len(hits)} в {_files} файлах"]
+    else:
+        hits.sort(key=lambda h: (-h[0], h[1], h[2]))
+        out = [f"🔍 Найдено {len(hits)} по «{name}»:"]
     for i, (score, rel, lineno, fn, src, node, matched_aliases) in enumerate(hits[:limit], 1):
         line = f"\n{i}. {fn}"
         if matched_aliases:

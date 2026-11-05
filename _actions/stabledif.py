@@ -521,7 +521,7 @@ def sd_txt2img(args):
     """Сгенерировать картинку через Forge (txt2img).
 
     Параметры:
-      промпт     — что нарисовать (обязательно), алиас: запрос
+      промпт     — что нарисовать (обязательно, СТРОГО НА АНГЛИЙСКОМ!), алиас: запрос
       негатив    — что исключить
       ширина     — по умолчанию 512
       высота     — по умолчанию 512
@@ -531,9 +531,23 @@ def sd_txt2img(args):
       сэмплер    — DPM++ 2M (по умолч.), Euler a, DPM++ 2M SDE, ...
       шедулер    — Karras (по умолч.), Exponential, Normal, Simple, ...
       модель     — имя чекпойнта; запоминается для следующих запросов
-      референс   — блок ControlNet: {поза|референс: путь, модель,
-                   препроцессор, сила, начало, конец, режим},
-                   алиас: контроль
+      референс   — блок ControlNet: {поза|референс: путь, препроцессор,
+                   модель, сила, начало, конец, режим},
+                   алиас: контроль.
+                   • «поза»/«референс»/«image» — путь к картинке-контролю
+                   • «препроцессор» — имя препроцессора: openpose,
+                     canny, depth, lineart, softedge, scribble, mlsd,
+                     normal, seg, tile, inpaint, ip2p (или None)
+                   • «модель» — файл ControlNet с хешем:
+                     "control_v11p_sd15_openpose [abc12345]". Если
+                     не задана — подберётся по имени препроцессора.
+                     Если в «модель» положить имя препроцессора
+                     ("openpose") — код поймёт и переставит.
+                   • «сила» — weight 0..2 (по умолч. 1.0)
+                   • «начало»/«конец» — guidance_start/end, 0..1
+                   • «режим» — "ControlNet is more important"
+                     (по умолч.), "... is more important", "Balanced",
+                     "My prompt is more important"
       в_контекст — положить результат в контекст (по умолч. true)
       сохранить  — путь для PNG (иначе MY_DIR/stabledif_out/)
     """
@@ -667,9 +681,23 @@ def sd_img2img(args):
       сэмплер    — DPM++ 2M (по умолч.), Euler a, DPM++ 2M SDE, ...
       шедулер    — Karras (по умолч.), Exponential, Normal, Simple, ...
       модель     — имя чекпойнта; запоминается для следующих запросов
-      референс   — блок ControlNet: {поза|референс: путь, модель,
-                   препроцессор, сила, начало, конец, режим},
-                   алиас: контроль
+      референс   — блок ControlNet: {поза|референс: путь, препроцессор,
+                   модель, сила, начало, конец, режим},
+                   алиас: контроль.
+                   • «поза»/«референс»/«image» — путь к картинке-контролю
+                   • «препроцессор» — имя препроцессора: openpose,
+                     canny, depth, lineart, softedge, scribble, mlsd,
+                     normal, seg, tile, inpaint, ip2p (или None)
+                   • «модель» — файл ControlNet с хешем:
+                     "control_v11p_sd15_openpose [abc12345]". Если
+                     не задана — подберётся по имени препроцессора.
+                     Если в «модель» положить имя препроцессора
+                     ("openpose") — код поймёт и переставит.
+                   • «сила» — weight 0..2 (по умолч. 1.0)
+                   • «начало»/«конец» — guidance_start/end, 0..1
+                   • «режим» — "ControlNet is more important"
+                     (по умолч.), "... is more important", "Balanced",
+                     "My prompt is more important"
       в_контекст — положить результат в контекст (по умолч. true)
       сохранить  — путь для PNG (иначе MY_DIR/stabledif_out/)
     """
@@ -913,9 +941,23 @@ def sd_inpaint(args):
       сэмплер    — DPM++ 2M (по умолч.), Euler a, DPM++ 2M SDE, ...
       шедулер    — Karras (по умолч.), Exponential, Normal, Simple, ...
       модель     — имя чекпойнта; запоминается для следующих запросов
-      референс   — блок ControlNet: {поза|референс: путь, модель,
-                   препроцессор, сила, начало, конец, режим},
-                   алиас: контроль
+      референс   — блок ControlNet: {поза|референс: путь, препроцессор,
+                   модель, сила, начало, конец, режим},
+                   алиас: контроль.
+                   • «поза»/«референс»/«image» — путь к картинке-контролю
+                   • «препроцессор» — имя препроцессора: openpose,
+                     canny, depth, lineart, softedge, scribble, mlsd,
+                     normal, seg, tile, inpaint, ip2p (или None)
+                   • «модель» — файл ControlNet с хешем:
+                     "control_v11p_sd15_openpose [abc12345]". Если
+                     не задана — подберётся по имени препроцессора.
+                     Если в «модель» положить имя препроцессора
+                     ("openpose") — код поймёт и переставит.
+                   • «сила» — weight 0..2 (по умолч. 1.0)
+                   • «начало»/«конец» — guidance_start/end, 0..1
+                   • «режим» — "ControlNet is more important"
+                     (по умолч.), "... is more important", "Balanced",
+                     "My prompt is more important"
       в_контекст — положить результат в контекст (по умолч. true)
       сохранить  — путь для PNG (иначе MY_DIR/stabledif_out/)
 
@@ -1226,6 +1268,29 @@ def _controlnet_block(ctrl, default_prefix="openpose"):
         return {"error": "Не удалось прочитать файл контроля: " + str(e)}
     preproc = (ctrl.get("препроцессор") or ctrl.get("preprocessor")
                or "None")
+    # Если в "модель" подсунули имя препроцессора (openpose, canny, ...),
+    # а препроцессор не задан — переставляем. Классическая путаница:
+    # модель ControlNet = файл с хешем ("control_v11p_sd15_openpose [cab7...]"),
+    # препроцессор = короткое имя ("openpose", "canny", "depth", ...).
+    if (isinstance(preproc, str) and preproc.lower() in ("none", "null", "")
+            and isinstance(ctrl.get("модель") or ctrl.get("model"), str)):
+        _m_low = (ctrl.get("модель") or ctrl.get("model") or "").strip().lower()
+        _known_preprocs = {
+            "openpose", "openpose_hand", "openpose_face", "openpose_full",
+            "openpose_hand_full", "canny", "depth", "depth_midas",
+            "depth_zoe", "depth_leres", "lineart", "lineart_anime",
+            "lineart_coarse", "softedge", "scribble", "scribble_xdog",
+            "mlsd", "normal", "seg", "tile", "inpaint", "ip2p",
+            "shuffle", "pidinet", "pidinet_scribble", "binary",
+        }
+        if _m_low in _known_preprocs:
+            preproc = ctrl.get("модель") or ctrl.get("model")
+            # prefix для поиска модели — первое слово до "_"
+            # (openpose_hand → openpose, lineart_anime → lineart)
+            default_prefix = str(preproc).lower().replace("-", "_").split("_")[0]
+            ctrl = dict(ctrl)
+            ctrl.pop("модель", None)
+            ctrl.pop("model", None)
     # Forge ищет preprocessor по имени через global_state.get_preprocessor().
     # Если передать "none" строчными — вернёт None и упадёт дальше.
     # Нормализуем к "None" (с большой).
@@ -1257,7 +1322,12 @@ def _controlnet_block(ctrl, default_prefix="openpose"):
             _dbg = " [http error: " + type(e).__name__ + ": " + str(e) + "]"
     if not model and not _no_model:
         return {"error": "Не указана модель контроля (нет модели с '"
-                + default_prefix + "' в списке)." + _dbg}
+                + default_prefix + "' в списке)." + _dbg
+                + "\n💡 Как правильно: передай имя препроцессора в "
+                + "'препроцессор' (openpose, canny, depth, lineart, ...) "
+                + "и НЕ указывай 'модель' — она подберётся автоматически. "
+                + "Либо 'модель' = полный файл "
+                + "'control_v11p_sd15_openpose [abc12345]'."}
     if not model:
         model = "None"
     # Forge ищет модель по ПОЛНОМУ ключу с хешем: "name [abc12345]".

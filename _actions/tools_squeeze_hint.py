@@ -54,7 +54,6 @@ def hint_squeeze(args: dict) -> str:
       • топ        — сколько абзацев показать (по умолчанию 10)
       • мин_длина  — минимальная экономия в байтах для показа
                      (по умолчанию 5)
-      • тихо       — true: не транслировать прогресс модели
     """
     inp = args.get("вход") or args.get("путь") or args.get("файл")
     try:
@@ -69,8 +68,6 @@ def hint_squeeze(args: dict) -> str:
         min_delta = int(args.get("мин_длина", 5) or 5)
     except (TypeError, ValueError):
         min_delta = 5
-    quiet = bool(args.get("тихо", False))
-
     if not inp:
         return "❌ подсказать_сокращения: не указан вход"
 
@@ -113,9 +110,8 @@ def hint_squeeze(args: dict) -> str:
         try:
             for line in proc.stdout:
                 buffer.append(line)
-                if not quiet:
-                    sys.stdout.write(line)
-                    sys.stdout.flush()
+                sys.stdout.write(line)
+                sys.stdout.flush()
             proc.wait(timeout=3600)
         except subprocess.TimeoutExpired:
             try:

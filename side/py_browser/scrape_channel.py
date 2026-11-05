@@ -13,11 +13,17 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 _arg = sys.argv[1] if len(sys.argv) > 1 else "macreative"
-if _arg.startswith(("http://", "https://")):
+# Одиночная статья? URL содержит /a/<id> или /news/story/<id>
+_IS_ARTICLE = _arg.startswith(("http://", "https://")) and ("/a/" in _arg or "/news/story/" in _arg)
+if _IS_ARTICLE:
     CHANNEL_URL = _arg
+    CHANNEL_SLUG = "_single"
 else:
-    CHANNEL_URL = "https://dzen.ru/" + _arg.lstrip("/")
-CHANNEL_SLUG = CHANNEL_URL.rstrip("/").split("/")[-1] or "channel"
+    if _arg.startswith(("http://", "https://")):
+        CHANNEL_URL = _arg
+    else:
+        CHANNEL_URL = "https://dzen.ru/" + _arg.lstrip("/")
+    CHANNEL_SLUG = CHANNEL_URL.rstrip("/").split("/")[-1] or "channel"
 OUTPUT_DIR = Path("output") / CHANNEL_SLUG
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 INDEX_FILE = OUTPUT_DIR / "_index.json"
@@ -222,5 +228,98 @@ async def scrape_channel():
         logger.info(f"Готово! Новых статей: {len(new_links)}. Сохранено в {OUTPUT_DIR}")
 
 
+def _extract_story_id(url):
+    """Извлекает id статьи из URL: /a/<id> или /news/story/<id>."""
+    m = re.search(r"/a/([^/?#]+)", url) or re.search(r"/news/story/([^/?#]+)", url)
+    if m:
+        return m.group(1)
+    import hashlib
+    return hashlib.md5(url.encode()).hexdigest()[:16]
+
+
+async def scrape_single_article(url):
+    """Скачивает одну статью Дзена по URL."""
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
+
+        logger.info(f"Открываем статью: {url}")
+        try:
+            await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        except Exception as e:
+            await browser.close()
+            logger.error(f"Не удалось открыть URL: {e}")
+            return None
+
+        try:
+            await page.wait_for_selector(
+                '[data-testid="article-body"], [data-testid="article-render__block"]',
+                timeout=30000,
+            )
+        except Exception:
+            pass
+        await page.wait_for_timeout(2000)
+
+        title_elem = await page.query_selector('h1')
+        title = await title_elem.inner_text() if title_elem else "article"
+
+        paragraphs = []
+        used_sel = None
+        for sel in (
+            '[data-testid="article-render__block"] p span',
+            '[data-testid="article-render__block"].content--common-block__block-3U span',
+            '[data-testid="article-render__block"] span',
+            '[data-testid="article-body"] p span',
+            '[data-testid="article-body"] p',
+            '[data-testid="article-body"] span',
+            'article p',
+            'article span',
+        ):
+            found = await page.query_selector_all(sel)
+            if found and len(found) > 2:
+                paragraphs = found
+                used_sel = sel
+                break
+
+        logger.info(f"  селектор: {used_sel or 'НЕ НАЙДЕН'}, элементов: {len(paragraphs)}")
+
+        content = []
+        seen = set()
+        for p_elem in paragraphs:
+            text = await p_elem.inner_text()
+            text = text.strip()
+            if text and len(text) > 5 and text not in seen:
+                seen.add(text)
+                content.append(text)
+
+        full_text = chr(10).join(chr(10) + t for t in content).strip()
+
+        if len(full_text) < 100:
+            await browser.close()
+            logger.error(f"Текст не извлёкся ({len(full_text)} символов)")
+            return None
+
+        # Нумерация как у канала: 001_, 002_..., чтобы read_dzen_article находил
+        index = load_index()
+        n = next_number(index)
+        clean_title = re.sub(r'[\\/*?:"<>|]', '', title).strip()[:60]
+        filename = f"{n:03d}_{clean_title}.txt"
+        out_path = OUTPUT_DIR / filename
+
+        body = "URL: " + _norm(url) + chr(10) + chr(10) + full_text
+        async with aiofiles.open(out_path, 'w', encoding='utf-8') as f:
+            await f.write(body)
+
+        index[_norm(url)] = filename
+        save_index(index)
+
+        await browser.close()
+        logger.info(f"Сохранено: {out_path}")
+        return str(out_path)
+
+
 if __name__ == "__main__":
-    asyncio.run(scrape_channel())
+    if _IS_ARTICLE:
+        asyncio.run(scrape_single_article(_arg))
+    else:
+        asyncio.run(scrape_channel())

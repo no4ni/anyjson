@@ -1,0 +1,69 @@
+{
+  "meta": {
+    "budget": 30,
+    "host": "DESKTOP-J6NCBF5",
+    "ladder": [
+      100,
+      50,
+      25,
+      12,
+      0
+    ],
+    "scale": 2,
+    "sizes": [
+      384,
+      512,
+      1024,
+      2048
+    ],
+    "ts": "2026-10-19 15:42:29"
+  },
+  "methods": {
+    "ba255": [
+      {
+        "acc": 100,
+        "ok": true,
+        "px": 147456,
+        "scale": 2,
+        "sec": 1.282
+      },
+      {
+        "acc": 100,
+        "ok": true,
+        "px": 262144,
+        "scale": 2,
+        "sec": 1.533
+      },
+      {
+        "acc": 100,
+        "ok": true,
+        "px": 1048576,
+        "scale": 2,
+        "sec": 3.615
+      },
+      {
+        "acc": 100,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 40.229
+      },
+      {
+        "acc": 50,
+        "error": "timeout 40s",
+        "ok": false,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 40.262
+      },
+      {
+        "acc": 25,
+        "ok": true,
+        "px": 4194304,
+        "scale": 2,
+        "sec": 3.13
+      }
+    ]
+  }
+}

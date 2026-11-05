@@ -246,17 +246,13 @@ def _suggest_commands(action: str, n: int = 3) -> str:
 
     lines.append("")
     lines.append("💡 Для длинных файлов и скриптов есть heredoc:")
-    lines.append('   {"переписать": {"путь": "C:/temp/x.py"}}')
-    lines.append("   <<<")
+    lines.append('   {"переписать": {"путь": "C:/temp/x.py", "содержание": <<<')
     lines.append("   ...любой код, БЕЗ JSON-экранирования...")
-    lines.append("   >>>")
-    lines.append("   (после >>> — пустая строка, чтобы выполнить)")
+    lines.append('   >>>}}')
     lines.append('')
-    lines.append('   То же для {"питон": {"скрипт": "..."}}:')
-    lines.append('   {"питон": {"скрипт": "X"}}')
-    lines.append("   <<<")
+    lines.append('   То же для {"питон": {"скрипт": <<<')
     lines.append("   print('любой код')")
-    lines.append("   >>>")
+    lines.append('   >>>}}')
 
     return "\n".join(lines)
 

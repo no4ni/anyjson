@@ -62,9 +62,9 @@ def _fmt(n):
     return f"{n} Б"
 
 
-def _run_once(inp, out, quiet, debug, no_report):
+def _run_once(inp, out, debug, no_report):
     """Один прогон squeeze_report.py. Возвращает (ok, captured, dt).
-    Стримит stdout в консоль, если not quiet."""
+    Стримит stdout в консоль всегда."""
     cmd = [
         sys.executable, "-u", str(SQUEEZE_REPORT),
         str(inp), str(out),
@@ -96,9 +96,8 @@ def _run_once(inp, out, quiet, debug, no_report):
         for line in proc.stdout:
             if not _PROGRESS_RE.match(line.strip()):
                 buffer.append(line)
-            if not quiet:
-                sys.stdout.write(line)
-                sys.stdout.flush()
+            sys.stdout.write(line)
+            sys.stdout.flush()
         proc.wait(timeout=60)
     except KeyboardInterrupt:
         try:
@@ -136,12 +135,10 @@ def squeeze_text(args: dict) -> str:
       • до    — целевой размер файла ("100КБ", "1МБ", 50000).
                 Итеративно сжимает, пока файл не станет меньше
                 или пока сжатие за итерацию не упадёт ниже 1%.
-      • тихо  — true: не транслировать прогресс, только итог
       • отладка — true: показать выбор авто-подбора качества
     """
     inp = args.get("вход") or args.get("путь") or args.get("файл")
     out = args.get("выход") or args.get("сохранить") or args.get("куда")
-    quiet = bool(args.get("тихо", False))
     debug = bool(args.get("отладка", False))
     do_raw = args.get("до")
 
@@ -173,7 +170,7 @@ def squeeze_text(args: dict) -> str:
 
     if target is None:
         # --- одиночный прогон ---
-        ok, captured, dt = _run_once(src, dst, quiet, debug, no_report=False)
+        ok, captured, dt = _run_once(src, dst, debug, no_report=False)
         if not ok:
             return captured or "❌ сжать_текст: ошибка"
         if not dst.is_file():
@@ -200,12 +197,11 @@ def squeeze_text(args: dict) -> str:
     iteration = 0
     stop_reason = ""
 
-    if not quiet:
-        sys.stdout.write(
-            f"📉 Итеративное сжатие: {_fmt(orig_size)} → "
-            f"цель {_fmt(target)}\n"
-        )
-        sys.stdout.flush()
+    sys.stdout.write(
+        f"📉 Итеративное сжатие: {_fmt(orig_size)} → "
+        f"цель {_fmt(target)}\n"
+    )
+    sys.stdout.flush()
     all_captured.append(
         f"📉 Итеративное сжатие: {_fmt(orig_size)} → цель {_fmt(target)}"
     )
@@ -218,7 +214,7 @@ def squeeze_text(args: dict) -> str:
 
         in_path = src if iteration == 1 else dst
         ok, captured, dt = _run_once(
-            in_path, dst, quiet, debug, no_report=True
+            in_path, dst, debug, no_report=True
         )
         all_captured.append(captured)
         if not ok:
@@ -235,9 +231,8 @@ def squeeze_text(args: dict) -> str:
         line = (f"[i] итерация {iteration}: "
                 f"{_fmt(prev_size)} → {_fmt(cur_size)} "
                 f"(−{comp_pct:.2f}%, {dt:.1f} сек)")
-        if not quiet:
-            sys.stdout.write(line + "\n")
-            sys.stdout.flush()
+        sys.stdout.write(line + "\n")
+        sys.stdout.flush()
         all_captured.append(line)
 
         if cur_size <= target:

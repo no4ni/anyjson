@@ -366,18 +366,94 @@ def create_video(args: dict) -> str:
     # --- запуск ---
     _env = dict(os.environ)
     _env.setdefault("OPENCV_LOG_LEVEL", "SILENT")
+    _env["PYTHONIOENCODING"] = "utf-8"
+    _env["PYTHONUTF8"] = "1"
+    # Не копить вывод CLI в буфере Python — иначе строки прогресса
+    # приходят пачками, а не по мере генерации.
+    _env["PYTHONUNBUFFERED"] = "1"
+    # \r-прогресс: CLI за pipe, isatty=False, форсируем TTY-режим.
+    _env["MORPH_FORCE_TTY"] = "1"
+
+    _STDERR_DROP = ("W0000 ", "INFO: ", "WARNING: Logging before InitGoogle")
+
+    import threading as _threading
+    _proc = None
     try:
-        r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=sys.stderr,
-                           text=True, encoding="utf-8", timeout=3600,
-                           env=_env)
+        # bufsize=0 — не буферизовать на стороне родителя.
+        _proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            bufsize=0, env=_env)
+
+        def _emit(raw, ending):
+            s = raw.decode("utf-8", errors="replace")
+            if any(s.startswith(p) for p in _STDERR_DROP):
+                return
+            try:
+                sys.stderr.buffer.write(raw + ending)
+                sys.stderr.buffer.flush()
+            except Exception:
+                pass
+
+        def _pump_stderr():
+            # os.read(fd, 4096) возвращает сразу, как только есть данные
+            # (в отличие от proc.stderr.read(4096), который блокируется
+            # до заполнения буфера или EOF — из-за этого прошлая попытка
+            # «ничего не показывала»).
+            fd = _proc.stderr.fileno()
+            buf = b""
+            try:
+                while True:
+                    try:
+                        chunk = os.read(fd, 4096)
+                    except OSError:
+                        break
+                    if not chunk:
+                        break
+                    buf += chunk
+                    while True:
+                        _n = buf.find(b"\n")
+                        _r = buf.find(b"\r")
+                        if _n < 0 and _r < 0:
+                            break
+                        if _n >= 0 and (_r < 0 or _n < _r):
+                            line, buf = buf[:_n], buf[_n+1:]
+                            _emit(line, b"\n")
+                        else:
+                            line, buf = buf[:_r], buf[_r+1:]
+                            if buf.startswith(b"\n"):
+                                buf = buf[1:]
+                            _emit(line, b"\r")
+                if buf:
+                    _emit(buf, b"")
+            except Exception:
+                pass
+
+        _t = _threading.Thread(target=_pump_stderr, daemon=True)
+        _t.start()
+        try:
+            for _line in _proc.stdout:
+                try:
+                    _s = _line.decode("utf-8", errors="replace")
+                except Exception:
+                    _s = str(_line)
+                sys.stdout.write(_s)
+                sys.stdout.flush()
+        except Exception:
+            pass
+        _proc.wait(timeout=3600)
+        _t.join(timeout=5)
     except subprocess.TimeoutExpired:
+        try:
+            if _proc:
+                _proc.kill()
+        except Exception:
+            pass
         return "Ошибка: таймаут 1 час"
     except Exception as e:
         return f"Ошибка: {e}"
 
-    if r.returncode != 0:
-        return f"Ошибка (код {r.returncode}): подробности в консоли выше"
-
+    if _proc.returncode != 0:
+        return f"Ошибка (код {_proc.returncode}): подробности в консоли выше"
     if not os.path.isfile(out_path):
         return f"Ошибка: файл не создан: {out_path}"
 

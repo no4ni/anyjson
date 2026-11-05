@@ -190,6 +190,12 @@ def add_text(args: dict) -> str:
       цвет       — цвет текста (#RRGGBB / [r,g,b] / имя)
       обводка    — цвет обводки
       толщина_обводки — 0 по умолч.
+      тень       — тень под текстом. Формат "dx,dy,размытие,цвет"
+                   (например "2,2,4,#000000AA"). Размытие в px,
+                   цвет — #RRGGBB или #RRGGBBAA. Несколько теней —
+                   через ';': "2,2,4,#00000080;0,0,12,#FF8800AA".
+                   true = "2,2,4" (чёрная, альфа 170). Не задана —
+                   без тени.
       прозрачность — 0..1 (по умолч. 1.0)
       поворот    — градусы против часовой (0 по умолч.)
       наклон_x   — тангенс угла (shear по X, 0 по умолч.)
@@ -208,6 +214,8 @@ def add_text(args: dict) -> str:
                           "позиция": "центр_верх", "размер": 64,
                           "цвет": "#FFD700", "обводка": "#000000",
                           "толщина_обводки": 3}}
+      {"написать_текст": {"путь": "C:/in.png", "текст": "Заголовок",
+                          "размер": 96, "тень": "4,4,8,#000000CC"}}
       {"написать_текст": {"путь": "C:/in.png", "текст": "Плакат",
                           "сохранить": "C:/out.png",
                           "перспектива": [[100,100],[600,80],[650,400],[50,450]]}}
@@ -258,6 +266,43 @@ def add_text(args: dict) -> str:
     alpha_v = max(0.0, min(1.0, alpha_v))
     fg_a = (fg[0], fg[1], fg[2], int(255 * alpha_v))
 
+    # --- разбор тени (до pad — _shadow_pad увеличивает холст) ---
+    _shadow_specs = []
+    _shadow_raw = args.get("тень")
+    if _shadow_raw is not None:
+        _sraw = str(_shadow_raw).strip()
+        if _sraw.lower() in ("true", "1", "yes", "on", "да", "y", "t"):
+            _shadow_specs.append((2.0, 2.0, 4.0, (0, 0, 0, 170)))
+        elif _sraw.lower() not in ("false", "0", "no", "off", "нет", "n", "f", ""):
+            for _spec in _sraw.split(";"):
+                _spec = _spec.strip()
+                if not _spec:
+                    continue
+                _parts = [p.strip() for p in _spec.split(",")]
+                try:
+                    _sdx = float(_parts[0]) if len(_parts) > 0 and _parts[0] else 2.0
+                    _sdy = float(_parts[1]) if len(_parts) > 1 and _parts[1] else 2.0
+                    _sbl = float(_parts[2]) if len(_parts) > 2 and _parts[2] else 4.0
+                except (TypeError, ValueError):
+                    return ("❌ Ошибка: тень в формате 'dx,dy,размытие,цвет' "
+                            "через ';', например '2,2,4,#000000AA'")
+                _sclr = (0, 0, 0, 170)
+                if len(_parts) > 3 and _parts[3]:
+                    _pc = _parse_color(_parts[3], (0, 0, 0, 170))
+                    if not isinstance(_pc, (tuple, list)) or len(_pc) < 3:
+                        _pc = (0, 0, 0, 170)
+                    if len(_pc) == 3:
+                        _pc = (_pc[0], _pc[1], _pc[2], 255)
+                    _sclr = (int(_pc[0]), int(_pc[1]),
+                             int(_pc[2]), int(_pc[3]))
+                _shadow_specs.append((_sdx, _sdy, _sbl, _sclr))
+
+    _shadow_pad = 0
+    for _sdx, _sdy, _sbl, _ in _shadow_specs:
+        _shadow_pad = max(
+            _shadow_pad,
+            int(abs(_sdx)) + int(abs(_sdy)) + int(3 * _sbl) + 4)
+
     # bbox текста для точного размера слоя
     _tmp = Image.new("RGBA", (1, 1), (0, 0, 0, 0))
     _d = ImageDraw.Draw(_tmp)
@@ -265,12 +310,12 @@ def add_text(args: dict) -> str:
         bbox = _d.textbbox((0, 0), text, font=font, stroke_width=stroke_w)
     except Exception:
         bbox = (0, 0, font_size * max(1, len(text)), font_size)
-    pad = stroke_w + 2
+    pad = stroke_w + 2 + _shadow_pad
     tw = max(1, bbox[2] - bbox[0] + pad * 2)
     th = max(1, bbox[3] - bbox[1] + pad * 2)
 
-    layer = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
-    ld = ImageDraw.Draw(layer)
+    _text_layer = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
+    ld = ImageDraw.Draw(_text_layer)
     stroke_fill = (stroke_color[0], stroke_color[1], stroke_color[2],
                    int(255 * alpha_v)) if stroke_color else None
     try:
@@ -278,6 +323,26 @@ def add_text(args: dict) -> str:
                 fill=fg_a, stroke_width=stroke_w, stroke_fill=stroke_fill)
     except Exception as e:
         return "❌ Не удалось нарисовать текст: " + str(e)
+
+    if _shadow_specs:
+        try:
+            from PIL import ImageFilter as _PILFilter
+        except ImportError:
+            _PILFilter = None
+        _combined = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
+        _text_alpha = _text_layer.getchannel("A")
+        for _sdx, _sdy, _sbl, _sclr in _shadow_specs:
+            _sh_alpha = _text_alpha
+            if _sbl > 0 and _PILFilter is not None:
+                _sh_alpha = _sh_alpha.filter(
+                    _PILFilter.GaussianBlur(float(_sbl)))
+            _sh = Image.new("RGBA", (tw, th), _sclr)
+            _sh.putalpha(_sh_alpha)
+            _combined.alpha_composite(_sh, (int(_sdx), int(_sdy)))
+        _combined.alpha_composite(_text_layer, (0, 0))
+        layer = _combined
+    else:
+        layer = _text_layer
 
     persp = args.get("перспектива") or args.get("perspective")
     persp_applied = False

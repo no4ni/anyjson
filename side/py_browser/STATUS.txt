@@ -1,0 +1,6 @@
+работает
+Проверено 30.10.2026: оба режима.
+  - канал macreative: 78 статей в output/macreative/
+  - одна статья по URL: проверено на своей (a/aqq7hdEaxmO6oEwN)
+    и чужой (a/at_1Jc4BhR87ofAQ) — обе скачались.
+Зависимости: playwright, aiofiles, chromium.

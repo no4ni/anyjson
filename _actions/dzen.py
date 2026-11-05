@@ -222,3 +222,56 @@ def read_dzen_article(args):
     if nav:
         parts.append("\n\n" + "\n".join(nav))
     return "".join(parts)
+
+
+@register(["дзен_статья", "скачать_статью_дзен", "dzen_article"])
+def scrape_single_dzen(args):
+    """Скачать одну статью Дзена по URL."""
+    args = args or {}
+    url = args.get("url") or args.get("ссылка") or args.get("адрес")
+    if not url:
+        return "Укажи url: {\"дзен_статья\": {\"url\": \"https://dzen.ru/a/...\"}}"
+    url = str(url).strip()
+    if not url.startswith(("http://", "https://")):
+        return "URL должен начинаться с http:// или https://"
+    if not ("/a/" in url or "/news/story/" in url):
+        return "Это не похоже на URL статьи. Нужен /a/<id> или /news/story/<id>."
+    if not SCRAPER.exists():
+        return f"❌ Скрипт не найден: {SCRAPER}"
+    try:
+        timeout = int(args.get("таймаут", 120))
+    except (TypeError, ValueError):
+        timeout = 120
+
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(SCRAPER), url],
+            cwd=str(PY_BROWSER),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+            env=env,
+        )
+    except subprocess.TimeoutExpired:
+        return f"⏱ Таймаут ({timeout} сек)"
+    except Exception as e:
+        return f"❌ Ошибка запуска: {e}"
+
+    out = (proc.stdout or "") + chr(10) + (proc.stderr or "")
+    lines = [l.strip() for l in out.split(chr(10)) if l.strip()]
+    tail = chr(10).join(lines[-10:])
+    if proc.returncode == 0:
+        # найдём сохранённый файл в output/_single
+        single_dir = PY_BROWSER / "output" / "_single"
+        saved = ""
+        if single_dir.exists():
+            files = sorted(single_dir.glob("*.txt"), key=lambda f: f.stat().st_mtime, reverse=True)
+            if files:
+                saved = f"Сохранено: {files[0].name}"
+        return f"✅ Статья скачана.{chr(10)}{saved}{chr(10)}{tail}"
+    return f"⚠️ Скрапер завершился с кодом {proc.returncode}.{chr(10)}{tail}"

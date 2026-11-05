@@ -72,6 +72,9 @@ PIPER_VOICES      = resolve_path(CONFIG["paths"]["piper_voices"])
 FFPROBE_EXE       = resolve_path(CONFIG["paths"]["ffprobe_exe"])
 FFMPEG_EXE        = resolve_path(CONFIG["paths"]["ffmpeg_exe"])
 
+# Whisper (модель в JerichoSoft, не в Jericho — правило "только наше")
+WHISPER_DIR       = resolve_path(CONFIG["paths"]["whisper_dir"])
+
 WIKI_TEXTS_DIR = Path(CONFIG["paths"]["wiki_texts_dir"])
 _TOR_PATH = Path(CONFIG["paths"]["tor_executable"])
 _TORRC = Path(CONFIG["paths"]["torrc"])
@@ -309,22 +312,7 @@ if not AGENT_NAME:
     print("Пустое имя. Завершение.")
     sys.exit(1)
 
-_banner1 = f"Привет, {AGENT_NAME}! Я с радостью буду выполнять твои JSON."
-_banner2 = (
-    "Формат:\n"
-    "[произвольный текст]\n"
-    "```text\n"
-    '{"имя_команды": {"параметр": "значение"}}\n'
-    "   ↑ подставь ЛЮБОЕ своё\n"
-    "```\n"
-    "[произвольный текст]\n\n"
-    "Несколько команд — через ||| или через команду \"параллельно\"."
-)
-# Баннер печатает сам anyjson.py в нужный момент.
-# Здесь только определяем строки — чтобы не дублировать при импорте.
-if __name__ == "__main__":
-    print(_banner1)
-    print(_banner2)
+
 
 MY_DIR = PROFILES_DIR / AGENT_NAME / "memory"
 MY_DIR.mkdir(parents=True, exist_ok=True)

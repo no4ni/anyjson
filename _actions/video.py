@@ -688,15 +688,15 @@ def watch_video(args):
     if isinstance(result, str) and result.lstrip().startswith("[BUF]"):
         return "[BUF] Картинка в буфере обмена"
 
-    # Если субтитров нет — подсказать кадр+субтитр с ручной секундой
+    # Если субтитров нет — watchtogether_cli не умеет --без-субтитра.
+    # Делегируем в frame_with_subtitle (videohear_cli, у него есть флаг).
     _low = (result or "").lower()
     if "субтитр" in _low and ("не найден" in _low or "not found" in _low):
-        _v = str(video).replace(chr(92), "/")
-        return (
-            f"ℹ️ Субтитры не найдены рядом с {video}.\n"
-            f"Кадр по секунде — командой «кадр+субтитр»:\n"
-            f'{{"кадр+субтитр": {{"путь": "{_v}", "секунда": 1}}}}'
-        )
+        # Без субтитров нет реплик, поэтому берём кадр из середины видео,
+        # чтобы не попасть на чёрный экран в начале.
+        _dur, _fps = _probe_video_duration(str(video))
+        _sec = (_dur / 2.0) if _dur else 5.0
+        return frame_with_subtitle({"путь": str(video), "секунда": _sec, "субтитр": False})
 
     return result
 
@@ -784,6 +784,8 @@ def download_video(args):
         return _z
 
     import yt_dlp
+    from yt_dlp.utils._utils import _UnsafeExtensionError
+    _UnsafeExtensionError._enabled = False
 
     url = (args.get("url") or args.get("ссылка")
            or args.get("цель") or args.get("target") or "").strip()
@@ -830,10 +832,11 @@ def download_video(args):
         "writeautomaticsub": True,
         "subtitleslangs": [lang],
         "subtitlesformat": "srt",
+        "convertsubtitles": "srt",
         "embedsubtitles": False,
         "outtmpl": str(out_dir / "%(title)s.%(ext)s"),
-        "quiet": True,
         "no_warnings": True,
+       "compat_opts": ["allow-unsafe-ext"],
     }
 
     try:
@@ -853,6 +856,20 @@ def download_video(args):
             found += list(out_dir.glob("*" + ext))
         found.sort(key=lambda p: p.stat().st_mtime, reverse=True)
         return found
+
+    # Исправляем странное расширение субтитров VK (.ru.Ru AUTO -> .srt)
+    for f in out_dir.glob("*"):
+        if f.is_file() and (f.name.endswith(".ru.Ru AUTO") or f.name.endswith(".Ru AUTO")):
+            new_srt = f.with_suffix(".srt")
+            try:
+                with open(f, "r", encoding="utf-8", errors="ignore") as fh:
+                    if fh.read(10).startswith("WEBVTT"):
+                        _vtt_to_srt(f, new_srt)
+                        f.unlink()
+                    else:
+                        f.rename(new_srt)
+            except Exception:
+                pass
 
     media = _newest(video_exts)
     subs = _newest(sub_exts)
@@ -911,6 +928,8 @@ def download_subtitles(args):
                              "все_языки": true}}
     """
     import yt_dlp
+    from yt_dlp.utils._utils import _UnsafeExtensionError
+    _UnsafeExtensionError._enabled = False
     from _config import MY_DIR
 
     url = (args.get("url") or args.get("ссылка")
@@ -958,8 +977,8 @@ def download_subtitles(args):
         "writeautomaticsub": auto,
         "subtitlesformat": sub_fmt,
         "outtmpl": str(out_dir / "%(title)s.%(ext)s"),
-        "quiet": True,
         "no_warnings": True,
+       "compat_opts": ["allow-unsafe-ext"],
     }
     if not all_langs:
         ydl_opts["subtitleslangs"] = langs

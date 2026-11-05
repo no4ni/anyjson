@@ -14,7 +14,33 @@ def _ffmpeg():
     return "ffmpeg"
 
 
-def _overlay_nabor(args, video, out_arg, replace):
+def _ffprobe():
+    # Ищем ffprobe в PATH
+    return "ffprobe"
+
+
+def _probe_duration(path):
+    """Длительность медиафайла в секундах или None."""
+    try:
+        r = subprocess.run(
+            [_ffprobe(), "-v", "error", "-show_entries",
+             "format=duration", "-of",
+             "default=noprint_wrappers=1:nokey=1", str(path)],
+            capture_output=True, text=True, encoding="utf-8", timeout=60)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    if r.returncode != 0:
+        return None
+    try:
+        d = float((r.stdout or "").strip())
+    except ValueError:
+        return None
+    if d <= 0:
+        return None
+    return d
+
+
+def _overlay_nabor(args, video, out_arg, replace, obrezat=False):
     """Наложить набор звуков на видео."""
     nabor = args.get("набор") or args.get("sounds")
     if not isinstance(nabor, list) or not nabor:
@@ -88,8 +114,27 @@ def _overlay_nabor(args, video, out_arg, replace):
 
     cmd += ["-filter_complex", ";".join(filters)]
     cmd += ["-map", "0:v:0", "-map", "[aout]"]
-    cmd += ["-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-            "-shortest", str(out_path)]
+    cmd += ["-c:v", "copy", "-c:a", "aac", "-b:a", "192k"]
+
+    # Обрезка: при замене дорожки аудио — только звуки, поэтому
+    # -shortest уже даёт обрезку по концу последнего звука. При
+    # смешении оригинал тянется на всё видео — режем явным -t.
+    if obrezat and not replace:
+        target = 0.0
+        for spp, dms, _ in items:
+            d = _probe_duration(spp)
+            if d is None:
+                target = None
+                break
+            target = max(target, dms / 1000.0 + d)
+        if target and target > 0:
+            cmd += ["-t", ("%.3f" % target)]
+        else:
+            cmd += ["-shortest"]
+    else:
+        cmd += ["-shortest"]
+
+    cmd += [str(out_path)]
 
     try:
         r = subprocess.run(cmd, capture_output=True, text=True,
@@ -123,7 +168,7 @@ def overlay_sound(args: dict) -> str:
     Параметры:
       видео    — путь к видеофайлу (обязательно)
       звук     — путь к аудиофайлу (обязательно)
-      путь     — куда сохранить (иначе MY_DIR/video_sound/<TS>.<ext>)
+      путь / сохранить — куда (иначе MY_DIR/video_sound/<TS>.<ext>)
       заменить — true (по умолч.): заменить аудиодорожку;
                   false: смешать с оригинальным звуком
       задержка — сдвиг звука вправо, сек (0 — со старта)
@@ -132,15 +177,22 @@ def overlay_sound(args: dict) -> str:
                   При наборе одиночные звук/задержка игнорируются.
                   громкость — множитель (1.0 = как есть),
                   звуки суммируются без нормализации.
+      обрезать — true: обрезать видео по длине звука
+                  (для «набор» — по концу последнего звука).
+                  При замене дорожки без задержки -shortest уже
+                  стоит по умолчанию; флаг включает обрезку при
+                  задержке > 0 и в режиме смешения.
+                  По умолчанию false.
     """
     video = args.get("видео") or args.get("video")
-    out_arg = args.get("путь")
+    out_arg = args.get("путь") or args.get("сохранить")
     replace = bool(args.get("заменить", True))
+    obrezat = bool(args.get("обрезать", False))
 
     if args.get("набор") is not None or args.get("sounds") is not None:
         if not video:
             return "Ошибка: не указан видео"
-        return _overlay_nabor(args, video, out_arg, replace)
+        return _overlay_nabor(args, video, out_arg, replace, obrezat)
 
     sound = args.get("звук") or args.get("аудио") or args.get("wav") or args.get("mp3")
     try:
@@ -179,8 +231,10 @@ def overlay_sound(args: dict) -> str:
                    "-i", str(sp),
                    "-filter_complex", "[1:a]adelay=" + str(delay_ms) + "|" + str(delay_ms) + "[a]",
                    "-map", "0:v:0", "-map", "[a]",
-                   "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-                   str(out_path)]
+                   "-c:v", "copy", "-c:a", "aac", "-b:a", "192k"]
+            if obrezat:
+                cmd += ["-shortest"]
+            cmd += [str(out_path)]
         else:
             # -shortest: если звук длиннее видео — обрезаем по короткому.
             cmd = [ffmpeg, "-y",
@@ -198,16 +252,24 @@ def overlay_sound(args: dict) -> str:
                    "-filter_complex",
                    "[0:a]anull[a0];[1:a]adelay=" + str(delay_ms) + "|" + str(delay_ms) + "[a1];[a0][a1]amix=inputs=2:duration=first[a]",
                    "-map", "0:v:0", "-map", "[a]",
-                   "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-                   str(out_path)]
+                   "-c:v", "copy", "-c:a", "aac", "-b:a", "192k"]
+            if obrezat:
+                sdur = _probe_duration(sp)
+                if sdur is not None:
+                    cmd += ["-t", ("%.3f" % (delay_sec + sdur))]
+            cmd += [str(out_path)]
         else:
             cmd = [ffmpeg, "-y",
                    "-i", str(vp),
                    "-i", str(sp),
                    "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=first[a]",
                    "-map", "0:v:0", "-map", "[a]",
-                   "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-                   str(out_path)]
+                   "-c:v", "copy", "-c:a", "aac", "-b:a", "192k"]
+            if obrezat:
+                sdur = _probe_duration(sp)
+                if sdur is not None:
+                    cmd += ["-t", ("%.3f" % sdur)]
+            cmd += [str(out_path)]
 
     try:
         r = subprocess.run(cmd, capture_output=True, text=True,

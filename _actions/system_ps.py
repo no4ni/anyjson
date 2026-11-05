@@ -101,7 +101,7 @@ def _split_ps_links(command):
                 buf = []
                 i += 2
                 continue
-            if ch in '|;':
+            if ch in '|;\n':
                 parts.append(''.join(buf))
                 buf = []
                 i += 1
@@ -116,6 +116,91 @@ def _split_ps_links(command):
     if buf:
         parts.append(''.join(buf))
     return [x.strip() for x in parts if x.strip()]
+
+
+_PS_WRAPPERS = {"powershell", "powershell.exe", "pwsh", "pwsh.exe"}
+
+
+def _strip_ps_quotes(s: str) -> str:
+    s = s.strip()
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in "\"'":
+        q = s[0]
+        inner = s[1:-1]
+        if q == '"':
+            inner = inner.replace('\\"', '"').replace('`"', '"')
+        else:
+            inner = inner.replace("''", "'")
+        return inner
+    return s
+
+
+def _unwrap_powershell(command: str):
+    """Снимает обёртку `powershell [-flags] -c "..."` / `pwsh ...`.
+
+    Возвращает (тело, распознана_ли_обёртка):
+      (None, True)   — обёртка распознана, но небезопасна (блок);
+      (тело, True)   — обёртка распознана, тело извлечено;
+      (команда, False) — обёртки нет, всё как было.
+    """
+    s = command.strip()
+    if not s:
+        return command, False
+    parts = s.split(None, 1)
+    head = parts[0].lower().rstrip(",;")
+    head = head.rsplit("\\\\", 1)[-1].rsplit("/", 1)[-1]
+    if head not in _PS_WRAPPERS:
+        return command, False
+    rest = parts[1] if len(parts) > 1 else ""
+
+    no_value = {
+        "-noprofile", "-nologo", "-noninteractive", "-sta", "-mta",
+        "-noexit", "-login", "-noprofileloadtime",
+    }
+    with_value = {
+        "-executionpolicy", "-windowstyle", "-version",
+        "-inputformat", "-outputformat", "-workingdirectory",
+        "-settingsfile", "-configurationname", "-psconsolefile",
+        "-custompipename",
+    }
+    command_flags = {"-command", "-c", "-commandwithargs"}
+    file_flags = {"-file", "-f"}
+    encoded_flags = {"-encodedcommand", "-e", "-ec", "-en"}
+
+    i = 0
+    n = len(rest)
+    while i < n:
+        while i < n and rest[i] in " \\t":
+            i += 1
+        if i >= n:
+            break
+        j = i
+        while j < n and rest[j] not in " \\t":
+            j += 1
+        tok = rest[i:j]
+        tok_l = tok.lower().rstrip(",;")
+        if tok_l in file_flags or tok_l in encoded_flags:
+            return None, True
+        if tok_l in command_flags:
+            body = rest[j:].strip()
+            if not body:
+                return None, True
+            body = _strip_ps_quotes(body)
+            if not body:
+                return None, True
+            return body, True
+        if tok_l in no_value:
+            i = j
+            continue
+        if tok_l in with_value:
+            k = j
+            while k < n and rest[k] in " \\t":
+                k += 1
+            while k < n and rest[k] not in " \\t":
+                k += 1
+            i = k
+            continue
+        return None, True
+    return None, True
 
 
 @register(["запуск", "запустить", "терминал", "шелл"])
@@ -136,10 +221,51 @@ def run_ps(args):
     if not command:
         return "Пустая команда."
 
-    if re.search(r'(^|\s|/|\\)(python|py)(\.exe)?(\s|$)', command, re.IGNORECASE):
+    # Обёртка `powershell -NoProfile -c "..."` / `pwsh ...` — снимаем:
+    # «запуск» и так PowerShell, но людям привычнее писать с обёрткой.
+    # Внутренняя команда ниже проверяется тем же whitelist'ом.
+    # -File / -EncodedCommand / без -c — блок: скрипт не проверить.
+    _orig_command = command
+    command, _wrapped = _unwrap_powershell(command)
+    if _wrapped:
+        if command is None:
+            _log_run(_orig_command, "BLOCKED", "ps-wrapper-unsafe")
+            return ("⛔ Обёртка powershell с -File/-EncodedCommand или без -c "
+                    "запрещена: внутреннюю команду нельзя проверить whitelist'ом. "
+                    "Передай команду прямо, без обёртки: "
+                    '{"запуск": {"команда": "Get-ChildItem ..."}}')
+        command = command.strip()
+        if not command:
+            return "Пустая команда после снятия обёртки powershell."
+
+    if re.search(r'(^|\s|/|\\)(python\d*|py\d*|питон)(\.exe)?(\s|$)', command, re.IGNORECASE):
         _log_run(command, "BLOCKED", "python-in-ps")
-        return ("⛔ Запуск Python через PowerShell запрещён. "
-                "Используйте 'питон'.")
+        # Собираем готовый {"питон": {...}} из самой команды (если получится).
+        _py_example = ""
+        try:
+            import shlex as _shlex_py
+            _toks = _shlex_py.split(command, posix=False)
+            if _toks:
+                _toks = _toks[1:]
+            while _toks and _toks[0].startswith("-"):
+                _toks = _toks[1:]
+            if _toks:
+                _script = _toks[0].strip('"\'')
+                _args = [t.strip('"\'') for t in _toks[1:]]
+                import json as _json_py
+                _obj = {"питон": {"скрипт": _script}}
+                if _args:
+                    _obj["питон"]["аргументы"] = _args
+                _py_example = ("\n   Готовый JSON для ввода в anyjson:\n     "
+                               + _json_py.dumps(_obj, ensure_ascii=False))
+        except Exception:
+            pass
+        return ("⛔ Запуск Python через PowerShell запрещён.\n"
+                "   «питон» — это НЕ PowerShell-команда, а встроенная JSON-команда anyjson.\n"
+                "   Не пиши её в поле «команда» — PowerShell такого файла не найдёт.\n"
+                "   Формат: {\"питон\": {\"скрипт\": \"путь.py\", \"аргументы\": [\"arg1\", \"arg2\"]}}\n"
+                "   Параметры: скрипт, аргументы (список), таймаут, в_файл."
+                + _py_example)
 
     ALLOWED = {
         "dir", "get-childitem", "ls", "gci",
@@ -171,6 +297,10 @@ def run_ps(args):
         # MEGAcmd — только безобидное (версия, справка).
         # Никаких mega-whoami/ls/pwd/du/find/mount: утечка персональных данных.
         "mega-version", "mega-help",
+        # ffprobe, ffmpeg — пути резолвятся через config.paths (защита от PATH).
+        "ffprobe", "ffprobe.exe",
+        "ffmpeg", "ffmpeg.exe",
+        "nvidia-smi", "nvidia-smi.exe",
     }
 
     # Дополнительная проверка для git: только безопасные подкоманды
@@ -258,6 +388,20 @@ def run_ps(args):
         link = link.strip()
         if not link:
             continue
+        # `$var = RHS` — присваивание. Проверяем RHS, а не $var.
+        # Литерал (строка, число, @(...), @{...}, $true/$false/$null,
+        # голая ссылка $other) — не команда, пропускаем.
+        _m_assign = re.match(r'^\$[\w:]+\s*=\s*(.+)$', link, re.DOTALL)
+        if _m_assign:
+            _rhs = _m_assign.group(1).strip()
+            if (not _rhs
+                    or re.match(r"^[\"']", _rhs)
+                    or re.match(r"^-?\d", _rhs)
+                    or re.match(r"^\$(true|false|null)\b", _rhs, re.I)
+                    or re.match(r"^@[\(\{]", _rhs)
+                    or re.match(r"^\$[\w:]+\s*$", _rhs)):
+                continue
+            link = _rhs
         # берём первый непустой токен (пропускаем ведущий & / & "$env:...")
         base = ""
         _base_raw = ""
@@ -278,6 +422,63 @@ def run_ps(args):
                 continue
         if base not in ALLOWED:
             _log_run(command, "BLOCKED", f"not-in-whitelist:{base}")
+            # cmd.exe-встроенные (for, if, set, call...) — PowerShell их не знает
+            _CMD_BUILTINS = {"for", "if", "goto", "call", "set", "shift",
+                             "exit", "pause", "start", "title", "chcp", "cls"}
+            _bl = base.lower().replace("-", "_")
+            if _bl in _CMD_BUILTINS:
+                _cl_check = command.lower()
+                if _bl == "for" and ("%~z" in _cl_check or " in (" in _cl_check):
+                    _hint = ('💡 Получить размер файла в PowerShell:\n'
+                             '   (Get-Item "D:\\path\\file.mp4").Length')
+                elif _bl == "for":
+                    _hint = ('💡 for — синтаксис cmd.exe. В PowerShell:\n'
+                             '   foreach ($x in $list) { ... }\n'
+                             '   $list | ForEach-Object { ... }')
+                elif _bl == "if":
+                    _hint = ('💡 if — синтаксис cmd.exe. В PowerShell:\n'
+                             '   if (Test-Path "файл") { ... }\n'
+                             '   if ($a -eq $b) { ... }')
+                elif _bl == "set":
+                    _hint = ('💡 set — синтаксис cmd.exe. В PowerShell:\n'
+                             '   $var = "value"\n'
+                             '   $env:VAR = "value"')
+                elif _bl == "start":
+                    _hint = ('💡 start — синтаксис cmd.exe. В PowerShell:\n'
+                             '   Start-Process "программа"')
+                elif _bl == "call":
+                    _hint = ('💡 call — синтаксис cmd.exe. В PowerShell:\n'
+                             '   & "script.ps1"')
+                else:
+                    _hint = ('💡 Это встроенная команда cmd.exe. '
+                             'В PowerShell используй соответствующий командлет.')
+                return f"⛔ Команда \"{base}\" — синтаксис cmd.exe, а не PowerShell.\n{_hint}"
+
+            # New-Object: COM/.NET — почти всегда есть штатная команда
+            if base.lower().replace("-", "_") == "new_object":
+                _cl = command.lower()
+                _hints = []
+                if any(k in _cl for k in ("wscript.shell", "createshortcut", ".lnk")):
+                    _hints.append('ярлык .lnk → {"создать_ярлык": {...}}'
+                                  ' (справка: {"справка": "создать_ярлык"})')
+                if any(k in _cl for k in ("net.webclient", "downloadstring",
+                                          "downloadfile", "invoke-webrequest")):
+                    _hints.append('скачать файл → '
+                                  '{"скачать": {"url": "https://...", '
+                                  '"сохранить_как": "E:/file.bin"}}')
+                if any(k in _cl for k in ("speechsynthesizer", "spvoice",
+                                          "sapi.spvoice", "system.speech")):
+                    _hints.append('озвучить текст → '
+                                  '{"озвучить": {"текст": "Привет"}}')
+                if _hints:
+                    return ("⚠️ Команда \"new-object\" недоступна через "
+                            "\"запуск\" (не в белом списке).\n"
+                            "Похоже, через COM/.NET ты хочешь одно из этого — "
+                            "есть встроенные команды:\n  • "
+                            + "\n  • ".join(_hints)
+                            + "\nЕсли ничего не подошло — уточни у оператора "
+                              'или посмотри {"список_команд": {}}.')
+
             # подсказка: похожая команда + 3 случайные из реестра
             import random as _rnd
             from _actions import HANDLERS
@@ -290,6 +491,7 @@ def run_ps(args):
                             "-type directory", "-type dir")
             _cmd_low = command.lower()
             _is_dir_create = any(m in _cmd_low for m in _dir_markers)
+            extra_cmds = ""
             if base_low in ("type", "get_content", "getcontent",
                             "cat", "gc"):
                 guess = "читать"
@@ -298,6 +500,33 @@ def run_ps(args):
                     guess = "создать_папку"
                 else:
                     guess = "добавить"
+            elif base_low in ("cmd", "cmd.exe"):
+                # cmd /c del ... — подсказать встроенные аналоги
+                _cmd_heuristics = [
+                    (("del ", "erase ", "del/", "erase/"), "удалить_файл",
+                     '{"удалить_файл": {"путь": "E:/..."}}'),
+                    (("rmdir ", "rd ", "rmdir/", "rd/"), "удалить_папку",
+                     '{"удалить_папку": {"путь": "E:/..."}}'),
+                    (("move ",), "переместить",
+                     '{"переместить": {"откуда": "E:/a", "куда": "E:/b"}}'),
+                    (("copy ", "xcopy ", "robocopy "), "копировать",
+                     '{"копировать": {"откуда": "E:/a", "куда": "E:/b"}}'),
+                    (("mkdir ", "md "), "создать_папку",
+                     '{"создать_папку": {"путь": "E:/new"}}'),
+                    (("type ",), "читать",
+                     '{"читать": {"путь": "E:/file.txt"}}'),
+                    (("dir ", "dir/"), "список_файлов",
+                     '{"список_файлов": {"путь": "E:/"}}'),
+                ]
+                for _keys, _name, _example in _cmd_heuristics:
+                    if any(k in _cmd_low for k in _keys):
+                        guess = _name
+                        extra_cmds = (
+                            '\n\n💡 Команда cmd → встроенная команда:\n  '
+                            + _example
+                            + '\nСправка: {"справка": "' + _name + '"}'
+                        )
+                        break
             else:
                 for _alias, _target in (
                     ("remove_item", "удалить_файл"),
@@ -341,10 +570,40 @@ def run_ps(args):
             elif guess:
                 head = f'Возможно, вы имели ввиду команду "{guess}".'
             else:
-                head = (f'Команда \"{base}\" недоступна через \"запуск\". '
-                        f'Попробуй через встроенные команды.')
+                _CMD_ONLY = {"del", "erase", "copy", "move", "mkdir", "md",
+                             "rmdir", "rd", "ren", "rename", "type", "xcopy",
+                             "robocopy", "more", "tree", "attrib", "subst",
+                             "assoc", "ftype", "fc", "comp"}
+                if base.lower() in _CMD_ONLY:
+                    head = (f'Команда \"{base}\" недоступна через \"запуск\" (это PowerShell, а не cmd.exe). '
+                            f'Попробуй через встроенные команды.')
+                else:
+                    _py_hint = '{"питон": {"скрипт": "demo.py", "аргументы": ["arg1"]}}'
+                    head = (f'Команда \"{base}\" недоступна через \"запуск\" (не в белом списке). '
+                            f'Используй встроенные команды или {_py_hint}.')
             return (f"⚠️ {head}\n"
-                    f"Другие команды:\n{tail}")
+                    f"Другие команды:\n{tail}{extra_cmds}")
+
+    # Резолв ffmpeg/ffprobe через config.paths (защита от PATH-подмены).
+    try:
+        from _config import ffmpeg_exe as _ffm, ffprobe_exe as _ffp
+        if _ffm or _ffp:
+            def _repl_exe(m):
+                sep = m.group(1)
+                prog = m.group(2).lower()
+                if prog in ("ffmpeg", "ffmpeg.exe") and _ffm:
+                    return f'{sep} "{_ffm}"'
+                if prog in ("ffprobe", "ffprobe.exe") and _ffp:
+                    return f'{sep} "{_ffp}"'
+                return m.group(0)
+            command = re.sub(
+                r'(^|[|;&])\s*(ffmpeg|ffprobe)(?:\.exe)?(?=\s|$)',
+                _repl_exe,
+                command,
+                flags=re.IGNORECASE
+            )
+    except ImportError:
+        pass
 
     command = fix_powershell_body(command)
 
