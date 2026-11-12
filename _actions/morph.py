@@ -123,7 +123,7 @@ def _load_canvas(frames, max_h):
     return imgs, (w0, h0), None
 
 
-@register(["создать_видео"])
+@register(["создать_видео", "морф"])
 def create_video(args: dict) -> str:
     """Создать видео из ключевых кадров.
 

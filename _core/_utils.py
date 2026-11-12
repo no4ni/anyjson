@@ -334,3 +334,38 @@ def wrap_json_hints(text):
         _flush()
         parts[i] = "\n".join(out)
     return "".join(parts)
+
+
+def not_a_file_msg(path, extra=""):
+    """Сообщение «это папка, а не файл» + шаблоны список_файлов.
+
+    path  — исходный путь (str или Path).
+    extra — необязательная строка контекста после заголовка
+            (например, «бэкап папок не поддерживается — только файлы»).
+
+    Если path — не папка (битый симлинк, сокет, устройство),
+    возвращает старое короткое «❌ Это не файл: <path>».
+    """
+    from pathlib import Path as _P
+    _p = str(path).replace("\\", "/")
+    try:
+        _is_dir = _P(_p).is_dir()
+    except Exception:
+        _is_dir = False
+    if not _is_dir:
+        if extra:
+            return f"❌ Это не файл: {_p}\n{extra}"
+        return f"❌ Это не файл: {_p}"
+    _lines = [f"❌ Это папка, а не файл: {_p}"]
+    if extra:
+        _lines.append(extra)
+    _lines.append("")
+    _lines.append("💡 Посмотреть содержимое:")
+    _lines.append("```text")
+    _lines.append(f'{{"список_файлов": {{"путь": "{_p}"}}}}')
+    _lines.append("```")
+    _lines.append("   Рекурсивно (с подпапками):")
+    _lines.append("```text")
+    _lines.append(f'{{"список_файлов": {{"путь": "{_p}", "рекурсивно": true}}}}')
+    _lines.append("```")
+    return "\n".join(_lines)

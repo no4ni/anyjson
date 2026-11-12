@@ -198,6 +198,10 @@ _PARAM_ALIAS_PAIRS = [
     ("новое_имя", "имя"),
     ("старый", "найти"),
     ("новый", "заменить"),
+    ("старый_текст", "найти"),
+    ("новый_текст", "заменить"),
+    ("папка", "путь"),
+    ("искать", "ключевые_слова"),
 ]
 
 
@@ -510,7 +514,15 @@ def _wrap_error(action, result):
                      or "not available" in _low
                      or "not implemented" in _low
                      or "не реализован" in _low
-                     or action in ("помощь", "справка", "хелп", "help"))
+                     or action in ("помощь", "справка", "хелп", "help")
+                     # ответ уже самодостаточен: перенаправление на "питон"
+                     # или cmd-подсказка — справка "запуска" только мешает
+                     or "это python-скрипт" in _low
+                     or "синтаксис cmd.exe" in _low
+                     # ответ уже самодостаточен: это папка, а не файл
+                     # (read_full / заменить_текст / бэкапы на директории) —
+                     # внутри готовый шаблон список_файлов
+                     or "это папка, а не файл" in _low)
         if not _skip_doc:
             _doc = _doc_for(action, error_text=msg)
             if _doc:
@@ -1117,7 +1129,7 @@ def _params_are_safe(params, name=None):
 # "в_контекст": false — system_parallel сольёт их в один вызов.
 _READ_FULL_SOLO = {
     "прочитать_полностью", "читать_полностью", "открыть", "показать_файл",
-    "посмотреть_файл", "посмотреть_картинку",
+    "посмотреть_файл", "посмотреть_картинку", "показать_картинку",
     "рендер", "отрендерить", "svg_в_буфер", "рендер_svg",
 }
 
@@ -1640,8 +1652,11 @@ def _process_command_input_inner(input_str: str, pre_notes=None) -> None:
         print(color_red("\nРезультаты:"))
         for _n in _pre_notes:
             print(color_yellow("   " + _n))
-        for i, res in enumerate(results, 1):
-            print(f"{i}. {res}")
+        if len(results) > 1:
+            for i, res in enumerate(results, 1):
+                print(f"{i}. {res}")
+        else:
+            print(results[0])
         if has_buf:
             # в буфере уже что-то (картинка/файл) — текст не копируем,
             # чтобы не затереть
@@ -1649,7 +1664,10 @@ def _process_command_input_inner(input_str: str, pre_notes=None) -> None:
         _notes_text = ""
         if _pre_notes:
             _notes_text = "".join("   " + n + "\n" for n in _pre_notes) + "\n"
-        plain_results = _notes_text + "\n".join([f"{i}. {res}" for i, res in enumerate(results, 1)])
+        if len(results) > 1:
+            plain_results = _notes_text + "\n".join([f"{i}. {res}" for i, res in enumerate(results, 1)])
+        else:
+            plain_results = _notes_text + "\n".join(results)
         try:
             pyperclip.copy(plain_results)
             print(color_yellow("📋 Результаты скопированы в буфер обмена."))

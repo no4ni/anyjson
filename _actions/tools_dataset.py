@@ -213,8 +213,21 @@ def _find_in_single_file(path, search_name, search_content, search_all,
             _items = [_raw]
         for _k in _items:
             _s = str(_k).replace("*", "").replace("?", "").strip()
-            if _s:
-                _keywords.append(_s)
+            if not _s:
+                continue
+            _keywords.append(_s)
+            # Вариант без обратных слэшей и с / (для поиска по коду)
+            if "\\" in _s:
+                _alt = _s.replace("\\", "")
+                if _alt and _alt not in _keywords:
+                    _keywords.append(_alt)
+                _alt2 = _s.replace("\\", "/")
+                if _alt2 and _alt2 not in _keywords:
+                    _keywords.append(_alt2)
+            elif "/" in _s:
+                _alt = _s.replace("/", "")
+                if _alt and _alt not in _keywords:
+                    _keywords.append(_alt)
 
     if not _keywords:
         _p = str(path).replace(chr(92), "/")
@@ -265,6 +278,28 @@ def _find_in_single_file(path, search_name, search_content, search_all,
     return out.rstrip(_NL)
 
 # ---------- поиск файлов ----------
+def _expand_search_variants(kw):
+    """Варианты поискового ключа: разделители путей и снятие эскейпов.
+
+    Если в kw есть обратный слэш или /, добавляются варианты: без
+    них, с заменой / <-> обратный слэш, и комбинированные.
+    """
+    if not kw:
+        return [kw]
+    variants = {kw}
+    if "\\" in kw:
+        variants.add(kw.replace("\\", ""))
+        variants.add(kw.replace("\\", "/"))
+    if "/" in kw:
+        variants.add(kw.replace("/", "\\"))
+    if "\\" in kw or "/" in kw:
+        no_sep = kw
+        for ch in ("\\", "/"):
+            no_sep = no_sep.replace(ch, "")
+        variants.add(no_sep)
+    return [v for v in variants if v]
+
+
 def find_file(root_path: str, search_name: str = "", search_content: str = "",
               search_all: str = "", encoding: str = "utf-8",
               max_file_size: int = 1_000_000, text_extensions: set = None,
@@ -275,7 +310,9 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
               others_limit: int = 30) -> str:
     if text_extensions is None:
         text_extensions = {".txt", ".py", ".md", ".json", ".log", ".csv",
-                           ".ini", ".cfg", ".xml", ".html", ".css", ".js"}
+                           ".ini", ".cfg", ".xml", ".html", ".css", ".js",
+                           ".yaml", ".yml", ".bat", ".cmd", ".ps1", ".sh",
+                           ".toml", ".env", ".gitignore", ".gitattributes"}
 
     root = Path(root_path).resolve()
     # Если путь — файл (а не папка): поиск по содержимому этого файла.
@@ -348,6 +385,21 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
 
     if isinstance(search_content, str) and "|" in search_content:
         search_content = [kw.strip() for kw in search_content.split("|") if kw.strip()]
+
+    # Расширяем ключи: разделители путей и снятие эскейпов
+    _search_variants = []
+    _kw_list = []
+    if isinstance(search_content, str) and search_content:
+        _kw_list = [kw.strip() for kw in search_content.split("|") if kw.strip()]
+    elif isinstance(search_content, list):
+        _kw_list = search_content
+    _seen_var = set()
+    for _kw in _kw_list:
+        for _v in _expand_search_variants(str(_kw)):
+            _vl = _v.lower()
+            if _vl and _vl not in _seen_var:
+                _seen_var.add(_vl)
+                _search_variants.append(_v)
 
     deadline = (time.perf_counter() + float(timeout)) if timeout and timeout > 0 else None
     start_time = time.perf_counter()
@@ -472,11 +524,11 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
                         content_lower = content.lower()
                         if search_all:
                             content_match = target in content_lower
-                        elif isinstance(search_content, list):
+                        elif _search_variants:
                             content_match = any(kw.lower() in content_lower
-                                                for kw in search_content)
+                                                for kw in _search_variants)
                         else:
-                            content_match = search_content.lower() in content_lower
+                            content_match = False
                     except Exception:
                         continue
 
@@ -525,7 +577,33 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
     _prog = _progress_line + "\n"
 
     if not found_entries:
-        return f"{_progress_line}{prefix}  (корень: {root})"
+        _crit = []
+        if search_name:
+            for _kw in search_name.split("|"):
+                _kw = _kw.strip()
+                if _kw:
+                    _crit.append(_kw)
+        if search_content:
+            if _search_variants:
+                for _v in _search_variants:
+                    _crit.append(_v)
+            elif isinstance(search_content, list):
+                for _kw in search_content:
+                    _kw = str(_kw).strip()
+                    if _kw:
+                        _crit.append(_kw)
+            else:
+                for _kw in str(search_content).split("|"):
+                    _kw = _kw.strip()
+                    if _kw:
+                        _crit.append(_kw)
+        if search_all:
+            _crit.append(str(search_all).strip())
+        if search_mask:
+            _crit.append(str(search_mask).strip())
+        _crit_str = ("Искали: " + " | ".join(_crit)) if _crit else "(критерий не задан)"
+        return (f"{_progress_line}{prefix}  (корень: {root})\n"
+                f"   {_crit_str}")
 
     if len(found_entries) < target_num:
         _found_count = len(found_entries)

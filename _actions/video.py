@@ -1068,7 +1068,8 @@ def subs_to_text(args):
     if not p.exists():
         return "❌ Файл не найден: " + str(p)
     if not p.is_file():
-        return "❌ Это не файл: " + str(p)
+        from _utils import not_a_file_msg
+        return not_a_file_msg(p)
 
     try:
         raw = p.read_text(encoding="utf-8-sig")

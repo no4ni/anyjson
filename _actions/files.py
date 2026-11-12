@@ -438,7 +438,8 @@ def read_full(args):
     if not _os.path.exists(path):
         return f"❌ Файл не найден: {path}"
     if not _os.path.isfile(path):
-        return f"❌ Это не файл: {path}"
+        from _utils import not_a_file_msg
+        return not_a_file_msg(path)
     win_path = str(path).replace("/", "\\")
 
     ext = os.path.splitext(str(path))[1].lower()
@@ -887,33 +888,43 @@ def list_files(args):
 
     return chr(10).join(out)
 
-@register(["переписать", "перезаписать_файл"])
+@register(["переписать", "перезаписать_файл", "записать_файл", "переписать_файл"])
 def rewrite(args):
     """Перезаписать файл целиком.
 
     Запись в системные папки (C:\\Windows, C:\\Program Files и т.п.) запрещена.
 
     Параметры:
-      путь       — путь к файлу (обязательный)
-      содержание — новый текст (обязательный), алиас: содержимое
+      путь                — путь к файлу (обязательный)
+      содержание          — новый текст (обязательный), алиас: содержимое
+      подтвердить_потерю  — true: разрешить перезапись, если новый текст меньше старого
 
     Пример:
       {"переписать": {"путь": "E:/out.txt", "содержание": "привет"}}
 
-    Для многострочного текста используйте inline-heredoc:
-      {"переписать": {"путь": "E:/out.py", "содержание": <<<
-      ...любой код...
-      >>>}}
+    Для многострочного текста используйте inline-heredoc.
     """
     from _actions.tools_files import write_file
     path = args.get("путь", "")
     ok, err = _check_write_path(path)
     if not ok:
         return f"⛔ Запись в системную папку {err} запрещена" if (":\\" in err or ":/" in err) else f"⛔ Запись запрещена: {err}"
+    
+    _content = args.get("содержание")
+    if _content is None:
+        _content = args.get("содержимое", "")
+        
+    from pathlib import Path as _Path
+    if path and _Path(path).is_file():
+        _old_size = _Path(path).stat().st_size
+        _new_size = len(str(_content).encode('utf-8'))
+        if _new_size < _old_size and not args.get("подтвердить_потерю"):
+            return (f"⚠️ Новое содержимое ({_new_size} Б) меньше старого ({_old_size} Б).\n"
+                    f"Возможна случайная потеря данных. Если это намеренно, добавь параметр: \"подтвердить_потерю\": true.")
+
     # Бэкап существующего файла перед перезаписью (как у заменить_текст).
     # Если бэкап не удался — запись отменяем, файл не трогаем.
     try:
-        from pathlib import Path as _Path
         if path and _Path(path).is_file():
             from _actions.tools_backups import create_backup
             _bk = create_backup({"путь": path})
@@ -921,7 +932,7 @@ def rewrite(args):
                 return f"⛔ Бэкап не создан, запись отменена: {_bk}"
     except Exception as _e:
         return f"⛔ Бэкап не создан, запись отменена: {_e}"
-    return write_file(path, args.get("содержание") or args.get("содержимое", ""))
+    return write_file(path, _content)
 
 
 @register(["добавить", "дописать_файл", "записать_в_файл", "создать_файл"])

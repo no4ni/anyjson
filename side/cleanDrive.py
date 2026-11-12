@@ -234,8 +234,6 @@ def run_treesize(drive_letter=None, target_path=None, top_level=10, drill_depth=
 		print("❌ Не указан ни диск, ни путь для анализа", flush=True)
 		return False
 
-	print(f"\n=== ЗАПУСК АНАЛИЗА {'ПАПКИ' if target_path else 'ДИСКА'} {root_path} (TreeSize.ps1) ===", flush=True)
-	print(f"Параметры: -RootPath {root_path} -TopLevel {top_level} -DrillDownDepth {drill_depth}", flush=True)
 	try:
 		cmd = [
 			"powershell.exe", "-ExecutionPolicy", "Bypass",

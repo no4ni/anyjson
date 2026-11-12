@@ -93,7 +93,6 @@ def _run_dupes_ps1(paths, what_if=False):
     if not paths:
         return "Укажите путь к папке (путь или пути)."
 
-    # Формируем массив для PowerShell: -Path 'a','b'
     ps_paths = ",".join(f"'{p}'" for p in paths)
     ps_cmd = f"& '{script}' -Path {ps_paths}"
     if what_if:
@@ -109,13 +108,53 @@ def _run_dupes_ps1(paths, what_if=False):
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 text=True, encoding='utf-8', env=env, bufsize=1)
-        out = []
+        lines = []
         for line in proc.stdout:
-            print(line, end='')
-            sys.stdout.flush()
-            out.append(line)
+            lines.append(line)
+            if not what_if:
+                print(line, end='')
+                sys.stdout.flush()
         proc.wait(timeout=600)
-        return ''.join(out).strip() or "Скрипт выполнен (вывод пуст)."
+
+        if what_if:
+            import re
+            groups = 0
+            total_del = 0
+            total_bytes = 0
+            examples = []
+            for ln in lines:
+                m = re.search(r'Дубликаты \((\d+) байт,.*?удалить (\d+)', ln)
+                if m:
+                    groups += 1
+                    size = int(m.group(1))
+                    del_count = int(m.group(2))
+                    total_del += del_count
+                    total_bytes += size * del_count
+                    if len(examples) < 10:
+                        examples.append((size, del_count, ln.strip()))
+            result = f"Найдено групп дубликатов: {groups}\n"
+            result += f"Всего будет удалено файлов: {total_del}\n"
+            result += f"Общий объём дубликатов: {total_bytes/1024/1024:.2f} МБ\n\n"
+            if examples:
+                result += "Примеры (первые 10):\n"
+                for size, dc, ln in examples:
+                    result += f"  {ln}\n"
+            return result
+        else:
+            import re
+            deleted = 0
+            skipped = 0
+            for ln in lines:
+                if "[DEL]" in ln:
+                    deleted += 1
+                elif "[SKIP]" in ln:
+                    skipped += 1
+            summary = [ln.rstrip() for ln in lines if ln.startswith(("Сканирование", "Всего файлов", "Групп", "Готово"))]
+            result = "\n".join(summary)
+            result += f"\n[DEL] строк: {deleted}"
+            if skipped:
+                result += f"\n[SKIP] строк (одинаковая длина пути): {skipped}"
+            return result.strip() or "Скрипт выполнен."
     except subprocess.TimeoutExpired:
         proc.kill()
         return "❌ Таймаут (10 мин)."
@@ -354,7 +393,7 @@ def _inspect_cache_set(key, value):
         del _INSPECT_CACHE[oldest[0]]
 
 
-@register(["осмотреть", "осмотр"])
+@register(["осмотреть", "осмотр", "найти_в_файлах"])
 def inspect(args):
     """Осмотр файла или URL: поиск по ключевым словам.
 
@@ -371,8 +410,8 @@ def inspect(args):
       страница       — номер страницы вывода (1-based, по умолчанию 1)
       размер         — символов на страницу (по умолчанию 4000, мин 500)
       обновить       — true: обойти кэш (заново запустить inspect.ps1)
-      регулярка      — true: трактовать ключевые_слова как regex
-                       (по умолчанию false, обычная подстрока)
+      регулярка      — true: ключевые_слова = один regex-паттерн целиком
+                       (по "," и "|" не режется). Работает и по папке
 
     Примеры:
       {"осмотреть": {"путь": "E:/log.txt", "ключевые_слова": "error,warning"}}
@@ -437,10 +476,14 @@ def inspect(args):
     if keywords is None or (isinstance(keywords, (str, list)) and not keywords):
         kw_list = [" "]
     elif isinstance(keywords, str):
-        # разделители: запятая и/или вертикальная черта
+        # регулярка: вся строка - один паттерн; иначе "," и "|"
+        # разрежут альтернацию и квантификатор {2,4}
         import re as _re
-        parts = _re.split(r"[,\|]", keywords)
-        kw_list = [kw.strip() for kw in parts if kw.strip()] or [" "]
+        if use_regex:
+            kw_list = [keywords.strip()] if keywords.strip() else [" "]
+        else:
+            parts = _re.split(r"[,\|]", keywords)
+            kw_list = [kw.strip() for kw in parts if kw.strip()] or [" "]
     elif isinstance(keywords, list):
         kw_list = [str(kw) for kw in keywords if str(kw).strip()] or [" "]
     else:
@@ -466,6 +509,26 @@ def inspect(args):
         last_tick = 0.0
         _cap_limit = (target_count * 10) if target_count > 0 else 10000
         text_exts = _TEXT_EXTS
+        # матчер строки: регулярка или подстрока, регистр не важен
+        # (Select-String в inspect.ps1 тоже регистронезависим)
+        import re as _re_c
+        if use_regex:
+            try:
+                _pats = [_re_c.compile(kw, _re_c.I) for kw in kw_list]
+            except _re_c.error as _e:
+                return ("❌ Некорректная регулярка: " + str(_e) + chr(10)
+                        + "  паттерн: " + repr(kw_list))
+            def _line_hit(s):
+                return any(p.search(s) for p in _pats)
+        else:
+            _kws_low = [kw.lower() for kw in kw_list]
+            def _line_hit(s):
+                _s = s.lower()
+                return any(kw in _s for kw in _kws_low)
+        try:
+            _ctx = max(0, int(context or 0))
+        except (TypeError, ValueError):
+            _ctx = 3
         try:
             for root, dirs, files in os.walk(file_path):
                 if timeout and (time.time() - start_time) > timeout:
@@ -499,12 +562,40 @@ def inspect(args):
                         last_tick = now
                     full_path = os.path.join(root, f)
                     try:
+                        # память O(контекст): скользящее окно вместо readlines()
+                        from collections import deque as _deque
+                        _prev = _deque(maxlen=_ctx)
+                        _block = []
+                        _pending = 0
+                        _BLOCK_MAX = 4000
                         with open(full_path, 'r', encoding=encoding) as fp:
-                            for line in fp:
-                                if any(kw in line for kw in kw_list):
-                                    all_matches.append((full_path, line.strip()))
+                            for _ln in fp:
+                                _hit = _line_hit(_ln)
+                                # хвостовой контекст добран - закрываем блок
+                                if _block and _pending == 0 and not _hit:
+                                    all_matches.append((full_path, "".join(_block).rstrip()))
+                                    _block = []
                                     if len(all_matches) >= _cap_limit:
                                         break
+                                if _hit:
+                                    if not _block:
+                                        _block = list(_prev)
+                                    _block.append(_ln)
+                                    _pending = _ctx
+                                elif _block:
+                                    _block.append(_ln)
+                                    _pending -= 1
+                                # если совпадает каждая строка, блок растёт
+                                # до размера файла - режем принудительно
+                                if len(_block) >= _BLOCK_MAX:
+                                    all_matches.append((full_path, "".join(_block).rstrip()))
+                                    _block = []
+                                    _pending = 0
+                                    if len(all_matches) >= _cap_limit:
+                                        break
+                                _prev.append(_ln)
+                        if _block and len(all_matches) < _cap_limit:
+                            all_matches.append((full_path, "".join(_block).rstrip()))
                         if len(all_matches) >= _cap_limit:
                             break
                     except Exception:
@@ -865,6 +956,32 @@ def _analyze_svg(src, size_bytes):
 
 ARCHIVE_EXTS = {'.7z', '.zip', '.rar', '.tar', '.gz', '.bz2', '.xz', '.tgz', '.tbz2'}
 
+# In-memory TTL-кэш для архив_список (ключ -> (время, результат))
+_ARCHIVE_LIST_CACHE = {}
+_ARCHIVE_LIST_TTL = 300  # 5 минут
+
+
+def _archive_cache_get(key):
+    import time as _t
+    entry = _ARCHIVE_LIST_CACHE.get(key)
+    if not entry:
+        return None
+    ts, val = entry
+    if _t.time() - ts > _ARCHIVE_LIST_TTL:
+        _ARCHIVE_LIST_CACHE.pop(key, None)
+        return None
+    return val
+
+
+def _archive_cache_set(key, val):
+    import time as _t
+    # Чистим просроченные, чтобы не копились
+    now = _t.time()
+    for k in list(_ARCHIVE_LIST_CACHE.keys()):
+        if now - _ARCHIVE_LIST_CACHE[k][0] > _ARCHIVE_LIST_TTL:
+            _ARCHIVE_LIST_CACHE.pop(k, None)
+    _ARCHIVE_LIST_CACHE[key] = (now, val)
+
 
 def _find_7z():
     """Ищет 7z.exe в PATH или в стандартных местах установки."""
@@ -898,7 +1015,11 @@ def _list_archives_in_dir(dir_path, limit):
         if not os.path.isfile(full):
             continue
         ext = os.path.splitext(name)[1].lower()
-        if ext not in ARCHIVE_EXTS:
+        low_name = name.lower()
+        _is_multi = any(low_name.endswith("." + x + "." + f"{i:03d}")
+                        for x in ("7z", "zip", "rar")
+                        for i in range(1, 1000))
+        if ext not in ARCHIVE_EXTS and not _is_multi:
             continue
         try:
             size = os.path.getsize(full)
@@ -918,7 +1039,155 @@ def _list_archives_in_dir(dir_path, limit):
     return "\n".join(out)
 
 
-def _parse_7z_listing(archive_path, output, limit, mask=None):
+def _aggregate_by_level(entries, level):
+    """Группирует записи по префиксу глубины level, суммирует размеры.
+
+    entries: список dict с ключами Path, Size (str), Folder (str|None).
+    Возвращает список (prefix, total_size, n_files) по убыванию размера.
+    """
+    groups = {}
+    for e in entries:
+        p = e.get("Path") or ""
+        if not p:
+            continue
+        norm = p.replace("\\", "/")
+        parts = [x for x in norm.split("/") if x]
+        if not parts:
+            continue
+        prefix = "/".join(parts[:level]) if len(parts) > level else norm
+        size_raw = e.get("Size", "")
+        is_folder = e.get("Folder") == "+" or not size_raw
+        if is_folder:
+            continue
+        try:
+            sz = int(size_raw)
+        except (ValueError, TypeError):
+            sz = 0
+        cur_sz, cur_n = groups.get(prefix, (0, 0))
+        groups[prefix] = (cur_sz + sz, cur_n + 1)
+    result = [(k, v[0], v[1]) for k, v in groups.items()]
+    result.sort(key=lambda x: -x[1])
+    return result
+
+
+def _parse_7z_stream(archive_path, stream, limit, mask=None, level=-1):
+    """Стриминговый разбор '7z l -slt'. Не держит записи в памяти."""
+    import fnmatch as _fnm
+    import heapq
+
+    total_all = 0
+    total_filtered = 0
+    current = {}
+    in_files = False
+    groups = {}
+    heap = []
+    heap_limit = max(limit * 2, 100)
+    pat_low = mask.lower() if mask else None
+
+    def _process(c):
+        nonlocal total_filtered
+        p = c.get("Path") or ""
+        if not p:
+            return
+        if pat_low and not (_fnm.fnmatch(p.lower(), pat_low) or pat_low in p.lower()):
+            return
+        total_filtered += 1
+        size_raw = c.get("Size", "")
+        _attrs = (c.get("Attributes") or "").upper()
+        is_folder = (c.get("Folder") == "+" or not size_raw
+                     or _attrs.startswith("D") or " D" in _attrs)
+        try:
+            sz = int(size_raw) if not is_folder else 0
+        except (ValueError, TypeError):
+            sz = 0
+        if level > 0:
+            norm = p.replace("\\", "/")
+            parts = [x for x in norm.split("/") if x]
+            if len(parts) == level:
+                prefix = norm
+                kind = "folder" if is_folder else "file"
+            elif len(parts) > level:
+                prefix = "/".join(parts[:level])
+                kind = "folder"
+            else:
+                # Контейнер (папка-предок) — пропускаем, её содержимое
+                # уже показано на целевом уровне. Файлы не теряем.
+                if is_folder:
+                    return
+                prefix = norm
+                kind = "file"
+            if is_folder:
+                if prefix not in groups:
+                    groups[prefix] = [0, 0, kind]
+            else:
+                cur = groups.get(prefix, [0, 0, kind])
+                cur[0] += sz
+                cur[1] += 1
+                if kind == "file":
+                    cur[2] = "file"
+                groups[prefix] = cur
+        else:
+            sort_sz = -1 if is_folder else sz
+            heapq.heappush(heap, (sort_sz, p, c))
+            if len(heap) > heap_limit:
+                heapq.heappop(heap)
+
+    for line in stream:
+        line = line.rstrip("\r\n")
+        if line.startswith("----------"):
+            in_files = True
+            continue
+        if not in_files:
+            continue
+        if line == "":
+            if current.get("Path"):
+                total_all += 1
+                _process(current)
+            current = {}
+            continue
+        if " = " in line:
+            k, v = line.split(" = ", 1)
+            current[k.strip()] = v.strip()
+    if current.get("Path"):
+        total_all += 1
+        _process(current)
+
+    out = [f"📦 Архив: {archive_path}"]
+    if mask:
+        out.append(f"   всего записей: {total_all}, по маске '{mask}': {total_filtered}")
+    else:
+        out.append(f"   всего записей: {total_all}")
+    if level > 0:
+        out.append(f"   режим: уровень {level}")
+        out.append("")
+        res = [(k, v[0], v[1], v[2]) for k, v in groups.items()
+               if v[1] > 0 or v[2] == "folder"]
+        res.sort(key=lambda x: -x[1])
+        for i, (pref, sz, n, kind) in enumerate(res[:limit], 1):
+            icon = "📄" if kind == "file" else "📁"
+            if kind == "file":
+                tail = "(файл)"
+            elif n == 0:
+                tail = "(пусто)"
+            else:
+                tail = f"({n} файлов)"
+            out.append(f"  {i:3}. {icon} {pref:<60} {_fmt_size(sz):>12}  {tail}")
+        if len(res) > limit:
+            out.append(f"  ... и ещё {len(res) - limit} групп (увеличь лимит)")
+    else:
+        out.append(f"   режим: все файлы (показано {min(limit, len(heap))} по размеру)")
+        out.append("")
+        heap.sort(key=lambda x: -x[0])
+        heap = heap[:limit]
+        for i, (sz, p, c) in enumerate(heap, 1):
+            is_folder = c.get("Folder") == "+" or not c.get("Size")
+            sz_str = "<папка>" if is_folder else _fmt_size(sz)
+            icon = "📁" if is_folder else "📄"
+            out.append(f"  {i:3}. {icon} {p:<60} {sz_str:>12}")
+    return "\n".join(out)
+
+
+def _parse_7z_listing(archive_path, output, limit, mask=None, level=0):
     """Разбор вывода '7z l -slt'."""
     entries = []
     current = {}
@@ -978,24 +1247,51 @@ def _parse_7z_listing(archive_path, output, limit, mask=None):
     return "\n".join(out)
 
 
-def _list_archive_contents(archive_path, limit, mask=None):
+def _list_archive_contents(archive_path, limit, mask=None, level=-1):
     """Список файлов внутри архива."""
+    low = str(archive_path).lower()
+    # Многотомные архивы: .7z.001, .zip.002 и т.п.
+    _is_multi = any(low.endswith("." + x + "." + f"{i:03d}")
+                    for x in ("7z", "zip", "rar")
+                    for i in range(1, 1000))
     ext = os.path.splitext(archive_path)[1].lower()
-    if ext not in ARCHIVE_EXTS:
+    if not _is_multi and ext not in ARCHIVE_EXTS:
         return (f"❌ Не похоже на архив: {archive_path}\n"
                 f"   Ожидается: {', '.join(sorted(ARCHIVE_EXTS))}")
 
-    # 1) через 7z.exe (универсально)
+    # Кэш в памяти (TTL 5 мин): путь+размер+mtime+уровень+маска
+    try:
+        _st = os.stat(archive_path)
+        _cache_key = (str(archive_path), _st.st_size, int(_st.st_mtime),
+                      level, mask or "")
+    except OSError:
+        _cache_key = None
+    if _cache_key is not None:
+        _cached = _archive_cache_get(_cache_key)
+        if _cached is not None:
+            return _cached
+
+    # 1) через 7z.exe (универсально, стримингово)
     seven_z = _find_7z()
     if seven_z:
         try:
-            proc = subprocess.run(
+            proc = subprocess.Popen(
                 [seven_z, "l", "-slt", archive_path],
-                capture_output=True, text=True,
-                encoding="utf-8", errors="replace", timeout=120,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, encoding="utf-8", errors="replace"
             )
-            if proc.returncode == 0:
-                return _parse_7z_listing(archive_path, proc.stdout, limit, mask)
+            try:
+                res = _parse_7z_stream(archive_path, proc.stdout, limit, mask, level)
+                rc = proc.wait(timeout=180)
+                if rc == 0:
+                    if _cache_key is not None:
+                        _archive_cache_set(_cache_key, res)
+                    return res
+            finally:
+                try:
+                    proc.stdout.close()
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -1052,11 +1348,15 @@ def archive_list(args):
       количество — сколько показать (по умолчанию 50)
       маска      — фильтр по имени внутри архива, например "*.py",
                    "config*", "src/*" (по умолчанию — без фильтра)
+      уровень    — 0/1/2… агрегировать по папкам этой глубины
+                   (1 = только верхний уровень, 2 = второй и т.д.).
+                   -1 (по умолчанию) = все файлы плоским списком.
 
     Примеры:
       {"архив_список": {"путь": "E:/backup/data.7z"}}
       {"архив_список": {"путь": "E:/backup", "количество": 100}}
       {"архив_список": {"путь": "E:/backup/old.rar", "количество": 30}}
+      {"архив_список": {"путь": "E:/backup/data.7z", "уровень": 1}}
     """
     args = args or {}
     path = args.get("путь") or args.get("значение") or ""
@@ -1074,9 +1374,14 @@ def archive_list(args):
 
     mask = args.get("маска") or args.get("имя") or ""
 
+    try:
+        level = int(args.get("уровень", -1))
+    except (TypeError, ValueError):
+        level = -1
+
     if os.path.isdir(path):
         return _list_archives_in_dir(path, limit)
-    return _list_archive_contents(path, limit, mask if mask else None)
+    return _list_archive_contents(path, limit, mask if mask else None, level=level)
 
 
 def _find_function_range(src, name):
@@ -1207,7 +1512,7 @@ def read_class_cmd(args):
     return header + _nl + _nl + block_text
 
 
-@register(["прочитать_функцию", "read_function"])
+@register(["прочитать_функцию", "читать_функцию", "read_function"])
 def read_function_cmd(args):
     """Прочитать одну функцию из .py-файла по имени.
 
@@ -1267,7 +1572,7 @@ def read_function_cmd(args):
     return f"{header}{chr(10)}{chr(10)}{block_text}"
 
 
-@register(["заменить_функцию", "replace_function"])
+@register(["заменить_функцию", "править_функцию", "replace_function"])
 def replace_function_cmd(args):
     """Заменить функцию в .py-файле на новое содержимое.
 
@@ -1401,4 +1706,5 @@ def replace_function_cmd(args):
             f"Было строк {end - start}, стало {len(indented)}."
             f"{decor_note} "
             f"Бэкап: {bak}")
+
 

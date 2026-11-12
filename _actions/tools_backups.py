@@ -321,8 +321,8 @@ def create_backup(args: dict) -> str:
     if not p.exists():
         return f"❌ Файл не найден: {p}"
     if not p.is_file():
-        return (f"❌ Это не файл: {p}\n"
-                f"   (бэкап папок не поддерживается — только файлы)")
+        from _utils import not_a_file_msg
+        return not_a_file_msg(p, extra="   (бэкап папок не поддерживается — только файлы)")
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     suffix = args.get("суффикс") or f".bak_{ts}"

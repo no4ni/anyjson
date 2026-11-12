@@ -38,7 +38,9 @@ ALLOWED_THIRD = {
     "yaml", "toml", "jsonschema", "aiohttp", "httpx",
     # rembg и его зависимости
     "rembg", "onnxruntime", "pymatting", "skimage", "pooch",
-}
+
+    # OCR
+    "pytesseract", "pdf2image",}
 
 # --- стандартная библиотека (достаточно верхнего уровня) ---
 ALLOWED_STDLIB = {
@@ -52,7 +54,8 @@ ALLOWED_STDLIB = {
     "email", "http", "html", "webbrowser", "platform", "getpass",
     "warnings", "traceback", "inspect", "importlib", "pkgutil",
     "unittest", "sqlite3", "statistics", "textwrap", "shlex",
-    "decimal", "fractions", "queue", "weakref", "gc", "atexit",
+    "decimal", "fractions", "queue", "heapq", "bisect", "weakref",
+    "gc", "atexit",
     "signal", "errno", "ctypes", "array", "binascii", "calendar",
     "codecs", "difflib", "enum", "filecmp", "fnmatch", "getopt",
     "graphlib", "gzip", "lzma", "bz2", "numbers", "operator",

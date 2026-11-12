@@ -217,6 +217,27 @@ def run_ps(args):
       тишина     — секунд без вывода до убийства
                    (по умолч. max(30, min(таймаут/2, 300)))
     """
+    # Перенаправление: {"запустить": {"путь": "...py"}} — это не PS-whitelist,
+    # а питон-скрипт. У "запуска" параметр "команда", не "путь".
+    _guess_script = (args.get("путь") or args.get("скрипт")
+                     or args.get("файл") or args.get("script"))
+    if _guess_script and str(_guess_script).lower().endswith(".py"):
+        import json as _json_rp
+        _obj_rp = {"питон": {"скрипт": str(_guess_script).replace("\\", "/")}}
+        _args_rp = args.get("аргументы") or args.get("args")
+        if _args_rp:
+            _obj_rp["питон"]["аргументы"] = _args_rp
+        _args_hint = ''
+        if not _args_rp:
+            _args_hint = ('\nАргументы — строкой (как в cmd) или списком:\n   '
+                          '{"питон": {"скрипт": "...", "аргументы": "--in a.raw"}}')
+        else:
+            _args_hint = '\nАргументы переданы в поле "аргументы".'
+        return ('⚠️ Это Python-скрипт, а "запуск/запустить" — PowerShell-whitelist.\n'
+                'Для .py используй команду "питон":\n   '
+                + _json_rp.dumps(_obj_rp, ensure_ascii=False)
+                + _args_hint)
+
     command = args.get("команда", "").strip()
     if not command:
         return "Пустая команда."
@@ -255,7 +276,7 @@ def run_ps(args):
                 import json as _json_py
                 _obj = {"питон": {"скрипт": _script}}
                 if _args:
-                    _obj["питон"]["аргументы"] = _args
+                    _obj["питон"]["аргументы"] = " ".join(_args)
                 _py_example = ("\n   Готовый JSON для ввода в anyjson:\n     "
                                + _json_py.dumps(_obj, ensure_ascii=False))
         except Exception:
@@ -263,8 +284,8 @@ def run_ps(args):
         return ("⛔ Запуск Python через PowerShell запрещён.\n"
                 "   «питон» — это НЕ PowerShell-команда, а встроенная JSON-команда anyjson.\n"
                 "   Не пиши её в поле «команда» — PowerShell такого файла не найдёт.\n"
-                "   Формат: {\"питон\": {\"скрипт\": \"путь.py\", \"аргументы\": [\"arg1\", \"arg2\"]}}\n"
-                "   Параметры: скрипт, аргументы (список), таймаут, в_файл."
+                "   Формат: {\"питон\": {\"скрипт\": \"путь.py\", \"аргументы\": \"arg1 arg2\"}}\n"
+                "   Параметры: скрипт, аргументы (список или строка), таймаут, в_файл."
                 + _py_example)
 
     ALLOWED = {
@@ -301,6 +322,10 @@ def run_ps(args):
         "ffprobe", "ffprobe.exe",
         "ffmpeg", "ffmpeg.exe",
         "nvidia-smi", "nvidia-smi.exe",
+        # --- ключевые слова PowerShell (flow-control) ---
+        "if", "else", "elseif", "for", "while", "do", "switch",
+        "try", "catch", "finally", "throw", "function", "return",
+        "break", "continue",
     }
 
     # Дополнительная проверка для git: только безопасные подкоманды
@@ -444,8 +469,32 @@ def run_ps(args):
                              '   $var = "value"\n'
                              '   $env:VAR = "value"')
                 elif _bl == "start":
-                    _hint = ('💡 start — синтаксис cmd.exe. В PowerShell:\n'
-                             '   Start-Process "программа"')
+                    # start для картинки: подсказать посмотреть_картинку
+                    _start_target = ""
+                    _m_start = re.match(r'^\s*start\b\s*(.*)$', command.strip(), re.I | re.S)
+                    if _m_start:
+                        _start_args = _m_start.group(1).strip()
+                        _m_hdr = re.match(r'^("([^"]*)"|\'([^\']*)\')\s+(.*)$', _start_args, re.S)
+                        if _m_hdr:
+                            _start_args = _m_hdr.group(4).strip()
+                        _m_q = re.findall(r'"([^"]+)"|\'([^\']+)\'', _start_args)
+                        if _m_q:
+                            _last = _m_q[-1]
+                            _start_target = (_last[0] or _last[1]).strip()
+                        else:
+                            _toks_s = _start_args.split()
+                            if _toks_s:
+                                _start_target = _toks_s[-1].strip()
+                    _img_exts = {".png", ".jpg", ".jpeg", ".webp", ".gif",
+                                 ".bmp", ".tif", ".tiff", ".ico"}
+                    _start_ext = os.path.splitext(_start_target)[1].lower()
+                    if _start_target and _start_ext in _img_exts:
+                        _hint = ('💡 start для картинки — в anyjson есть команда:\n'
+                                 '   {"посмотреть_картинку": {"путь": "'
+                                 + _start_target.replace("\\", "/") + '"}}')
+                    else:
+                        _hint = ('💡 start — синтаксис cmd.exe. В PowerShell:\n'
+                                 '   Start-Process "программа"')
                 elif _bl == "call":
                     _hint = ('💡 call — синтаксис cmd.exe. В PowerShell:\n'
                              '   & "script.ps1"')

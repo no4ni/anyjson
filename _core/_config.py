@@ -71,6 +71,7 @@ PIPER_VOICES      = resolve_path(CONFIG["paths"]["piper_voices"])
 # ffprobe / ffmpeg
 FFPROBE_EXE       = resolve_path(CONFIG["paths"]["ffprobe_exe"])
 FFMPEG_EXE        = resolve_path(CONFIG["paths"]["ffmpeg_exe"])
+SEVEN_ZIP_EXE     = resolve_path(CONFIG["paths"].get("7z_exe", ""))
 
 # Whisper (модель в JerichoSoft, не в Jericho — правило "только наше")
 WHISPER_DIR       = resolve_path(CONFIG["paths"]["whisper_dir"])

@@ -299,7 +299,8 @@ def append_to_file(path, content):
         p.parent.mkdir(parents=True, exist_ok=True)
         with open(p, "a", encoding="utf-8") as f:
             f.write(content)
-        return f"Содержимое добавлено в файл: {path}"
+        return (f"Содержимое добавлено в конец файла: {path}\n\n"
+                f"💡 Если ты хотел перезаписать файл целиком, используй команду \"переписать\".")
     except Exception as e:
         return f"Ошибка добавления в файл: {e}"
 

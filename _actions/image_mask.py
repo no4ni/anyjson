@@ -70,7 +70,8 @@ def alpha_to_mask(args):
     if not p_src.exists():
         return f"❌ Файл не найден: {p_src}"
     if not p_src.is_file():
-        return f"❌ Это не файл: {p_src}"
+        from _utils import not_a_file_msg
+        return not_a_file_msg(p_src)
 
     dst = args.get("сохранить") or args.get("выход")
     if not dst:

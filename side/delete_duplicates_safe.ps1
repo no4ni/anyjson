@@ -10,7 +10,40 @@ param(
     [string[]]$Path = @("E:\Jericho")
 )
 
+# --- Кэш SHA-256 ---
+$cachePath = Join-Path $PSScriptRoot ".sha256cache.json"
+$global:hashCache = @{}
+if (Test-Path $cachePath) {
+    try {
+        $cacheData = Get-Content $cachePath -Raw | ConvertFrom-Json
+        foreach ($prop in $cacheData.psobject.properties) {
+            $global:hashCache[$prop.Name] = $prop.Value
+        }
+    } catch {}
+}
+$global:cacheChanged = $false
+
 function Get-NormalizedHash {
+    param([string]$FilePath)
+    try {
+        $fi = Get-Item -LiteralPath $FilePath -ErrorAction Stop
+        $cacheKey = "$FilePath|$($fi.Length)|$($fi.LastWriteTimeUtc.Ticks)"
+        if ($global:hashCache.ContainsKey($cacheKey)) {
+            return $global:hashCache[$cacheKey]
+        }
+    } catch {
+        $cacheKey = $null
+    }
+
+    $h = Get-FileHashInternal -FilePath $FilePath
+    if ($h -and $cacheKey) {
+        $global:hashCache[$cacheKey] = $h
+        $global:cacheChanged = $true
+    }
+    return $h
+}
+
+function Get-FileHashInternal {
     param([string]$FilePath)
     $ext = [System.IO.Path]::GetExtension($FilePath).ToLower()
     $textExts = @('.txt','.md','.ps1','.py','.json','.xml','.csv','.yaml','.yml','.cfg','.ini','.log','.lacuna','.html','.css','.js')
@@ -75,7 +108,77 @@ $EXCLUDE_NAMES = @(
     # Readme-заглушки и STATUS-маркеры (даже если содержание совпадает —
     # нужны как описания проектов в своих папках)
     'Readme.txt',
-    'STATUS.txt'
+    'STATUS.txt',
+    # Python-пакеты: пустой __init__.py в сотнях пакетов — не дубль
+    '__init__.py',
+    '__main__.py',
+    'conftest.py',
+    'setup.py',
+    'setup.cfg',
+    'pyproject.toml',
+    'Pipfile',
+    'Pipfile.lock',
+    'poetry.lock',
+    'MANIFEST.in',
+    'requirements.txt',
+    'requirements-dev.txt',
+    'requirements-test.txt',
+    'tox.ini',
+    'pytest.ini',
+    'alembic.ini',
+    # Node/JS-проекты
+    'package.json',
+    'package-lock.json',
+    'tsconfig.json',
+    '.eslintrc',
+    '.eslintrc.json',
+    '.prettierrc',
+    '.prettierrc.json',
+    '.babelrc',
+    # Git
+    '.gitignore',
+    '.gitattributes',
+    '.gitmodules',
+    # Environment
+    '.env',
+    '.env.example',
+    '.env.local',
+    '.env.production',
+    '.env.development',
+    '.python-version',
+    '.nvmrc',
+    '.ruby-version',
+    # Docker / CI
+    'Dockerfile',
+    'docker-compose.yml',
+    'docker-compose.yaml',
+    '.dockerignore',
+    # Build-системы
+    'Makefile',
+    'CMakeLists.txt',
+    'build.gradle',
+    'pom.xml',
+    # Лицензии (могут совпадать в разных проектах)
+    'LICENSE',
+    'LICENSE.txt',
+    'LICENSE.md',
+    'LICENSE.rst',
+    'COPYING',
+    'COPYING.txt',
+    # Прочие служебные
+    '.editorconfig',
+    '.htaccess',
+    '.htpasswd',
+    'robots.txt',
+    '.flake8',
+    '.pylintrc',
+    '.isort.cfg',
+    'Cargo.toml',
+    'Cargo.lock',
+    'go.mod',
+    'go.sum',
+    'Gemfile',
+    'Gemfile.lock'
 )
 
 $EXCLUDE_REGEX = @(
@@ -89,6 +192,12 @@ $EXCLUDE_REGEX = @(
     '\\.git\\refs\\',
     # Наши .bak_* файлы (это мы их наделали)
     '\.bak_[a-z0-9_]+$',
+    # Конфиги по префиксу: config.*, settings.*, params.*, conf.* —
+    # в любой папке (у каждого проекта свой конфиг, даже если совпадает)
+    '(?i)(^|[\\/])(config|settings|params|conf|options|preferences)\.[a-z0-9]+$',
+    # Скрытые служебные файлы в любой папке (.env*, .git*, .dockerignore,
+    # .editorconfig и т.п.) — их много, имена разные, но не дубли
+    '(?i)(^|[\\/])\.[a-z][a-z0-9_.-]*$',
     # llama-server бинарники (одинаковый бинарь, разные имена)
     'llama-(llava|gemma3|minicpmv)-cli\.exe$',
     # etalons между private и public — уже junction, не трогать
@@ -177,18 +286,38 @@ foreach ($sizeGroup in $bySize) {
         if ($dupes.Count -le 1) { continue }
         $totalGroups++
 
-        $minPathLength = ($dupes | ForEach-Object { $_.FullName.Length } | Measure-Object -Minimum).Minimum
-        $keeper = $dupes | Where-Object { $_.FullName.Length -eq $minPathLength } | Select-Object -First 1
-        $toRemove = $dupes | Where-Object { $_.FullName.Length -gt $minPathLength }
+        # Разделяем на живые (не архив) и архивные. Keeper — ВСЕГДА живой.
+        $archiveRx = '(?i)[\\/](archive|BACKUPS|_tmp_|early_history_AGI|Jericho_Backup_|Jericho_archeology_)[\\/]'
+        $live = @($dupes | Where-Object { $_.FullName -notmatch $archiveRx })
+        $archived = @($dupes | Where-Object { $_.FullName -match $archiveRx })
 
-        if ($toRemove.Count -eq 0) {
-            Write-Host "Дубликаты ($($dupes[0].Length) байт): пути одинаковой длины — пропущено ($($dupes.Count) шт.)" -ForegroundColor DarkGray
-            foreach ($d in $dupes) { Write-Host "  [SKIP] $($d.FullName)" -ForegroundColor DarkGray }
+        if ($live.Count -eq 0) {
+            Write-Host "Дубликаты ($($dupes[0].Length) байт): все копии в архиве — пропущено ($($dupes.Count) шт.)" -ForegroundColor DarkGray
+            foreach ($d in $dupes) { Write-Host "  [SKIP-ARCHIVE] $($d.FullName)" -ForegroundColor DarkGray }
             continue
         }
 
+        if ($live.Count -eq 1) {
+            # Один живой + архивные: keeper — живой, архивные — удалить
+            $keeper = $live[0]
+            $toRemove = @($archived)
+        } else {
+            # Несколько живых: если разные длины путей — оставляем самый короткий
+            $minLiveLength = ($live | ForEach-Object { $_.FullName.Length } | Measure-Object -Minimum).Minimum
+            $liveMin = @($live | Where-Object { $_.FullName.Length -eq $minLiveLength })
+            if ($liveMin.Count -gt 1) {
+                Write-Host "Дубликаты ($($dupes[0].Length) байт): живые копии одинаковой длины — пропущено ($($live.Count) живых, $($archived.Count) архивных)" -ForegroundColor DarkGray
+                foreach ($d in $dupes) { Write-Host "  [SKIP] $($d.FullName)" -ForegroundColor DarkGray }
+                continue
+            }
+            $keeper = $liveMin[0]
+            $toRemove = @($live | Where-Object { $_.FullName -cne $keeper.FullName }) + $archived
+        }
+
+        if ($toRemove.Count -eq 0) { continue }
+
         $shortHash = ($key -split '\|')[-1].Substring(0, 16)
-        Write-Host "Дубликаты ($($dupes[0].Length) байт, SHA-256: $shortHash...): оставить '$($keeper.Name)' | удалить $($toRemove.Count)" -ForegroundColor Yellow
+        Write-Host "Дубликаты ($($dupes[0].Length) байт, SHA-256: $shortHash...): оставить '$($keeper.FullName)' | удалить $($toRemove.Count)" -ForegroundColor Yellow
         $ext = [System.IO.Path]::GetExtension($keeper.FullName).ToLower()
         $textExts = @('.txt','.md','.ps1','.py','.json','.xml','.csv','.yaml','.yml','.cfg','.ini','.log','.lacuna','.html','.css','.js')
         if ($ext -in $textExts) {

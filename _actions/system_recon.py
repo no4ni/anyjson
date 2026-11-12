@@ -16,7 +16,7 @@ from _ps import run_with_wait, run_powershell_with_cwd
 from _storage import reminders, reminders_lock, parse_reminder_time, save_reminders
 
 
-@register(["разведка_системы", "кто_ты", "получить_системную_информацию"])
+@register(["разведка_системы", "кто_ты", "получить_системную_информацию", "опрос_среды"])
 def system_recon(args):
     """Собирает сведения о системе. Кроссплатформенно.
     Если передан "команды" — перенаправляет в "запуск" (белый список PS).
@@ -93,6 +93,18 @@ def _system_recon_windows(lines):
             lines.append(out)
     except Exception as e:
         lines.append(f"RAM/Uptime: <нет данных: {e}>")
+
+    ps_gpu = (
+        "Get-CimInstance Win32_VideoController | "
+        "ForEach-Object { 'GPU:       {0} ({1} МБ VRAM, драйвер {2})' -f "
+        "$_.Name, [math]::Round($_.AdapterRAM/1MB), $_.DriverVersion }"
+    )
+    try:
+        out = _ps(ps_gpu)
+        if out:
+            lines.append(out)
+    except Exception as e:
+        lines.append(f"GPU:       <нет данных: {e}>")
 
     ps_disk = (
         "Get-PSDrive -PSProvider FileSystem | "

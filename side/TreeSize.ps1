@@ -55,7 +55,6 @@ $totalRoot = $rootItems.Count
 $current = 0
 $totalUsedBytes = 0L
 
-Write-Host "`nСканирование корневых папок и файлов $RootPath ..." -ForegroundColor Cyan
 foreach ($item in $rootItems) {
     $current++
     $percent = [math]::Round(($current / $totalRoot) * 100)
@@ -79,23 +78,19 @@ foreach ($item in $rootItems) {
 }
 Write-Progress -Activity "Анализ" -Completed
 
-# Общий занятый объём (с нашей "урезанной" оценкой Windows)
+# Общий занятый объём (для заголовка таблицы и порога)
 $totalUsedGB = [math]::Round($totalUsedBytes / 1GB, 2)
-Write-Host "`nОбщий занятый объём на диске (оценка с исключением системных файлов Windows): $totalUsedGB ГБ" -ForegroundColor Cyan
 
-# Автоматическое определение порога MinGB
+# Автоматическое определение порога MinGB (без вывода — шум)
 if ($MinGB -lt 0) {
     $autoMinGB = [math]::Round($totalUsedGB / $TopLevel, 2)
     $MinGB = [math]::Max($autoMinGB, $AbsoluteMinGB)
-    Write-Host "Автоматически установлен порог углубления: $MinGB ГБ" -ForegroundColor Yellow
-} else {
-    Write-Host "Используется заданный порог углубления: $MinGB ГБ" -ForegroundColor Yellow
 }
 
 # Сортировка и отбор топ-уровня
 $topResults = $results | Sort-Object -Property SizeBytes -Descending | Select-Object -First $TopLevel
 
-Write-Host "`n=== ТОП-$TopLevel ЭЛЕМЕНТОВ В $RootPath ===" -ForegroundColor Green
+Write-Host "`n=== ТОП-$TopLevel из $totalRoot элементов в $RootPath (всего по корню: $totalUsedGB ГБ) ===" -ForegroundColor Green
 $topResults | Format-Table -Property Type, Name, SizeGB -AutoSize
 
 # Функция для углублённого анализа (обычная, без исключений Windows, так как вглубь мы идём только по крупным папкам, которые не Windows)
@@ -134,8 +129,11 @@ function DrillDown {
     }
 }
 
-Write-Host "`n=== УГЛУБЛЁННЫЙ АНАЛИЗ (папки > $MinGB ГБ, глубина $DrillDownDepth) ===" -ForegroundColor Magenta
-foreach ($item in $topResults | Where-Object { $_.Type -eq "DIR" -and $_.SizeGB -ge $MinGB }) {
-    Write-Host "`n$($item.SizeGB) ГБ  $($item.FullPath)" -ForegroundColor Cyan
-    DrillDown -Path $item.FullPath -Depth $DrillDownDepth -Indent "    "
+$drillItems = @($topResults | Where-Object { $_.Type -eq "DIR" -and $_.SizeGB -ge $MinGB })
+if ($drillItems.Count -gt 0) {
+    Write-Host "`n=== УГЛУБЛЁННЫЙ АНАЛИЗ (папки > $MinGB ГБ, глубина $DrillDownDepth) ===" -ForegroundColor Magenta
+    foreach ($item in $drillItems) {
+        Write-Host "`n$($item.SizeGB) ГБ  $($item.FullPath)" -ForegroundColor Cyan
+        DrillDown -Path $item.FullPath -Depth $DrillDownDepth -Indent "    "
+    }
 }

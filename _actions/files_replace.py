@@ -261,10 +261,18 @@ def replace_text(args: dict) -> str:
     skip_check = _as_bool(args.get("без_проверки"), False)
 
     path = Path(file_arg).expanduser()
+
+    # Слабый отступ: ведущие пробелы в каждой строке якоря → \s*
+    # По умолчанию false для .py (отступ = синтаксис), true для остальных.
+    flex_indent = args.get("слабый_отступ", args.get("flex_indent"))
+    if flex_indent is None:
+        flex_indent = not path.suffix.lower() in (".py", ".pyw")
+    flex_indent = _as_bool(flex_indent, flex_indent)
     if not path.exists():
         return f"❌ Файл не найден: {path}"
     if not path.is_file():
-        return f"❌ Это не файл: {path}"
+        from _utils import not_a_file_msg
+        return not_a_file_msg(path)
 
     forbidden = _is_forbidden(path)
     if forbidden:
@@ -330,8 +338,20 @@ def replace_text(args: dict) -> str:
         # Точный поиск — через regex, с теми же границами слова.
         # Так «записать_файл» не цепляет «перезаписать_файл»,
         # а «файл» — «подфайл». Фразы/JSON не затрагиваются.
-        _word_find = bool(re.fullmatch(r"\w+", find_s))
-        _pat_src = re.escape(find_s)
+        _find_for_pat = find_s
+        if flex_indent:
+            # Ведущие пробелы/табы в начале каждой строки → \s*
+            _lines = _find_for_pat.split('\n')
+            _esc_lines = []
+            for _ln in _lines:
+                _m = re.match(r'^([ \t]+)(.*)', _ln, re.DOTALL)
+                if _m:
+                    _esc_lines.append(r'\s*' + re.escape(_m.group(2)))
+                else:
+                    _esc_lines.append(re.escape(_ln))
+            _find_for_pat = '\n'.join(_esc_lines)
+        _word_find = bool(re.fullmatch(r"\w+", _find_for_pat))
+        _pat_src = _find_for_pat
         if _word_find:
             _pat_src = r"(?<!\w)" + _pat_src + r"(?!\w)"
         _pat_plain = re.compile(_pat_src, flags)

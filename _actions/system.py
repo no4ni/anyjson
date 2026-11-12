@@ -362,7 +362,15 @@ def run_python(args):
         if isinstance(_args_raw, list):
             explicit_args = [str(x) for x in _args_raw]
         elif isinstance(_args_raw, str):
-            explicit_args = _args_raw.split() if _args_raw.strip() else []
+            _s = _args_raw.strip()
+            if not _s:
+                explicit_args = []
+            else:
+                import shlex as _shlex_py2
+                try:
+                    explicit_args = _shlex_py2.split(_s, posix=True)
+                except ValueError:
+                    explicit_args = _s.split()
         else:
             explicit_args = [str(_args_raw)]
 

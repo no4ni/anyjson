@@ -254,3 +254,158 @@ def diff_files(args):
         if len(diff) > limit:
             out.append(f"... diff обрезан ({len(diff)} строк всего). Увеличь лимит.")
         return "\n".join(out)
+
+
+def _list_files(root, mask_list):
+    """Список (путь, размер) всех файлов в root, с фильтром по маскам."""
+    import fnmatch
+    out = []
+    if os.path.isfile(root):
+        try:
+            out.append((root, os.path.getsize(root)))
+        except OSError:
+            pass
+        return out
+    skip = {"__pycache__", ".git", "node_modules", "venv", ".venv", ".cache"}
+    for dp, dns, fns in os.walk(root):
+        dns[:] = [d for d in dns if d not in skip]
+        for f in fns:
+            if mask_list:
+                low = f.lower()
+                if not any(fnmatch.fnmatch(low, m) for m in mask_list):
+                    continue
+            fp = os.path.join(dp, f)
+            try:
+                out.append((fp, os.path.getsize(fp)))
+            except OSError:
+                pass
+    return out
+
+
+@register(["уникальные", "уникальное", "что_только_в_а", "что_есть_только_в_а"])
+def unique_files(args):
+    """Показать, что есть в A, но нет в B (рекурсивно, по содержимому).
+
+    Параметры:
+      путь_а (a) — исходная папка/файл (обязательный)
+      путь_б (b) — с чем сравнивать (обязательный)
+      маска      — фильтр расширений через "|" ("*.py|*.md")
+      лимит      — сколько показать в списке (50)
+      размер     — true: только общий объём, без списка имён
+
+    Примеры:
+      {"уникальные": {"a": "D:/backup", "b": "E:/Jericho"}}
+      {"уникальные": {"a": "D:/backup", "b": "E:/Jericho", "маска": "*.py|*.md"}}
+    """
+    a = args or {}
+    pa = (a.get("путь_а") or a.get("a") or a.get("файл1") or a.get("откуда") or "").strip()
+    pb = (a.get("путь_б") or a.get("b") or a.get("файл2") or a.get("куда") or "").strip()
+    if not pa or not pb:
+        return "Укажи два пути: путь_а и путь_б"
+    if not os.path.exists(pa):
+        return "Не найден путь A: " + pa
+    if not os.path.exists(pb):
+        return "Не найден путь B: " + pb
+
+    mask_str = (a.get("маска") or "").strip()
+    mask_list = [m.strip().lower() for m in mask_str.split("|") if m.strip()] if mask_str else []
+    limit = int(a.get("лимит") or 50)
+    size_only = bool(a.get("размер"))
+
+    print("Сканирую A...")
+    files_a = _list_files(pa, mask_list)
+    print("A: " + str(len(files_a)) + " файлов")
+
+    print("Сканирую B...")
+    files_b = _list_files(pb, mask_list)
+    print("B: " + str(len(files_b)) + " файлов")
+
+    # Фильтр по (имя, размер) — резко сокращает хэширование
+    _names_sizes_b = {(os.path.basename(p).lower(), sz) for p, sz in files_b}
+    _names_sizes_a = {(os.path.basename(p).lower(), sz) for p, sz in files_a}
+
+    unique_no_hash = [(p, sz) for p, sz in files_a
+                      if (os.path.basename(p).lower(), sz) not in _names_sizes_b]
+    candidates = [(p, sz) for p, sz in files_a
+                  if (os.path.basename(p).lower(), sz) in _names_sizes_b]
+
+    unique_no_hash.sort(key=lambda x: -x[1])
+    candidates.sort(key=lambda x: -x[1])
+
+    _skip_below = None
+    if len(unique_no_hash) >= limit:
+        _skip_below = unique_no_hash[limit - 1][1]
+
+    if _skip_below is not None:
+        _cand_active = [(p, sz) for p, sz in candidates if sz >= _skip_below]
+    else:
+        _cand_active = candidates
+    _skipped_by_size = len(candidates) - len(_cand_active)
+
+    print("Хэшируем B (только по активным кандидатам)...")
+    hashes_b = set()
+    _cand_keys_a = {(os.path.basename(p).lower(), sz) for p, sz in _cand_active}
+    for p, sz in files_b:
+        if (os.path.basename(p).lower(), sz) in _cand_keys_a:
+            try:
+                hashes_b.add(_sha256(p))
+            except OSError:
+                pass
+
+    print("Хэшируем " + str(len(_cand_active)) + " файлов A "
+          + (f"(отсечено {_skipped_by_size} мелких)"
+             if _skipped_by_size else "") + "...")
+    import time
+    from tqdm import tqdm
+    unique = list(unique_no_hash)
+    _start = time.time()
+    _timeout = int(a.get("таймаут") or 30)
+    _early_stopped = False
+
+    if _cand_active:
+        with tqdm(total=len(_cand_active), desc="Хэширование", unit="файл") as pbar:
+            for i, (p, sz) in enumerate(_cand_active, 1):
+                if _timeout > 0 and (time.time() - _start) > _timeout:
+                    _early_stopped = True
+                    break
+                try:
+                    h = _sha256(p)
+                    if h not in hashes_b:
+                        unique.append((p, sz))
+                except OSError:
+                    unique.append((p, sz))
+                pbar.update(1)
+                if _early_stopped:
+                    break
+    if _early_stopped:
+        print(f"⚠️ Ирлистоп: прошло {_timeout} сек, обработано {i} из {len(_cand_active)}")
+
+    if not unique:
+        return "В A нет ничего уникального (все " + str(len(files_a)) + " файлов есть в B)"
+
+    unique.sort(key=lambda x: -x[1])
+    total_sz = sum(sz for _, sz in unique)
+    _approx = ""
+    if _skipped_by_size or _early_stopped:
+        _notes = []
+        if _skipped_by_size:
+            _notes.append(f"{_skipped_by_size} мелких (< top-{limit})")
+        if _early_stopped:
+            _notes.append("ирлистоп по таймауту")
+        _approx = " ≥ (не хэшировано: " + "; ".join(_notes) + ")"
+    result = [
+        "A: " + pa,
+        "B: " + pb,
+        "",
+        "Уникальных в A:" + _approx + " " + str(len(unique)) + " из " + str(len(files_a)) + " (" + _fmt_size(total_sz) + ")",
+    ]
+    if size_only:
+        return "\n".join(result)
+    result.append("")
+    is_dir_a = os.path.isdir(pa)
+    for p, sz in unique[:limit]:
+        rel = os.path.relpath(p, pa) if is_dir_a else p
+        result.append("  " + _fmt_size(sz).rjust(10) + "  " + rel)
+    if len(unique) > limit:
+        result.append("  ... и ещё " + str(len(unique) - limit) + " (увеличь лимит)")
+    return "\n".join(result)
