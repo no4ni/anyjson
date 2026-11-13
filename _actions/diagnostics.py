@@ -17,6 +17,48 @@ def _params_of(fn):
         return []
 
 
+# Стоп-слова для токенизации (игнорируются при разборе фраз)
+_STOP = {
+    "из", "в", "во", "с", "со", "по", "для", "на", "и", "или", "как",
+    "что", "чтобы", "это", "тот", "the", "a", "an", "of", "from", "to",
+    "in", "on", "with", "and", "or",
+}
+
+# Словарь синонимов: английское слово -> кортеж русских аналогов
+_SYN = {
+    "read": ("читать", "прочитать"),
+    "open": ("открыть",),
+    "write": ("записать", "писать"),
+    "save": ("сохранить",),
+    "find": ("найти", "поиск"),
+    "search": ("найти", "поиск"),
+    "list": ("список",),
+    "delete": ("удалить",),
+    "remove": ("удалить",),
+    "copy": ("копировать",),
+    "move": ("переместить",),
+    "create": ("создать",),
+    "run": ("запуск", "запустить"),
+    "help": ("справка",),
+    "image": ("картинка", "изображение"),
+    "picture": ("картинка", "изображение"),
+    "video": ("видео",),
+    "audio": ("аудио", "звук"),
+    "sound": ("звук",),
+    "folder": ("папка",),
+    "directory": ("папка",),
+    "file": ("файл",),
+    "text": ("текст",),
+    "path": ("путь",),
+    "url": ("адрес", "ссылка"),
+    "query": ("запрос",),
+    "command": ("команда",),
+    "name": ("имя",),
+    "number": ("номер",),
+    "key": ("ключ",),
+    "data": ("данные",),
+}
+
 # Соответствия латиница ↔ кириллица для типовых ключей
 _RU_EN = {
     "text": "текст", "текст": "text",
@@ -88,11 +130,20 @@ def _is_cyr(c):
 
 
 def _alts(q):
-    """Варианты запроса: сам + словарный + транслит."""
+    """Варианты запроса: сам + словарный + синонимы слов + транслит."""
     q = q.strip().lower()
     out = [q]
     if q in _RU_EN:
         out.append(_RU_EN[q])
+    # Разбиваем на слова и добавляем их синонимы
+    words = _re.findall(r"[a-zа-яё0-9_]+", q)
+    for w in words:
+        if w in _SYN:
+            out.extend(_SYN[w])
+        # Обратный поиск: если слово - русский синоним, добавляем английский
+        for eng, rus_list in _SYN.items():
+            if w in rus_list:
+                out.append(eng)
     has_lat = any(_is_lat(c) for c in q)
     has_cyr = any(_is_cyr(c) for c in q)
     if has_lat and not has_cyr:
@@ -116,27 +167,31 @@ def _smart_match(alts, target):
 
 
 def _score_of(alts, primary, aliases, params, doc, doc_first):
-    """Релевантность: точное имя > алиас > подстрока > параметр > док."""
+    """Релевантность: точное имя > алиас > подстрока > параметр > док.
+    Для составных запросов (с пробелами) проверяет каждое слово отдельно."""
     score = 0
     for a in alts:
         if not a:
             continue
-        if a == primary:
-            score = max(score, 100)
-        elif a in aliases:
-            score = max(score, 80)
-        elif a in primary:
-            score = max(score, 60)
-        elif any(a in al for al in aliases):
-            score = max(score, 15)
-        if a in params:
-            score = max(score, 30)
-        elif any(a in p for p in params):
-            score = max(score, 20)
-        if a in doc_first:
-            score = max(score, 10)
-        elif a in doc:
-            score = max(score, 5)
+        # Разбиваем составные запросы на отдельные слова
+        words = [a] if " " not in a else [w for w in a.split() if w]
+        for word in words:
+            if word == primary:
+                score = max(score, 100)
+            elif word in aliases:
+                score = max(score, 80)
+            elif word in primary:
+                score = max(score, 60)
+            elif any(word in al for al in aliases):
+                score = max(score, 15)
+            if word in params:
+                score = max(score, 30)
+            elif any(word in p for p in params):
+                score = max(score, 20)
+            if word in doc_first:
+                score = max(score, 10)
+            elif word in doc:
+                score = max(score, 5)
     return score
 
 
@@ -189,132 +244,199 @@ def _scan(alts, where, params_of):
     return hits
 
 
-@register(["диагностика", "поиск"])
+@register(["поиск_команд", "диагностика", "поиск"])
 def diagnostics(args):
     """Найти команды по подстроке в имени / докстринге / параметрах.
 
     Параметры:
-      сервис / подстрока — что искать (обязательный)
-      где     — 'имя' | 'док' | 'параметр' | 'всё' (по умолчанию 'всё':
-                имя + параметры + весь докстринг)
+      сервис / подстрока — что искать (обязательный). Несколько
+                  формулировок можно перечислить через "/":
+                  "прочитать файл / открыть текст из файла / read file".
+                  Команды сортируются по числу совпавших формулировок,
+                  затем по обычной релевантности. Счётчик в выводе не показывается.
+      где     — 'имя' | 'док' | 'параметр' | 'всё' (по умолчанию 'всё')
       алиасы  — true/false, показывать ли альтернативные имена
       лимит   — сколько показать (по умолчанию 10; 0 или 'все' — все)
 
-    Ищет с учётом латиница↔кириллица: 'text' найдёт и 'текст'.
-    Сортирует по релевантности (точное имя → алиас → подстрока →
-    параметр → докстринг).
-
-    Примеры:
-      {"диагностика": {"сервис": "text"}}
-      {"диагностика": {"сервис": "text", "лимит": 5}}
-      {"диагностика": {"сервис": "text", "лимит": 0}}
-      {"диагностика": {"сервис": "молтбук", "где": "имя"}}
+    Ищет с учётом латиница↔кириллица и синонимов: 'read file' найдёт
+    команды, связанные с 'читать' и 'файл'.
+    Если ни целая фраза, ни обрезка хвоста не дали результатов —
+    автоматически разбивает запрос по пробелам на отдельные слова
+    и ищет каждое отдельно (пословный fallback).
     """
     if not isinstance(args, dict):
-        return 'Укажи сервис: {"диагностика": {"сервис": "text"}}'
+        return 'Укажи сервис: {"поиск_команд": {"сервис": "text"}}'
     q = (args.get("сервис") or args.get("подстрока") or args.get("запрос") or "").strip()
     if not q:
-        return ('Укажи сервис: {"диагностика": {"сервис": "text"}}\n'
-                'Например: {"диагностика": {"сервис": "молтбук"}}')
+        return ('Укажи сервис: {"поиск_команд": {"сервис": "text"}}\n'
+            'Например: {"поиск_команд": {"сервис": "молтбук"}}')
     where = (args.get("где") or "всё").strip().lower()
-    alts = _alts(q)
 
-    # --- шаблоны латинских имён (download/curl/wget) ---
-    try:
-        from _executor import _LATIN_TEMPLATES
-        _tpl_hits = []
-        for _lat, _tpl in _LATIN_TEMPLATES.items():
-            if _smart_match(alts, _lat):
-                _tpl_hits.append((_lat, _tpl))
-    except Exception:
-        _tpl_hits = []
-
+    # Кэш параметров для ускорения множественных сканирований
     params_cache = {}
-
     def params_of(fn):
         key = id(fn)
         if key not in params_cache:
             params_cache[key] = _params_of(fn)
         return params_cache[key]
 
-    matches = _scan(alts, where, params_of)
-
-    # --- fallback: если не нашли, пробуем без последней буквы (1..3 раз) ---
-    _original_q = q
-    _tries = 0
-    while not matches and len(q) >= 4 and _tries < 3:
-        q = q[:-1]
-        _tries += 1
-        alts = _alts(q)
-        matches = _scan(alts, where, params_of)
-
-    if not matches and _tpl_hits:
-        out_tpl = []
-        for _lat, _tpl in _tpl_hits:
-            out_tpl.append(f"• шаблон (латиница): {_lat}")
-            out_tpl.append("")
-            for _ln in _tpl.split("\n"):
-                out_tpl.append("  " + _ln)
-            out_tpl.append("")
-        return "\n".join(out_tpl).rstrip()
-
-    if not matches:
-        from _color import color_red
-        return color_red(f"По '{_original_q}' ничего не найдено.")
-
-    # --- сортировка по релевантности + лимит ---
-    matches.sort(key=lambda x: (-x[0], x[1]))
-
-    lim = args.get("лимит", 10)
-    if isinstance(lim, str):
-        _ls = lim.strip().lower()
-        if _ls in ("все", "all", "0", ""):
-            lim = 0
-        else:
+    def _parse_lim():
+        lim = args.get("лимит", 10)
+        if isinstance(lim, str):
+            _ls = lim.strip().lower()
+            if _ls in ("все", "all", "0", ""):
+                return 0
             try:
-                lim = int(_ls)
+                return max(0, int(_ls))
             except ValueError:
-                lim = 10
-    lim = max(0, int(lim))
+                return 10
+        return max(0, int(lim))
 
+    def _parse_aliases():
+        show_aliases = args.get("алиасы", False)
+        if isinstance(show_aliases, str):
+            return show_aliases.strip().lower() in ("1", "true", "да", "yes", "on")
+        return bool(show_aliases)
+
+    def _render(matches, total, lim, header_q, suffix=""):
+        show_aliases = _parse_aliases()
+        where_part = "" if where in ("всё", "все", "all", "") else f", где={where}"
+        header = f"🔎 Найдено команд по '{header_q}'{where_part}{suffix}"
+        if lim > 0 and total > lim:
+            header += f" — топ-{lim}:"
+        else:
+            header += ":"
+        lines = [header, ""]
+        for _sc, name, aliases, doc, params in matches:
+            lines.append(f"• команда: {name}")
+            if show_aliases:
+                other = [a for a in aliases if a != name]
+                if other:
+                    lines.append(f"  алиасы: {', '.join(other)}")
+            doc_short = doc.strip().split("\n", 1)[0].strip()
+            if doc_short:
+                lines.append(f"  {doc_short}")
+            if params:
+                lines.append(f"  параметры: {', '.join(params)}")
+            lines.append("")
+        if lim > 0 and total > lim:
+            import json
+            hint = json.dumps({"поиск_команд": {"сервис": header_q, "лимит": 0}}, ensure_ascii=False)
+            lines.append(f"… и ещё {total - lim}. Показать все: {hint}")
+        return "\n".join(lines).rstrip()
+
+    # --- Разбиваем на подзапросы ---
+    parts = [p.strip() for p in q.split("/") if p.strip()]
+    subqs = []
+    seen_q = set()
+    for p in parts:
+        k = p.lower()
+        if k not in seen_q:
+            seen_q.add(k)
+            subqs.append(p)
+    if not subqs:
+        subqs = [q]
+
+    lim = _parse_lim()
+
+    # --- Одиночный запрос: старое поведение с fallback-обрезкой ---
+    if len(subqs) == 1:
+        sq = subqs[0]
+        alts = _alts(sq)
+        matches = _scan(alts, where, params_of)
+        _original_q = sq
+        _tries = 0
+        while not matches and len(sq) >= 4 and _tries < 3:
+            sq = sq[:-1]
+            _tries += 1
+            alts = _alts(sq)
+            matches = _scan(alts, where, params_of)
+        
+        if not matches:
+            # Fallback: разбиваем на отдельные слова (если их > 1) и ищем каждое
+            words = [w.strip() for w in _original_q.split() if len(w.strip()) >= 2]
+            if len(words) > 1:
+                agg = {}
+                for qi, word in enumerate(words):
+                    alts_w = _alts(word)
+                    matches_w = _scan(alts_w, where, params_of)
+                    # Fallback-обрезка для каждого слова
+                    if not matches_w and len(word) >= 4:
+                        _w = word
+                        for _ in range(2):
+                            _w = _w[:-1]
+                            matches_w = _scan(_alts(_w), where, params_of)
+                            if matches_w:
+                                break
+                    for sc, name, aliases, doc, params in matches_w:
+                        e = agg.setdefault(name, {
+                            "score": 0,
+                            "queries": set(),
+                            "aliases": aliases,
+                            "doc": doc,
+                            "params": params
+                        })
+                        e["score"] = max(e["score"], sc)
+                        e["queries"].add(qi)
+                if agg:
+                    matches = [(e["score"], name, e["aliases"], e["doc"], e["params"])
+                               for name, e in agg.items()]
+                    matches.sort(key=lambda x: (-len(agg[x[1]]["queries"]), -x[0], x[1]))
+                    total = len(matches)
+                    if lim > 0:
+                        matches = matches[:lim]
+                    return _render(matches, total, lim, _original_q, " [пословный поиск]")
+            
+            from _color import color_red
+            return color_red(f"По '{_original_q}' ничего не найдено.")
+            
+        matches.sort(key=lambda x: (-x[0], x[1]))
+        total = len(matches)
+        if lim > 0:
+            matches = matches[:lim]
+        _suffix = f" [уточнено: '{_original_q}' → '{sq}']" if sq != _original_q else ""
+        return _render(matches, total, lim, sq, _suffix)
+
+    # --- Мультизапрос: агрегация по числу совпавших подзапросов ---
+    agg = {}
+    for qi, sq in enumerate(subqs):
+        alts = _alts(sq)
+        matches = _scan(alts, where, params_of)
+        
+        # Fallback для конкретного подзапроса, если он не дал результатов
+        if not matches and len(sq) >= 4:
+            _sq = sq
+            for _ in range(2):
+                _sq = _sq[:-1]
+                matches = _scan(_alts(_sq), where, params_of)
+                if matches:
+                    break
+
+        for sc, name, aliases, doc, params in matches:
+            e = agg.setdefault(name, {
+                "score": 0, 
+                "queries": set(),
+                "aliases": aliases, 
+                "doc": doc, 
+                "params": params
+            })
+            e["score"] = max(e["score"], sc)
+            e["queries"].add(qi)
+
+    if not agg:
+        from _color import color_red
+        return color_red(f"По '{q}' ничего не найдено.")
+
+    # Сортировка: 1) по убыванию числа совпавших подзапросов, 2) по скорингу, 3) по имени
+    matches = [(e["score"], name, e["aliases"], e["doc"], e["params"])
+               for name, e in agg.items()]
+    matches.sort(key=lambda x: (-len(agg[x[1]]["queries"]), -x[0], x[1]))
+    
     total = len(matches)
     if lim > 0:
         matches = matches[:lim]
-
-    show_aliases = args.get("алиасы", True)
-    if isinstance(show_aliases, str):
-        show_aliases = show_aliases.strip().lower() not in ("0", "false", "нет", "off", "")
-    else:
-        show_aliases = bool(show_aliases)
-
-    _suffix = ""
-    if q != _original_q:
-        _suffix = f" [уточнено: '{_original_q}' → '{q}']"
-    header = f"🔎 Найдено команд: {total} (по '{q}', где={where}){_suffix}"
-    if lim > 0 and total > lim:
-        header += f" — топ-{lim}"
-    lines = [header, ""]
-
-    for _sc, name, aliases, doc, params in matches:
-        lines.append(f"• команда: {name}")
-        if show_aliases:
-            other = [a for a in aliases if a != name]
-            if other:
-                lines.append(f"  алиасы: {', '.join(other)}")
-        doc_short = doc.strip().split("\n", 1)[0].strip()
-        if doc_short:
-            lines.append(f"  {doc_short}")
-        if params:
-            lines.append(f"  параметры: {', '.join(params)}")
-        lines.append("")
-
-    if lim > 0 and total > lim:
-        lines.append(
-            f"… и ещё {total - lim}. Показать все: "
-            f'{{"диагностика": {{"сервис": "{q}", "лимит": 0}}}}'
-        )
-
-    return "\n".join(lines).rstrip()
+        
+    return _render(matches, total, lim, q)
 
 @register(["найти_функцию", "поиск_функции", "где_функция"])
 def find_function(args):

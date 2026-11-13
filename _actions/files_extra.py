@@ -419,6 +419,10 @@ def inspect(args):
     """
     from _actions.tools_files import execute_command
     from _actions.tools_web import view_page
+    import os
+    import time
+    import random
+    import sys
     file_path = args.get("путь", "")
     keywords = args.get("ключевые_слова")
     try:
@@ -437,8 +441,6 @@ def inspect(args):
     if not file_path:
         return "Ошибка: необходимо указать 'путь'"
 
-    # Pre-flight: если это не URL и файла нет — говорим об этом сразу.
-    # Иначе идём в inspect.ps1, он возвращает пусто — и команда молчит.
     if not file_path.startswith(("http://", "https://")) and not os.path.exists(file_path):
         _parent = os.path.dirname(file_path) or "."
         return (
@@ -449,10 +451,6 @@ def inspect(args):
             + "```"
         )
 
-    # Бинарные/специальные форматы — перенаправляем на прочитать_полностью.
-    # Текстовые (.txt/.log/.py/...) — НЕ перенаправляем: для них смысл
-    # осмотра в поиске по содержимому, а read_full кладёт файл в буфер
-    # как CF_HDROP и поиска не делает. Раньше сюда уходили все .txt.
     _TEXT_EXTS = {".txt", ".log", ".md", ".py", ".js", ".html",
                   ".css", ".json", ".xml", ".csv", ".ini", ".cfg",
                   ".yaml", ".yml", ".toml", ".rst", ".tex", ".sql",
@@ -476,8 +474,6 @@ def inspect(args):
     if keywords is None or (isinstance(keywords, (str, list)) and not keywords):
         kw_list = [" "]
     elif isinstance(keywords, str):
-        # регулярка: вся строка - один паттерн; иначе "," и "|"
-        # разрежут альтернацию и квантификатор {2,4}
         import re as _re
         if use_regex:
             kw_list = [keywords.strip()] if keywords.strip() else [" "]
@@ -509,8 +505,6 @@ def inspect(args):
         last_tick = 0.0
         _cap_limit = (target_count * 10) if target_count > 0 else 10000
         text_exts = _TEXT_EXTS
-        # матчер строки: регулярка или подстрока, регистр не важен
-        # (Select-String в inspect.ps1 тоже регистронезависим)
         import re as _re_c
         if use_regex:
             try:
@@ -562,7 +556,6 @@ def inspect(args):
                         last_tick = now
                     full_path = os.path.join(root, f)
                     try:
-                        # память O(контекст): скользящее окно вместо readlines()
                         from collections import deque as _deque
                         _prev = _deque(maxlen=_ctx)
                         _block = []
@@ -571,7 +564,6 @@ def inspect(args):
                         with open(full_path, 'r', encoding=encoding) as fp:
                             for _ln in fp:
                                 _hit = _line_hit(_ln)
-                                # хвостовой контекст добран - закрываем блок
                                 if _block and _pending == 0 and not _hit:
                                     all_matches.append((full_path, "".join(_block).rstrip()))
                                     _block = []
@@ -585,8 +577,6 @@ def inspect(args):
                                 elif _block:
                                     _block.append(_ln)
                                     _pending -= 1
-                                # если совпадает каждая строка, блок растёт
-                                # до размера файла - режем принудительно
                                 if len(_block) >= _BLOCK_MAX:
                                     all_matches.append((full_path, "".join(_block).rstrip()))
                                     _block = []
@@ -625,9 +615,16 @@ def inspect(args):
     ps_array = "@('" + "','".join(kw_esc) + "')"
     fp_esc = file_path.replace("'", "''")
     inspect_script = PUBLIC_TOOLS_DIR / "inspect.ps1"
+    
+    # Pre-flight проверка существования самого скрипта inspect.ps1
+    if not inspect_script.exists():
+        return (
+            "❌ inspect.ps1 не найден по пути: " + str(inspect_script.resolve()) + chr(10)
+            + "💡 Проверь значение PUBLIC_TOOLS_DIR в _config.py и наличие файла side/inspect.ps1."
+        )
+
     _regex_flag = " -Regex" if use_regex else ""
     ps_command = f'& "{inspect_script}" -FilePath \'{fp_esc}\' -Keywords {ps_array} -TargetCount {target_count} -Probability {probability} -Encoding \'{encoding}\' -Context {context}{_regex_flag}'
-    # Кэш: одинаковые параметры — не гоняем inspect.ps1 повторно.
     _cache_key = (
         str(file_path),
         "|".join(str(x) for x in kw_list),
@@ -654,14 +651,12 @@ def inspect(args):
         _from_cache = True
     else:
         result = run_with_wait(execute_command, (ps_command, timeout, True), timeout)
-        # PS 5.1 сериализует Progress/Information в CLIXML и пихает в stderr.
-        # Режем здесь — это последняя точка перед выводом.
         import re as _re
         result = _re.sub(r"#<\s*CLIXML.*", "", result, flags=_re.S).rstrip()
         _from_cache = False
         if result.strip():
             _inspect_cache_set(_cache_key, result)
-    # Если PS-скрипт не вернул ничего — не молчим, а сообщаем.
+            
     if not result.strip():
         return (
             "⚠️ inspect.ps1 вернул пустой результат." + chr(10)
@@ -669,11 +664,11 @@ def inspect(args):
             + "  ключевые_слова: " + repr(kw_list) + chr(10)
             + "  кодировка: " + str(encoding) + chr(10)
             + "  таймаут: " + str(timeout) + " с" + chr(10)
+            + "  команда PS: " + ps_command + chr(10)
             + "💡 Проверь: файл читается? ключевые слова есть в тексте? "
-            + "таймаут не мал?"
+            + "таймаут не мал? Скопируй 'команда PS' и выполни в PowerShell вручную."
         )
 
-    # --- пагинация результата ---
     try:
         _page = int(args.get("страница", 1) or 1)
     except (TypeError, ValueError):

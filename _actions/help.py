@@ -66,12 +66,12 @@ def _find_by_param(query):
 def show_help(args):
     """Справка о конкретной команде.
     Параметры:
-      запрос — имя команды
+      команда — имя команды (обязательный)
     """
     if isinstance(args, str):
         query = args.strip()
     elif isinstance(args, dict):
-        query = (args.get("запрос") or args.get("команда")
+        query = (args.get("команда") or args.get("запрос")
                  or args.get("тема") or args.get("имя")
                  or args.get("что") or "").strip()
     else:

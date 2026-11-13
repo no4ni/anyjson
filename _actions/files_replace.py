@@ -119,6 +119,19 @@ def _flexible_pattern(find_s: str) -> str:
         "'": r"['\u2018\u2019]",
         '\u2018': r"['\u2018\u2019]",
         '\u2019': r"['\u2018\u2019]",
+        '(': r'\(',
+        ')': r'\)',
+        '[': r'\[',
+        ']': r'\]',
+        '{': r'\{',
+        '}': r'\}',
+        '+': r'\+',
+        '*': r'\*',
+        '?': r'\?',
+        '^': r'\^',
+        '$': r'\$',
+        '\\': r'\\',
+        '|': r'\|',
     }
     parts = []
     for ch in find_s:
@@ -225,6 +238,16 @@ def replace_text(args: dict) -> str:
                           НЕ записывается: возвращается «⛔ Синтаксическая
                           ошибка» с позицией и сниппетом. Обход нужен для
                           промежуточных правок в два прохода.
+      без_отступов      — точечная замена подстрок без затрагивания
+                          ведущих пробелов. Разбивает «найти» и «заменить»
+                          на строки, сравнивает lstrip()-версии, при
+                          совпадении заменяет только непробельную часть,
+                          сохраняя оригинальный отступ. Идеально для .py.
+      слабый_отступ     — ведущие пробелы/табы в каждой строке якоря
+                          трактуются как \\s* при поиске. По умолчанию
+                          false для .py, true для остальных. Включай явно
+                          для .py, если отступы в якоре и файле расходятся.
+                          Замена должна содержать корректные отступы.
 
     Нестрогий поиск: если точное совпадение не найдено, движок всегда
     пробует «гибкий» вариант — NBSP/пробел, тире/дефис, кавычки
@@ -268,6 +291,7 @@ def replace_text(args: dict) -> str:
     if flex_indent is None:
         flex_indent = not path.suffix.lower() in (".py", ".pyw")
     flex_indent = _as_bool(flex_indent, flex_indent)
+    no_indent = _as_bool(args.get("без_отступов", args.get("no_indent")), False)
     if not path.exists():
         return f"❌ Файл не найден: {path}"
     if not path.is_file():
@@ -288,6 +312,48 @@ def replace_text(args: dict) -> str:
     _orig_crlf = "\r\n" in text
     if _orig_crlf:
         text = text.replace("\r\n", "\n").replace("\r", "\n")
+
+    if no_indent:
+        # Умная замена: игнорируем отступы при поиске, авто-выравниваем замену,
+        # поддерживаем вставку/удаление строк (разное количество строк в найти/заменить)
+        find_lines = find_s.split('\n')
+        repl_lines = repl_s.split('\n')
+        
+        # Строим regex для поиска блока, игнорируя ведущие пробелы в каждой строке якоря
+        esc_lines = []
+        for ln in find_lines:
+            stripped = ln.lstrip()
+            if stripped:
+                esc_lines.append(r'\s*' + re.escape(stripped))
+            else:
+                esc_lines.append(r'\s*') # Пустая строка в якоре
+        pattern_str = '\n'.join(esc_lines)
+        
+        try:
+            pattern = re.compile(pattern_str)
+        except re.error as e:
+            return f"❌ Ошибка в регулярном выражении (без_отступов): {e}"
+            
+        match = pattern.search(text)
+        if not match:
+            return "❌ Совпадений не найдено в " + path.name + " (без_отступов)"
+            
+        # Определяем базовый отступ первой строки найденного блока в файле
+        matched_text = match.group(0)
+        first_matched_line = matched_text.split('\n')[0]
+        base_indent = first_matched_line[:len(first_matched_line) - len(first_matched_line.lstrip())]
+        
+        # Применяем этот базовый отступ ко всем строкам замены (включая вставленные)
+        indented_repl_lines = [base_indent + ln if ln.strip() else ln for ln in repl_lines]
+        replacement_text = '\n'.join(indented_repl_lines)
+        
+        # Выполняем замену (только первое вхождение, если replace_all=False)
+        count = 1 if not replace_all else 0
+        new_text = pattern.sub(replacement_text, text, count=count)
+        cnt = 1 if new_text != text else 0
+        
+        if cnt == 0:
+            return "❌ Совпадений не найдено в " + path.name + " (без_отступов)"
 
     flags = 0 if case_sensitive else re.IGNORECASE
     cnt = 0
@@ -322,6 +388,46 @@ def replace_text(args: dict) -> str:
 
         return _fmt(before_raw), _fmt(after_raw)
 
+    if no_indent:
+        # Точечная замена подстрок без затрагивания ведущих пробелов
+        find_lines = find_s.split('\n')
+        repl_lines = repl_s.split('\n')
+        if len(find_lines) != len(repl_lines):
+            return "❌ При без_отступов: количество строк в «найти» и «заменить» должно совпадать"
+        
+        text_lines = text.split('\n')
+        new_text_lines = []
+        replacements_made = 0
+        find_idx = 0
+        
+        for line in text_lines:
+            if find_idx < len(find_lines):
+                find_line = find_lines[find_idx]
+                find_stripped = find_line.lstrip()
+                line_stripped = line.lstrip()
+                
+                if line_stripped == find_stripped:
+                    # Совпадение — заменяем непробельную часть, сохраняя отступ
+                    leading = line[:len(line) - len(line_stripped)]
+                    new_text_lines.append(leading + repl_lines[find_idx])
+                    replacements_made += 1
+                    find_idx += 1
+                    if not replace_all:
+                        # Добавляем остальные строки текста
+                        new_text_lines.extend(text_lines[text_lines.index(line) + 1:])
+                        break
+                else:
+                    new_text_lines.append(line)
+            else:
+                new_text_lines.append(line)
+        
+        if replacements_made == len(find_lines):
+            new_text = '\n'.join(new_text_lines)
+            cnt = replacements_made
+            # Продолжаем с проверкой синтаксиса и записью (код ниже)
+        else:
+            return "❌ Совпадений не найдено в " + path.name + " (без_отступов)"
+    
     if use_regex:
         try:
             pattern = re.compile(find_s, flags)
@@ -338,10 +444,9 @@ def replace_text(args: dict) -> str:
         # Точный поиск — через regex, с теми же границами слова.
         # Так «записать_файл» не цепляет «перезаписать_файл»,
         # а «файл» — «подфайл». Фразы/JSON не затрагиваются.
-        _find_for_pat = find_s
         if flex_indent:
             # Ведущие пробелы/табы в начале каждой строки → \s*
-            _lines = _find_for_pat.split('\n')
+            _lines = find_s.split('\n')
             _esc_lines = []
             for _ln in _lines:
                 _m = re.match(r'^([ \t]+)(.*)', _ln, re.DOTALL)
@@ -349,9 +454,15 @@ def replace_text(args: dict) -> str:
                     _esc_lines.append(r'\s*' + re.escape(_m.group(2)))
                 else:
                     _esc_lines.append(re.escape(_ln))
-            _find_for_pat = '\n'.join(_esc_lines)
-        _word_find = bool(re.fullmatch(r"\w+", _find_for_pat))
-        _pat_src = _find_for_pat
+            _pat_src = '\n'.join(_esc_lines)
+        else:
+            # Багфикс: раньше компилировался сырой find_s как regex —
+            # падало на Python-коде со скобками/квадратными скобками
+            # (re.PatternError: unbalanced parenthesis). Экранируем.
+            _pat_src = re.escape(find_s)
+        # Границы слова проверяем по ИСХОДНОМУ find_s (не по _pat_src):
+        # иначе на экранированной строке re.fullmatch(r"\w+") не сработает.
+        _word_find = bool(re.fullmatch(r"\w+", find_s))
         if _word_find:
             _pat_src = r"(?<!\w)" + _pat_src + r"(?!\w)"
         _pat_plain = re.compile(_pat_src, flags)

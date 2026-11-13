@@ -97,7 +97,8 @@ def execute_command(cmd_line, timeout=30, preserve_ws=False):
     """Выполнить PowerShell-команду (через -EncodedCommand)."""
     import base64
     encoded_cmd = base64.b64encode(cmd_line.encode("utf-16-le")).decode("ascii")
-    ps_command = ["powershell", "-NoProfile", "-EncodedCommand", encoded_cmd]
+    # Добавлен -ExecutionPolicy Bypass для гарантии запуска скриптов (как в ручном тесте)
+    ps_command = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded_cmd]
     try:
         env = os.environ.copy()
         env["PYTHONIOENCODING"] = "utf-8"

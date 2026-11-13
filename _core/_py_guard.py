@@ -5,12 +5,13 @@
 Ставит sys.addaudithook и блокирует:
   - запись/удаление/переименование/rmtree в системных папках Windows
     (та же модель, что у команд «переписать» и «добавить»);
-  - os.system / os.exec / subprocess.Popen — целиком.
+  - os.system / os.exec / subprocess.Popen — кроме ffmpeg/ffprobe из
+    доверенных каталогов; ROCm-пробы (rocm-sdk) отбиваются молча.
 
-Нарушение → чистая строка в stderr + os._exit(3).
-Никакого traceback: агент не должен видеть, где живёт защита.
-os._exit не ловится try/except — скрипт умирает, даже если попытается
-проглотить ошибку.
+Нарушение → чистая строка в stderr, без traceback (агент не должен
+видеть, где живёт защита). Защищённые папки: os._exit(3), не ловится.
+Запуск процессов: catchable PermissionError/FileNotFoundError (soft).
+ROCm-пробы: без stderr, исключение без ⛔.
 """
 import json
 import os
@@ -198,6 +199,29 @@ def _popen_is_allowed(args):
     return False
 
 
+_ROCM_NAME_RE = re.compile(r"^rocm(?:[-_.].*)?$", re.IGNORECASE)
+
+
+def _is_rocm_probe(name, args):
+    """ROCm-пробы наличия инструмента — тихий отказ (без stderr).
+
+    torch/accelerate на Windows проверяют rocm-sdk/rocm-smi даже на
+    NVIDIA-машине. Это норма, не нарушение — не шумим. Всё прочее
+    блокируется со сообщением как раньше.
+    """
+    if name and _ROCM_NAME_RE.match(name):
+        return True
+    try:
+        a = args[1] if args and len(args) > 1 else None
+        if isinstance(a, (list, tuple)):
+            low = " ".join(str(x).lower() for x in a)
+            if re.search(r"-m\s+rocm(?:[-_.\s]|$)", low):
+                return True
+    except Exception:
+        pass
+    return False
+
+
 _HINTS = {
     "open": (
         'Для записи используй встроенные команды:\n'
@@ -231,26 +255,30 @@ _HINTS = {
 }
 
 
-def _fail(what, path, hint_key=None, soft=False):
+def _fail(what, path, hint_key=None, soft=False, silent=False):
     """Заблокировать действие.
 
-    soft=False (по умолчанию): стереть stderr и os._exit(3) — жёстко.
-      Для записи/удаления/переименования в защищённых папках.
+    soft=False (по умолчанию): os._exit(3) — жёстко. Для записи/удаления/
+      переименования в защищённых папках. Не ловится try/except.
 
-    soft=True: стереть stderr и бросить PermissionError — скрипт может
+    soft=True: бросить PermissionError+FileNotFoundError — скрипт может
       поймать и продолжить. Для запуска внешних процессов: библиотеки
-      часто "проверяют наличие" инструмента (rocm-sdk, nvcc, git...) и
-      не должны валить весь скрипт из-за отсутствия. Реальный запуск
-      всё равно не произойдёт.
+      часто "проверяют наличие" инструмента и не должны валить весь
+      скрипт из-за отсутствия. Реальный запуск всё равно не произойдёт.
+
+    silent=True: не писать в stderr и не выдавать себя в тексте
+      исключения. Только вместе с soft=True. Для заведомо-безвредных
+      проб наличия AMD-инструмента (rocm-sdk) на NVIDIA-машине.
     """
     _msg = what + (": " + str(path) if path else "")
-    try:
-        sys.stderr.write("⛔ питон: " + _msg + " запрещено\n")
-        if hint_key and hint_key in _HINTS:
-            sys.stderr.write("💡 " + _HINTS[hint_key] + "\n")
-        sys.stderr.flush()
-    except Exception:
-        pass
+    if not silent:
+        try:
+            sys.stderr.write("⛔ питон: " + _msg + " запрещено\n")
+            if hint_key and hint_key in _HINTS:
+                sys.stderr.write("💡 " + _HINTS[hint_key] + "\n")
+            sys.stderr.flush()
+        except Exception:
+            pass
     if soft:
         # Двойное наследование: библиотеки (triton, vllm) при проверке
         # наличия бинаря ловят FileNotFoundError, а не PermissionError.
@@ -258,6 +286,10 @@ def _fail(what, path, hint_key=None, soft=False):
         # будто бинаря нет), при этом тип остаётся PermissionError.
         class _BlockedExecutableError(FileNotFoundError, PermissionError):
             pass
+        if silent:
+            # Без ⛔ и "запрещено": даже залогированное исключение выглядит
+            # как обычное отсутствие бинаря, а не срабатывание guard.
+            raise _BlockedExecutableError(_msg)
         raise _BlockedExecutableError("⛔ " + _msg + " запрещено")
     os._exit(3)
 
@@ -292,6 +324,7 @@ def _audit(event, args):
         if _popen_is_allowed(args):
             return
         _name, _full = _popen_target(args)
+        _silent = _is_rocm_probe(_name, args)  # ROCm-пробы — без шума
         _label = "subprocess.Popen"
         if _name:
             _label += " (" + _name + ")"
@@ -310,7 +343,7 @@ def _audit(event, args):
                 _raw = "?"
             if _raw:
                 _label += " → " + _raw
-        _fail(_label, "", "exec", soft=True)
+        _fail(_label, "", "exec", soft=True, silent=_silent)
     elif event in ("os.system", "os.exec"):
         _fail(event, "", "exec", soft=True)
 

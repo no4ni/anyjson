@@ -137,10 +137,16 @@ def _call_agent_daemon(json_text):
                 if not text:
                     return text
                 _filtered = []
+                _skip_rest = False
                 for _ln in text.splitlines():
                     # Сначала счищаем ANSI-коды: невидимые escape-последовательности
                     # не должны спасать служебные строки от фильтра.
                     _s = _ANSI_RE.sub("", _ln).strip()
+                    if not _skip_rest and _s.startswith("\U0001F4A1") and "Пакетный режим" in _s:
+                        _skip_rest = True
+                        continue
+                    if _skip_rest:
+                        continue
                     if _s.startswith("[DEBUG]"): continue
                     if "Результаты скопированы в буфер" in _s: continue
                     # Заголовок «Результаты:» ловим нормализованно: NBSP, ZWSP, BOM,
@@ -163,7 +169,13 @@ def _call_agent_daemon(json_text):
 
 
 def stream_llm(messages, max_tokens=1024, tools=None):
-    """Стрим SSE из llama.cpp. Парсит tool_calls из ответа, fallback на парсинг JSON из content."""
+    """Стрим SSE из llama.cpp с нативными tool calls.
+
+    Вызов инструмента приходит фрагментами: первый delta несёт имя и
+    пустые arguments, остальные - куски JSON-строки без type:function.
+    Поэтому копим по index и отдаём один раз после конца stream.
+    Отдача на первом чанке теряла аргументы (вызов уходил с {}).
+    """
     payload = {
         "messages": messages,
         "temperature": 0.7,
@@ -175,18 +187,19 @@ def stream_llm(messages, max_tokens=1024, tools=None):
     if tools:
         payload["tools"] = tools
         payload["tool_choice"] = "auto"
-    
-    payload_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    payload_bytes = json.dumps(payload).encode("utf-8-sig")
     req = urllib.request.Request(
         LLM_URL, data=payload_bytes,
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    buffer = []
     in_think = False
+    tc_acc = {}      # index -> {"id", "name", "arguments"} - накопитель вызовов
+    tc_order = []    # порядок появления индексов
+    finish = None    # finish_reason последнего choice (для диагностики)
     try:
         with urllib.request.urlopen(req, timeout=180) as resp:
-            for raw in io.TextIOWrapper(resp, encoding="utf-8"):
+            for raw in io.TextIOWrapper(resp, encoding="utf-8-sig"):
                 line = raw.strip()
                 if not line.startswith("data: "):
                     continue
@@ -195,38 +208,73 @@ def stream_llm(messages, max_tokens=1024, tools=None):
                     break
                 try:
                     obj = json.loads(ds)
-                    delta = obj.get("choices", [{}])[0].get("delta", {})
-                    # Tool calls
-                    tool_calls = delta.get("tool_calls", [])
-                    if tool_calls:
-                        for tc in tool_calls:
-                            if tc.get("type") == "function":
-                                fn = tc.get("function", {})
-                                name = fn.get("name", "")
-                                args_str = fn.get("arguments", "")
-                                try:
-                                    args = json.loads(args_str) if args_str else {}
-                                except json.JSONDecodeError:
-                                    args = {}
-                                yield {"type": "tool_call", "name": name, "arguments": args}
-                                return
-                    # Thinking-токены
-                    thinking_tok = delta.get("reasoning_content", "") or delta.get("thinking", "")
-                    content_tok = delta.get("content", "")
-                    if thinking_tok:
-                        yield {"type": "thought", "content": thinking_tok}
-                    if content_tok:
-                        if "<think>" in content_tok or "<thinking>" in content_tok:
-                            in_think = True
-                        yield_type = "thought" if in_think else "token"
-                        yield {"type": yield_type, "content": content_tok}
-                        if "</think>" in content_tok or "</thinking>" in content_tok:
-                            in_think = False
                 except json.JSONDecodeError:
                     continue
+                choice = (obj.get("choices") or [{}])[0]
+                delta = choice.get("delta") or {}
+                if choice.get("finish_reason"):
+                    finish = choice["finish_reason"]
+                # --- Tool calls: только копим, наружу пока ничего не отдаём ---
+                for tc in (delta.get("tool_calls") or []):
+                    idx = tc.get("index", 0)          # index связывает фрагменты
+                    if idx not in tc_acc:
+                        tc_acc[idx] = {"id": "", "name": "", "arguments": ""}
+                        tc_order.append(idx)
+                    slot = tc_acc[idx]
+                    if tc.get("id"):
+                        slot["id"] = tc["id"]
+                    fn = tc.get("function") or {}
+                    if fn.get("name"):
+                        slot["name"] = fn["name"]     # имя приходит один раз
+                    a = fn.get("arguments")
+                    if isinstance(a, str):
+                        slot["arguments"] += a        # очередной кусок JSON-строки
+                    elif isinstance(a, dict):
+                        slot["arguments"] = json.dumps(a, ensure_ascii=False)
+                # --- Мысли и текст стримим как раньше ---
+                thinking_tok = delta.get("reasoning_content", "") or delta.get("thinking", "")
+                content_tok = delta.get("content", "")
+                if thinking_tok:
+                    yield {"type": "thought", "content": thinking_tok}
+                if content_tok:
+                    if "<think>" in content_tok or "<thinking>" in content_tok:
+                        in_think = True
+                    yield {"type": "thought" if in_think else "token", "content": content_tok}
+                    if "</think>" in content_tok or "</thinking>" in content_tok:
+                        in_think = False
     except Exception as ex:
         logger.error(f"[LLM ERROR] {ex}")
         yield {"type": "error", "content": str(ex)}
+        return
+    # --- Stream кончился: разбираем накопленные вызовы ---
+    if len(tc_order) > 1:
+        logger.warning(f"[TOOL] модель прислала {len(tc_order)} вызовов, исполняю первый")
+    for idx in tc_order:
+        slot = tc_acc[idx]
+        if not slot["name"]:
+            continue                                  # мусор без имени - пропускаем
+        raw_args = slot["arguments"].strip()
+        logger.info(f"[TOOL RAW] {slot['name']} finish={finish} args={raw_args[:300]!r}")
+        args = {}
+        if raw_args:
+            try:
+                args = json.loads(raw_args)
+            except json.JSONDecodeError as e:
+                # Раньше здесь молча подставлялся {} - баг маскировался
+                logger.error(f"[TOOL PARSE] {slot['name']}: {e}")
+                yield {"type": "error",
+                       "content": f"Аргументы {slot['name']} не разобраны: {raw_args[:300]}"}
+                return
+            if not isinstance(args, dict):
+                logger.error(f"[TOOL PARSE] {slot['name']}: не объект, а {type(args).__name__}")
+                yield {"type": "error",
+                       "content": f"Аргументы {slot['name']} должны быть объектом"}
+                return
+        else:
+            logger.warning(f"[TOOL] {slot['name']}: аргументы пусты у самой модели")
+        yield {"type": "tool_call", "name": slot["name"], "arguments": args,
+               "id": slot["id"], "raw_arguments": raw_args}
+        return                                        # контракт do_GET: один вызов
 
 def _load_web_ui():
     # Читать HTML интерфейса из _core/web_ui.html при каждом запросе (live-дизайн).
@@ -243,7 +291,7 @@ _stats = None
 def _load_stats():
     """Загрузить статистику команд из JSON."""
     path = Path(__file__).parent / "command_stats.json"
-    fallback = {"sessions": [], "fallback_top5": ["время", "справка", "профиль_свой", "список_команд", "эхо"]}
+    fallback = {"sessions": [], "fallback_top5": ["время", "читать", "профиль_свой", "список_файлов", "эхо"]}
     if not path.exists():
         return fallback
     try:
@@ -270,6 +318,16 @@ def _record_command(name, stats):
     current["counts"][name] = current["counts"].get(name, 0) + 1
     _save_stats(stats)
 
+def _get_last5(stats):
+    """Получить 5 последних вызванных команд из текущей сессии (в порядке вызова)."""
+    if not stats or not stats.get("sessions"):
+        return []
+    current = stats["sessions"][-1]
+    counts = current.get("counts") or {}
+    # dict в Python 3.7+ сохраняет порядок вставки — последние ключи = последние вызовы
+    keys = list(counts.keys())
+    return keys[-5:] if len(keys) >= 5 else keys
+
 def _get_top5(stats):
     """Получить топ-5 команд по сумме вызовов за все сессии."""
     counts = {}
@@ -285,50 +343,152 @@ def _get_top5(stats):
             top5.append(name)
     return top5[:5]
 
+def _build_context_hint(stats):
+    """Построить подсказку о последних и популярных командах для system-сообщения."""
+    last5 = []
+    if stats.get("sessions"):
+        current = stats["sessions"][-1]
+        last5 = list(current.get("counts", {}).keys())[-5:]
+    popular5 = _get_top5(stats)
+    seen = set()
+    names = []
+    for n in last5 + popular5:
+        if n not in seen and len(names) < 7:
+            seen.add(n)
+            names.append(n)
+    if not names:
+        return ""
+    return f"Доступные команды: {', '.join(names)}. Используй выполнить_команду для известных имён, поиск_команд для остальных."
+
+
+def _build_full_messages():
+    """Собрать массив messages для LLM: базовый system + _messages (уже содержит system-блоки перед user).
+    Используется и в /api/chat (для отправки), и в /api/history (для отображения полной истории).
+    """
+    full_messages = []
+    # Базовый system-промпт (не трогаем, он первый)
+    if _system_prompt:
+        full_messages.append({"role": "system", "content": _system_prompt})
+    # _messages уже содержит system-блоки перед каждым user (добавляются в do_GET)
+    full_messages.extend(_messages)
+    return full_messages
+
+def _generate_context_hint():
+    """Сгенерировать подсказку с дедуплицированным списком команд: 5 последних + топ-5 популярных."""
+    try:
+        _last5 = _get_last5(_stats)
+        _top5 = _get_top5(_stats)
+        _top5_names = _top5 if isinstance(_top5, list) else []
+        # Исключения: мета-команды, которые и так видны модели через tools
+        _excluded = {"диагностика", "справка", "список_команд"}
+        # Объединяем: сначала последние, потом топ-5 дополняет недостающими
+        _seen = set()
+        _merged = []
+        for _c in _last5 + _top5_names:
+            if _c and _c not in _seen and _c not in _excluded:
+                _seen.add(_c)
+                _merged.append(_c)
+        if _merged:
+            _names_str = ", ".join([f'"{c}"' for c in _merged])
+            return f"💡 Последние и популярные команды: {_names_str}."
+    except Exception:
+        pass
+    return ""
+
 def _build_tools(stats):
-    """Построить массив tools для llama.cpp: мета-команды + топ-5 частых."""
+    """Построить массив tools для llama.cpp: только мета-команды (статично для KV-кэша)."""
     top5 = _get_top5(stats)
     tools = [
         {
             "type": "function",
             "function": {
-                "name": "search_commands",
+                "name": "поиск_команд",
                 "description": "Найти команду anyjson по описанию задачи. Возвращает имя, параметры, пример.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "query": {"type": "string", "description": "Что нужно сделать (по-русски)"}
+                        "запрос": {"type": "string", "description": "Что нужно сделать (по-русски)"}
                     },
-                    "required": ["query"]
+                    "required": ["запрос"]
                 }
             }
         },
         {
             "type": "function",
             "function": {
-                "name": "execute_command",
+                "name": "выполнить_команду",
                 "description": "Выполнить команду anyjson. Имя должно быть из списка известных команд.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "name": {"type": "string", "description": "Имя команды (кириллица)"},
-                        "arguments": {"type": "object", "description": "Параметры команды"}
+                        "имя": {"type": "string", "description": "Имя команды (кириллица)"},
+                        "аргументы": {"type": "object", "description": "Параметры команды"}
                     },
-                    "required": ["name"]
+                    "required": ["имя"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "справка",
+                "description": "Показать справку по УЖЕ ИЗВЕСТНОЙ команде: объяснить, что значат её параметры и как именно она работает. НЕ использовать для поиска команд по описанию задачи (для этого есть поиск_команд).", 
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "команда": {"type": "string", "description": "Имя команды или краткое описание (кириллица)"}
+                    },
+                    "required": ["команда"]
                 }
             }
         }
     ]
-    for name in top5:
-        tools.append({
-            "type": "function",
-            "function": {
-                "name": name,
-                "description": f"Команда anyjson: {name}",
-                "parameters": {"type": "object", "properties": {}}
-            }
-        })
+    # Топ-5 команды убраны из tools.
+    # Модель обязана использовать поиск_команд, выполнить_команду и справку,
+    # так как только они имеют полные описания параметров (schemas).
     return tools
+
+def _tool_to_command(name, args):
+    """Развернуть вызов инструмента в JSON-команду для agent.py.
+
+    поиск_команд -> диагностика(сервис=запрос)
+    выполнить_команду -> <имя>(<аргументы>)
+    справка -> справка(сервис=запрос)
+    Остальные имена проходят напрямую.
+    """
+    if not isinstance(args, dict):
+        args = {}
+    if name == "справка":
+        query = args.get("команда") or args.get("запрос") or args.get("имя") or args.get("сервис") or ""
+        return json.dumps({"справка": {"команда": str(query)}}, ensure_ascii=False)
+    if name == "поиск_команд":
+        query = args.get("запрос") or args.get("query") or args.get("сервис") or ""
+        return json.dumps({"диагностика": {"сервис": str(query)}}, ensure_ascii=False)
+    if name == "выполнить_команду":
+        cmd = args.get("имя") or args.get("name") or args.get("команда")
+        inner = args.get("аргументы")
+        if inner is None:
+            inner = args.get("параметры") or args.get("params")
+        if isinstance(inner, str):
+            try:
+                inner = json.loads(inner)
+            except json.JSONDecodeError:
+                logger.warning(f"[TOOL ROUTE] аргументы не JSON: {inner[:200]!r}")
+                inner = {}
+        if not isinstance(inner, dict):
+            inner = {}
+        if not inner:
+            # Модель могла положить параметры рядом с именем, без вложенного объекта
+            meta = {"имя", "name", "команда", "аргументы", "параметры", "params"}
+            inner = {k: v for k, v in args.items() if k not in meta}
+        if not isinstance(cmd, str) or not cmd.strip():
+            return json.dumps({"эхо": {"текст": "⛔ выполнить_команду: не передано имя команды"}}, ensure_ascii=False)
+        cmd = cmd.strip()
+        if cmd == "выполнить_команду":
+            return json.dumps({"эхо": {"текст": "⛔ выполнить_команду: рекурсивный вызов запрещён"}}, ensure_ascii=False)
+        return json.dumps({cmd: inner}, ensure_ascii=False)
+    return json.dumps({name: args}, ensure_ascii=False)
+
 
 class H(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -342,15 +502,21 @@ class H(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-type", "application/json; charset=utf-8")
             self.end_headers()
+            # Возвращаем полный массив messages со всеми system-блоками
+            # (базовый system + динамические system перед каждым user)
             history_resp = {
-                "system": _system_prompt or "",
-                "messages": _messages.copy()
+                "messages": _build_full_messages()
             }
             self.wfile.write(json.dumps(history_resp, ensure_ascii=False).encode("utf-8"))
         elif parsed.path == "/api/chat":
             qs = parse_qs(parsed.query)
             msg = (qs.get("msg") or [""])[0].strip()
             logger.info(f"[CHAT] msg={msg[:200]!r}")
+            # Перед добавлением user-сообщения генерируем и добавляем system-блок с подсказкой
+            # Это фиксирует подсказку на момент отправки и улучшает попадание в KV-кэш
+            context_hint = _generate_context_hint()
+            if context_hint:
+                _messages.append({"role": "system", "content": context_hint})
             _messages.append({"role": "user", "content": msg})
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream; charset=utf-8")
@@ -360,10 +526,12 @@ class H(BaseHTTPRequestHandler):
                 iterations = 0
                 force_text_only = False
                 tools = _build_tools(_stats)
+                logger.info(f"[TOOLS] передано модели {len(tools)} инструментов: {[t['function']['name'] for t in tools]}")
+                logger.debug(f"[TOOLS] полное описание: {json.dumps(tools, ensure_ascii=False)}")
                 while True:
                     iterations += 1
-                    full_messages = [{"role": "system", "content": _system_prompt or "Ты — AI-ассистент."}]
-                    full_messages.extend(_messages)
+                    # Собираем полный массив messages через общую функцию
+                    full_messages = _build_full_messages()
                     json_detected = None
                     assistant_text = []
                     for event in stream_llm(full_messages, tools=tools):
@@ -379,14 +547,9 @@ class H(BaseHTTPRequestHandler):
                         elif event["type"] == "tool_call" and not force_text_only:
                             name = event["name"]
                             args = event["arguments"]
-                            if name == "search_commands":
-                                json_detected = json.dumps({"диагностика": {"сервис": args.get("query", "")}}, ensure_ascii=False)
-                            elif name == "execute_command":
-                                cmd_name = args.get("name", "")
-                                cmd_args = args.get("arguments", {})
-                                json_detected = json.dumps({cmd_name: cmd_args}, ensure_ascii=False)
-                            else:
-                                json_detected = json.dumps({name: args}, ensure_ascii=False)
+                            # Логируем полное описание вызова инструмента
+                            logger.info(f"[TOOL] вызов демона: имя={name}, аргументы={args}")
+                            json_detected = _tool_to_command(name, args)
                             break
 
                         elif event["type"] == "error":
