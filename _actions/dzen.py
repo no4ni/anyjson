@@ -147,7 +147,13 @@ def read_dzen_article(args):
       {"прочитать_статью_дзен": {"номер": 5}}
     """
     args = args or {}
-    channel = args.get("канал") or DEFAULT_CHANNEL
+    raw_url = args.get("url") or args.get("ссылка") or args.get("адрес") or ""
+    ch_val = str(args.get("канал") or "")
+    if not raw_url and ("/a/" in ch_val or "/news/story/" in ch_val):
+        raw_url = ch_val
+        ch_val = ""
+    channel = ch_val or DEFAULT_CHANNEL
+
     try:
         size = int(args.get("размер") or args.get("лимит") or 30000)
     except (TypeError, ValueError):
@@ -161,36 +167,58 @@ def read_dzen_article(args):
     if page < 1:
         page = 1
 
-    items = _iter_articles(channel)
-    if not items:
-        return f"📭 Нет скачанных статей для канала {_slug(channel)}."
-
     target = None
-    if args.get("номер") is not None or "номер" in args:
-        try:
-            num = int(args["номер"])
-        except (TypeError, ValueError):
-            return "Ошибка: 'номер' должен быть числом"
-        target = next((it for it in items if it["номер"] == num), None)
+    if raw_url:
+        art_id = str(raw_url).partition("?").rstrip("/").rsplit("/", 1)[-1]
+        out_root = PY_BROWSER / "output"
+        if out_root.exists() and art_id:
+            for f in sorted(out_root.rglob("*.txt")):
+                try:
+                    head_txt = f.read_text(encoding="utf-8", errors="replace")[:600]
+                except Exception:
+                    continue
+                if art_id in head_txt:
+                    m_num = re.match(r"(\d+)_(.+)\.txt$", f.name)
+                    target = {
+                        "номер": int(m_num.group(1)) if m_num else 0,
+                        "заголовок": m_num.group(2) if m_num else f.stem,
+                        "путь": f,
+                    }
+                    break
         if not target:
-            nums = [it["номер"] for it in items]
-            head = nums[:20]
-            tail = "..." if len(nums) > 20 else ""
-            return f"Статья с номером {num} не найдена. Доступны: {head}{tail}"
-    elif args.get("заголовок"):
-        q = str(args["заголовок"]).lower()
-        matches = [it for it in items if q in it["заголовок"].lower()]
-        if not matches:
-            return f"Ничего не найдено по '{args['заголовок']}'."
-        if len(matches) > 1:
-            lines = [f"Найдено несколько ({len(matches)}), уточните заголовок:"]
-            for m in matches[:15]:
-                lines.append(f"  {m['номер']:03d}. {m['заголовок']}")
-            return "\n".join(lines)
-        target = matches[0]
+            return (
+                f"📭 Статья по ссылке ещё не скачана: {raw_url}\n"
+                f'💡 Сначала скачай её командой: {{"дзен_статья": {{"url": "{raw_url}"}}}}'
+            )
     else:
-        # ничего не указано — читаем последнюю статью
-        target = items[-1]
+        items = _iter_articles(channel)
+        if not items:
+            return f"📭 Нет скачанных статей для канала {_slug(channel)}."
+
+        if args.get("номер") is not None or "номер" in args:
+            try:
+                num = int(args["номер"])
+            except (TypeError, ValueError):
+                return "Ошибка: 'номер' должен быть числом"
+            target = next((it for it in items if it["номер"] == num), None)
+            if not target:
+                nums = [it["номер"] for it in items]
+                head = nums[:20]
+                tail = "..." if len(nums) > 20 else ""
+                return f"Статья с номером {num} не найдена. Доступны: {head}{tail}"
+        elif args.get("заголовок"):
+            q = str(args["заголовок"]).lower()
+            matches = [it for it in items if q in it["заголовок"].lower()]
+            if not matches:
+                return f"Ничего не найдено по '{args['заголовок']}'."
+            if len(matches) > 1:
+                lines = [f"Найдено несколько ({len(matches)}), уточните заголовок:"]
+                for m in matches[:15]:
+                    lines.append(f"  {m['номер']:03d}. {m['заголовок']}")
+                return "\n".join(lines)
+            target = matches[0]
+        else:
+            target = items[-1]
 
     try:
         text = target["путь"].read_text(encoding="utf-8", errors="replace")

@@ -73,9 +73,13 @@ def _should_hint_english(path):
 
 
 def _is_secret_file(path):
-    """True, если файл — приватный ключ (private_key.pem и *private_key.pem)."""
+    """True, если файл — приватный ключ или хранилище API-ключей."""
     name = os.path.basename(str(path)).lower()
-    return name.endswith("private_key.pem")
+    return (
+        name.endswith("private_key.pem")
+        or name in {"api_keys.json", ".env", "secrets.json", "credentials.json"}
+        or (name.startswith("api_keys") and name.endswith(".json"))
+    )
 
 
 def _is_mostly_english(text: str) -> bool:
@@ -212,7 +216,8 @@ def read_(args):
         return "Укажите 'путь'."
 
     if _is_secret_file(path):
-        return "Приватный ключ — чтение запрещено."
+        return ("⛔ Чтение файла секретов заблокировано. "
+                "Для проверки и управления API-ключами используйте команду {\"настроить\": {}}.")
 
     if os.path.isdir(path):
         return list_files({"путь": path, "скрытые": args.get("скрытые", False)})
@@ -607,7 +612,8 @@ def read_kb(args):
         return f"❌ Файл не найден: {path}"
 
     if _is_secret_file(path):
-        return "Приватный ключ — чтение запрещено."
+        return ("⛔ Чтение файла секретов заблокировано. "
+                "Для проверки и управления API-ключами используйте команду {\"настроить\": {}}.")
 
     _is_bin, _ = _looks_binary(path)
     if _is_bin:

@@ -26,7 +26,8 @@ def _find_common(args, only_files, only_dirs=False):
                    or args.get("путь") or os.getcwd()),
         search_name=args.get("имя", ""),
         search_content=(args.get("содержание") or args.get("содержимое")
-                        or args.get("подстрока") or args.get("запрос", "")),
+                        or args.get("текст") or args.get("подстрока")
+                        or args.get("запрос") or args.get("что", "")),
         search_all=args.get("всё", ""),
         encoding=args.get("кодировка", "utf-8"),
         max_file_size=args.get("макс_размер", 1_000_000),
@@ -36,7 +37,7 @@ def _find_common(args, only_files, only_dirs=False):
         only_dirs=only_dirs,
         search_mask=args.get("маска") or "",
         ignore_cache=bool(args.get("свежий")),
-        others_limit=args.get("других_путей", 30),
+        others_limit=args.get("других_путей") or args.get("лимит", 30),
     )
 
 
@@ -50,7 +51,7 @@ def find_file_cmd(args):
       корень      — папка старта (по умолчанию текущая), алиасы: где, путь
       имя         — подстрока в имени файла
       содержание  — подстрока в тексте (поддерживает "a|b" для ИЛИ),
-                    алиасы: подстрока, запрос
+                    алиасы: текст, содержимое, подстрока, запрос, что
       всё         — искать и по имени, и по содержимому
       маска       — glob по имени (например "*mega*", "*.py")
       кодировка   — для чтения (по умолчанию utf-8)
@@ -71,11 +72,14 @@ def find_all_cmd(args):
     """Поиск файлов И папок по имени и/или содержимому.
 
     В отличие от «найти_файл», показывает и папки тоже.
-    Параметры — те же.
+    Параметры — те же. Алиасы: корень/где/путь, имя,
+    содержание/содержимое/подстрока/запрос/что, маска,
+    других_путей/лимит.
 
     Примеры:
       {"найти_всё": {"корень": "E:/Jericho", "имя": "tools"}}
       {"найти": {"корень": "E:/", "маска": "*mega*"}}
+      {"найти": {"где": "E:/Jericho", "что": "JericoSoft", "лимит": 30}}
     """
     return _find_common(args, only_files=False)
 

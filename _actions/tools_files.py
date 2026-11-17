@@ -427,10 +427,33 @@ def move_item(source: str, destination: str) -> str:
                 shutil.rmtree(src, ignore_errors=True)
         else:
             dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(src), str(dst))
+            try:
+                os.replace(str(src), str(dst))
+            except OSError:
+                copy_file_with_progress(src, dst, desc=f"Перемещение {src.name}")
+                src.unlink()
         return f"✅ Перемещено: {source} → {dst}"
     except Exception as e:
         return f"❌ Ошибка перемещения: {e}"
+
+
+def copy_file_with_progress(src: Path, dst: Path, desc: str = "Копирование"):
+    """Побайтовое копирование файла с tqdm-прогрессбаром для крупных файлов (>= 5 МБ)."""
+    total = src.stat().st_size
+    if total < 5 * 1024 * 1024:
+        shutil.copy2(str(src), str(dst))
+        return
+    chunk_size = 4 * 1024 * 1024
+    with open(src, "rb") as fsrc, open(dst, "wb") as fdst, tqdm(
+        total=total, desc=desc, unit="B", unit_scale=True, unit_divisor=1024
+    ) as pbar:
+        while True:
+            buf = fsrc.read(chunk_size)
+            if not buf:
+                break
+            fdst.write(buf)
+            pbar.update(len(buf))
+    shutil.copystat(str(src), str(dst))
 
 
 def _move_dir_with_progress(src_dir: Path, dst_dir: Path, pbar):

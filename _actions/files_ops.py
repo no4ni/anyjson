@@ -424,7 +424,8 @@ def copy_item(args):
         if src.is_dir():
             _sh.copytree(str(src), str(dst))
         else:
-            _sh.copy2(str(src), str(dst))
+            from _actions.tools_files import copy_file_with_progress
+            copy_file_with_progress(src, dst, desc=f"Копирование {src.name}")
         return f"✅ Скопировано: {src} → {dst}"
     except Exception as e:
         return f"❌ Ошибка копирования: {e}"

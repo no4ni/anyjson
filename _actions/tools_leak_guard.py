@@ -17,12 +17,24 @@ _KEYWORD_PATTERNS = [
 
 _TOKEN_PATTERNS = [
     re.compile(r"\bsk-[A-Za-z0-9_\-]{20,}\b"),
+    re.compile(r"\btvly-[A-Za-z0-9_\-]{16,}\b"),
+    re.compile(r"\bmoltb[A-Za-z0-9_\-]{16,}\b"),
+    re.compile(r"\bhf_[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\bAIza[A-Za-z0-9_\-]{20,}\b"),
+    re.compile(r"\bgsk_[A-Za-z0-9]{20,}\b"),
     re.compile(r"\bxoxb-[A-Za-z0-9\-]{20,}\b"),
     re.compile(r"\bghp_[A-Za-z0-9]{20,}\b"),
     re.compile(r"\bBearer\s+[A-Za-z0-9\-_.~+/=]{20,}", re.IGNORECASE),
     # hex-строки (sha256, git-хеши) специально НЕ маскируются:
     # это не секрет, они публично вычислимы.
 ]
+
+# Ключи сервисов в конфигах: "tavily": "...", "wolfram": "...", "ollama": "..."
+_SERVICE_KV_PATTERN = re.compile(
+    r"(?i)([\"'](?:tavily|moltbook|wolfram|unaiverse|windy|newsapi|newsdata"
+    r"|weatherapi|pastebin|ollama|openai|deepseek|anthropic|groq|openrouter"
+    r"|gemini|huggingface|hf)[\"']\s*:\s*)([\"'][^\"']{8,}[\"'])"
+)
 
 # Длинные строки вида base64url: MEGA-ключи, JWT-сегменты, API-секреты.
 # Email — маскируем в выводе, но не блокируем отправку.
@@ -241,6 +253,7 @@ def _mask_plain(text):
         return text
     out = text
     out = _KV_PATTERN.sub(_mask_kv, out)
+    out = _SERVICE_KV_PATTERN.sub(_mask_kv, out)
     # URL-квери: ?key=... / &token=... — независимо от длины значения.
     out = _URL_KV_PATTERN.sub(lambda m: m.group(1) + "***", out)
     out = _EMAIL_PATTERN.sub("***", out)
