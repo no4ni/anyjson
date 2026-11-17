@@ -59,7 +59,11 @@ def create_3d_model(args):
     glb_path = out_dir / f"{stem}_{stamp}.glb"
 
     try:
-        from _actions.tools_mesh_3d import _build_solid_voxel, _render_iso_preview, _export_lowpoly_glb
+        import sys
+        from _config import PUBLIC_TOOLS_DIR
+        if str(PUBLIC_TOOLS_DIR) not in sys.path:
+            sys.path.insert(0, str(PUBLIC_TOOLS_DIR))
+        from tools_mesh_3d import _build_solid_voxel, _render_iso_preview, _export_lowpoly_glb
         solid = _build_solid_voxel(top_path, front_path, left_path, depth_scale=depth_scale)
         _render_iso_preview(solid, preview_path)
         faces_cnt = _export_lowpoly_glb(solid, glb_path, target_faces=target_faces, smooth_sigma=smooth_sigma)
