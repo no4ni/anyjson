@@ -83,3 +83,7 @@ __pycache__/
 # Эталонные прогоны (генерируются)
 _refactor/lottie/_etalon/_v*
 _refactor/lottie/_etalon/_new_*
+
+# ===== РЕФАКТОРИНГ И IDE =====
+_refactor/
+.gigaide/
