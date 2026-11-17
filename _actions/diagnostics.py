@@ -45,18 +45,18 @@ _SYN = {
     "video": ("видео",),
     "audio": ("аудио", "звук"),
     "sound": ("звук",),
-    "folder": ("папка",),
-    "directory": ("папка",),
-    "file": ("файл",),
-    "text": ("текст",),
-    "path": ("путь",),
+    "folder": ("папка", "папок", "папку", "папке", "директория", "директорий"),
+    "directory": ("папка", "папок", "папку", "папке", "директория", "директорий"),
+    "file": ("файл", "файлов", "файлы"),
+    "text": ("текст", "текста"),
+    "path": ("путь", "пути"),
     "url": ("адрес", "ссылка"),
-    "query": ("запрос",),
-    "command": ("команда",),
-    "name": ("имя",),
-    "number": ("номер",),
-    "key": ("ключ",),
-    "data": ("данные",),
+    "query": ("запрос", "запроса"),
+    "command": ("команда", "команды"),
+    "name": ("имя", "имени"),
+    "number": ("номер", "номера"),
+    "key": ("ключ", "ключа"),
+    "data": ("данные", "данных"),
 }
 
 # Соответствия латиница ↔ кириллица для типовых ключей
@@ -129,69 +129,155 @@ def _is_cyr(c):
     return "а" <= c <= "я" or c == "ё"
 
 
+_RU_TAILS = (
+    "иями", "ями", "ами", "ией", "иям", "ием", "иях",
+    "ого", "его", "ому", "ему", "ыми", "ими", "ать", "ять", "ить", "еть",
+    "ов", "ев", "ей", "ой", "ий", "ый", "ая", "яя", "ое", "ее",
+    "ые", "ие", "ом", "ем", "ам", "ям", "ах", "ях", "ую", "юю",
+    "а", "я", "у", "ю", "ы", "и", "е", "о", "ь",
+)
+
+
+def _stem_token(w):
+    """Мягкая нормализация слова: срез падежных окончаний для длинных русских слов."""
+    w = w.lower().strip("_")
+    if len(w) >= 5 and any(_is_cyr(c) for c in w):
+        for tail in _RU_TAILS:
+            if w.endswith(tail) and len(w) - len(tail) >= 4:
+                return w[:-len(tail)]
+    return w
+
+
+def _norm_phrase(s):
+    """Нормализация строки/имени команды: _ -> пробел, стемминг слов."""
+    tokens = _re.findall(r"[a-zа-яё0-9]+", (s or "").lower().replace("_", " "))
+    return " ".join(_stem_token(t) for t in tokens if t)
+
+
+def _word_variants(w):
+    """Все варианты одного токена (сам, стем, перевод, синонимы, транслит)."""
+    w = w.lower()
+    variants = {w, _stem_token(w)}
+    if w in _RU_EN:
+        variants.add(_RU_EN[w])
+    if w in _SYN:
+        for syn in _SYN[w]:
+            variants.add(syn)
+            variants.add(_stem_token(syn))
+    for eng, rus_list in _SYN.items():
+        if w in rus_list or any(_stem_token(r) == _stem_token(w) for r in rus_list):
+            variants.add(eng)
+            for syn in rus_list:
+                variants.add(syn)
+                variants.add(_stem_token(syn))
+    has_lat = any(_is_lat(c) for c in w)
+    has_cyr = any(_is_cyr(c) for c in w)
+    if has_lat and not has_cyr:
+        variants.add(_translit_lat2ru(w))
+    elif has_cyr and not has_lat:
+        variants.add(_translit_ru2lat(w))
+    return {v for v in variants if len(v) >= 2}
+
+
 def _alts(q):
-    """Варианты запроса: сам + словарный + синонимы слов + транслит."""
+    """Варианты запроса: целая фраза + нормализованная + перевод + транслит."""
     q = q.strip().lower()
     out = [q]
+    norm = _norm_phrase(q)
+    if norm:
+        out.append(norm)
     if q in _RU_EN:
         out.append(_RU_EN[q])
-    # Разбиваем на слова и добавляем их синонимы
-    words = _re.findall(r"[a-zа-яё0-9_]+", q)
-    for w in words:
-        if w in _SYN:
-            out.extend(_SYN[w])
-        # Обратный поиск: если слово - русский синоним, добавляем английский
-        for eng, rus_list in _SYN.items():
-            if w in rus_list:
-                out.append(eng)
+    words = [w for w in _re.findall(r"[a-zа-яё0-9]+", q.replace("_", " ")) if w]
+    if len(words) == 1:
+        out.extend(sorted(_word_variants(words[0])))
     has_lat = any(_is_lat(c) for c in q)
     has_cyr = any(_is_cyr(c) for c in q)
     if has_lat and not has_cyr:
         out.append(_translit_lat2ru(q))
     elif has_cyr and not has_lat:
         out.append(_translit_ru2lat(q))
-    return list(dict.fromkeys(out))
+    return list(dict.fromkeys(out + [v.replace("_", " ") for v in out]))
 
 
 def _smart_match(alts, target):
-    """Совпадение в трёх представлениях target: как есть, латиница, кириллица."""
+    """Совпадение в представлениях target: как есть, нормализованное, латиница, кириллица."""
     t_low = (target or "").lower()
+    t_norm = t_low.replace("_", " ")
+    t_stem = _norm_phrase(t_low)
     t_lat = _translit_ru2lat(t_low)
+    t_lat_norm = t_lat.replace("_", " ")
     t_ru = _translit_lat2ru(t_low)
+    t_ru_norm = t_ru.replace("_", " ")
+    haystacks = (t_low, t_norm, t_stem, t_lat, t_lat_norm, t_ru, t_ru_norm)
     for a in alts:
         if not a:
             continue
-        if a in t_low or a in t_lat or a in t_ru:
-            return True
+        a_norm = a.replace("_", " ")
+        a_stem = _norm_phrase(a)
+        for needle in (a, a_norm, a_stem):
+            if needle and any(needle in h for h in haystacks):
+                return True
     return False
 
 
 def _score_of(alts, primary, aliases, params, doc, doc_first):
-    """Релевантность: точное имя > алиас > подстрока > параметр > док.
-    Для составных запросов (с пробелами) проверяет каждое слово отдельно."""
+    """Релевантность: без накрутки дублей синонимов + бонус за точное попадание фразы."""
     score = 0
+    p_norm = primary.lower().replace("_", " ")
+    p_stem = _norm_phrase(primary)
+    al_norms = [al.lower().replace("_", " ") for al in aliases]
+    al_stems = [_norm_phrase(al) for al in aliases]
+    params_low = [p.lower() for p in params]
+    doc_first_low = (doc_first or "").lower()
+    doc_low = (doc or "").lower()
+
     for a in alts:
         if not a:
             continue
-        # Разбиваем составные запросы на отдельные слова
-        words = [a] if " " not in a else [w for w in a.split() if w]
-        for word in words:
-            if word == primary:
-                score = max(score, 100)
-            elif word in aliases:
-                score = max(score, 80)
-            elif word in primary:
-                score = max(score, 60)
-            elif any(word in al for al in aliases):
-                score = max(score, 15)
-            if word in params:
-                score = max(score, 30)
-            elif any(word in p for p in params):
-                score = max(score, 20)
-            if word in doc_first:
-                score = max(score, 10)
-            elif word in doc:
-                score = max(score, 5)
+        a_norm = a.replace("_", " ")
+        a_stem = _norm_phrase(a)
+        if a_norm == p_norm or (a_stem and a_stem == p_stem):
+            score = max(score, 160)
+        elif a_norm in al_norms or (a_stem and a_stem in al_stems):
+            score = max(score, 140)
+        elif a_norm in p_norm or (a_stem and a_stem in p_stem):
+            score = max(score, 110)
+
+    base_tokens = []
+    seen_tok = set()
+    for a in alts:
+        for t in _re.findall(r"[a-zа-яё0-9]+", (a or "").replace("_", " ")):
+            if len(t) >= 2 and t not in seen_tok:
+                seen_tok.add(t)
+                base_tokens.append(t)
+
+    p_words = set(p_norm.split())
+    al_words = {w for al in al_norms for w in al.split()}
+
+    for tok in base_tokens:
+        best_w = 0
+        for w in _word_variants(tok):
+            w_sc = 0
+            if w in p_words or w in p_stem.split():
+                w_sc = 50
+            elif w in al_words or any(w in s.split() for s in al_stems):
+                w_sc = 40
+            elif w in p_norm or w in p_stem:
+                w_sc = 30
+            elif any(w in al or w in s for al, s in zip(al_norms, al_stems)):
+                w_sc = 20
+            if w in params_low:
+                w_sc += 25
+            elif any(w in p for p in params_low):
+                w_sc += 15
+            if w in doc_first_low:
+                w_sc += 10
+            elif w in doc_low:
+                w_sc += 5
+            if w_sc > best_w:
+                best_w = w_sc
+        score += best_w
     return score
 
 
@@ -207,7 +293,6 @@ def _scan(alts, where, params_of):
         aliases = sorted(n for n, f in HANDLERS.items() if f is fn and n)
         if not aliases:
             continue
-        # приоритет — имя из PRIMARY_HANDLERS (первое в @register)
         primary = None
         for _pn, _pf in PRIMARY_HANDLERS.items():
             if _pf is fn:
@@ -258,11 +343,9 @@ def diagnostics(args):
       алиасы  — true/false, показывать ли альтернативные имена
       лимит   — сколько показать (по умолчанию 10; 0 или 'все' — все)
 
-    Ищет с учётом латиница↔кириллица и синонимов: 'read file' найдёт
-    команды, связанные с 'читать' и 'файл'.
-    Если ни целая фраза, ни обрезка хвоста не дали результатов —
-    автоматически разбивает запрос по пробелам на отдельные слова
-    и ищет каждое отдельно (пословный fallback).
+    Ищет с учётом латиница↔кириллица, синонимов и эквивалентности "_" пробелу.
+    Для многословных запросов совмещает точное попадание фразы с пословными
+    альтернативами (с пониженным весом), оставляя точное совпадение на первом месте.
     """
     if not isinstance(args, dict):
         return 'Укажи сервис: {"поиск_команд": {"сервис": "text"}}'
@@ -271,8 +354,8 @@ def diagnostics(args):
         return ('Укажи сервис: {"поиск_команд": {"сервис": "text"}}\n'
             'Например: {"поиск_команд": {"сервис": "молтбук"}}')
     where = (args.get("где") or "всё").strip().lower()
+    has_explicit_lim = "лимит" in args
 
-    # Кэш параметров для ускорения множественных сканирований
     params_cache = {}
     def params_of(fn):
         key = id(fn)
@@ -325,7 +408,33 @@ def diagnostics(args):
             lines.append(f"… и ещё {total - lim}. Показать все: {hint}")
         return "\n".join(lines).rstrip()
 
-    # --- Разбиваем на подзапросы ---
+    def _word_fallback(phrase):
+        words = [w.strip() for w in phrase.split() if len(w.strip()) >= 2]
+        if len(words) <= 1:
+            return {}
+        agg_w = {}
+        for qi, word in enumerate(words):
+            matches_w = _scan(_alts(word), where, params_of)
+            if not matches_w and len(word) >= 4:
+                _w = word
+                for _ in range(2):
+                    _w = _w[:-1]
+                    matches_w = _scan(_alts(_w), where, params_of)
+                    if matches_w:
+                        break
+            for sc, name, aliases, doc, params in matches_w:
+                e = agg_w.setdefault(name, {
+                    "score": 0.0,
+                    "queries": set(),
+                    "aliases": aliases,
+                    "doc": doc,
+                    "params": params,
+                })
+                e["score"] += sc * 0.4
+                e["queries"].add(qi)
+        min_hits = len(words) if len(words) == 2 else max(2, (len(words) + 1) // 2)
+        return {k: v for k, v in agg_w.items() if len(v["queries"]) >= min_hits}
+
     parts = [p.strip() for p in q.split("/") if p.strip()]
     subqs = []
     seen_q = set()
@@ -339,71 +448,51 @@ def diagnostics(args):
 
     lim = _parse_lim()
 
-    # --- Одиночный запрос: старое поведение с fallback-обрезкой ---
     if len(subqs) == 1:
         sq = subqs[0]
         alts = _alts(sq)
-        matches = _scan(alts, where, params_of)
+        exact_matches = _scan(alts, where, params_of)
         _original_q = sq
         _tries = 0
-        while not matches and len(sq) >= 4 and _tries < 3:
+        while not exact_matches and len(sq) >= 4 and _tries < 3:
             sq = sq[:-1]
             _tries += 1
             alts = _alts(sq)
-            matches = _scan(alts, where, params_of)
-        
-        if not matches:
-            # Fallback: разбиваем на отдельные слова (если их > 1) и ищем каждое
-            words = [w.strip() for w in _original_q.split() if len(w.strip()) >= 2]
-            if len(words) > 1:
-                agg = {}
-                for qi, word in enumerate(words):
-                    alts_w = _alts(word)
-                    matches_w = _scan(alts_w, where, params_of)
-                    # Fallback-обрезка для каждого слова
-                    if not matches_w and len(word) >= 4:
-                        _w = word
-                        for _ in range(2):
-                            _w = _w[:-1]
-                            matches_w = _scan(_alts(_w), where, params_of)
-                            if matches_w:
-                                break
-                    for sc, name, aliases, doc, params in matches_w:
-                        e = agg.setdefault(name, {
-                            "score": 0,
-                            "queries": set(),
-                            "aliases": aliases,
-                            "doc": doc,
-                            "params": params
-                        })
-                        e["score"] = max(e["score"], sc)
-                        e["queries"].add(qi)
-                if agg:
-                    matches = [(e["score"], name, e["aliases"], e["doc"], e["params"])
-                               for name, e in agg.items()]
-                    matches.sort(key=lambda x: (-len(agg[x[1]]["queries"]), -x[0], x[1]))
-                    total = len(matches)
-                    if lim > 0:
-                        matches = matches[:lim]
-                    return _render(matches, total, lim, _original_q, " [пословный поиск]")
-            
-            from _color import color_red
-            return color_red(f"По '{_original_q}' ничего не найдено.")
-            
-        matches.sort(key=lambda x: (-x[0], x[1]))
-        total = len(matches)
-        if lim > 0:
-            matches = matches[:lim]
-        _suffix = f" [уточнено: '{_original_q}' → '{sq}']" if sq != _original_q else ""
-        return _render(matches, total, lim, sq, _suffix)
+            exact_matches = _scan(alts, where, params_of)
 
-    # --- Мультизапрос: агрегация по числу совпавших подзапросов ---
+        word_agg = _word_fallback(_original_q)
+        merged = {}
+        for sc, name, aliases, doc, params in exact_matches:
+            merged[name] = [float(sc) + 100.0, name, aliases, doc, params, True]
+        for name, e in word_agg.items():
+            if name in merged:
+                merged[name][0] += e["score"]
+            else:
+                merged[name] = [e["score"], name, e["aliases"], e["doc"], e["params"], False]
+
+        if not merged:
+            from _color import color_red
+            return color_red(f"Команды {_original_q} нет.")
+
+        has_exact = any(v[5] for v in merged.values())
+        all_list = sorted(merged.values(), key=lambda x: (-int(x[5]), -x[0], x[1]))
+        matches = [(int(round(v[0])), v[1], v[2], v[3], v[4]) for v in all_list]
+        total = len(matches)
+        eff_lim = lim if has_explicit_lim else (5 if has_exact and len(word_agg) > 0 else lim)
+        if eff_lim > 0:
+            matches = matches[:eff_lim]
+        if not exact_matches and word_agg:
+            _suffix = " [пословный поиск]"
+        elif sq != _original_q:
+            _suffix = f" [уточнено: '{_original_q}' → '{sq}']"
+        else:
+            _suffix = ""
+        return _render(matches, total, eff_lim, sq if exact_matches else _original_q, _suffix)
+
     agg = {}
     for qi, sq in enumerate(subqs):
         alts = _alts(sq)
         matches = _scan(alts, where, params_of)
-        
-        # Fallback для конкретного подзапроса, если он не дал результатов
         if not matches and len(sq) >= 4:
             _sq = sq
             for _ in range(2):
@@ -411,31 +500,27 @@ def diagnostics(args):
                 matches = _scan(_alts(_sq), where, params_of)
                 if matches:
                     break
-
         for sc, name, aliases, doc, params in matches:
             e = agg.setdefault(name, {
-                "score": 0, 
+                "score": 0,
                 "queries": set(),
-                "aliases": aliases, 
-                "doc": doc, 
-                "params": params
+                "aliases": aliases,
+                "doc": doc,
+                "params": params,
             })
             e["score"] = max(e["score"], sc)
             e["queries"].add(qi)
 
     if not agg:
         from _color import color_red
-        return color_red(f"По '{q}' ничего не найдено.")
+        return color_red(f"Команды {q} нет.")
 
-    # Сортировка: 1) по убыванию числа совпавших подзапросов, 2) по скорингу, 3) по имени
     matches = [(e["score"], name, e["aliases"], e["doc"], e["params"])
                for name, e in agg.items()]
     matches.sort(key=lambda x: (-len(agg[x[1]]["queries"]), -x[0], x[1]))
-    
     total = len(matches)
     if lim > 0:
         matches = matches[:lim]
-        
     return _render(matches, total, lim, q)
 
 @register(["найти_функцию", "поиск_функции", "где_функция"])

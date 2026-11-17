@@ -156,7 +156,32 @@ def world_window(args):
         return ('Укажи страну: {"окно_в_мир": {"страна": "italia"}}\n'
                 'Список стран: https://www.skylinewebcams.com/en/webcam.html')
 
-    country = str(country).strip().lower().replace(" ", "-")
+    country_raw = str(country).strip().lower()
+    _country_map = {
+        "россия": "russia", "russia": "russia", "rf": "russia", "русь": "russia",
+        "италия": "italia", "italy": "italia", "italia": "italia",
+        "германия": "deutschland", "germany": "deutschland", "deutschland": "deutschland",
+        "франция": "france", "france": "france",
+        "испания": "spain", "spain": "spain", "espana": "spain",
+        "греция": "ellada", "greece": "ellada", "ellada": "ellada",
+        "сша": "united-states", "usa": "united-states", "united states": "united-states", "united-states": "united-states",
+        "турция": "turkey", "turkey": "turkey",
+        "великобритания": "united-kingdom", "uk": "united-kingdom", "united kingdom": "united-kingdom",
+        "нидерланды": "netherlands", "netherlands": "netherlands", "holland": "netherlands",
+        "швейцария": "switzerland", "switzerland": "switzerland",
+        "австрия": "austria", "austria": "austria",
+        "португалия": "portugal", "portugal": "portugal",
+        "хорватия": "croatia", "croatia": "croatia",
+        "кипр": "cyprus", "cyprus": "cyprus",
+        "япония": "japan", "japan": "japan",
+        "китай": "china", "china": "china",
+        "оаэ": "united-arab-emirates", "uae": "united-arab-emirates",
+    }
+    country_clean = country_raw.replace(" ", "").replace("-", "")
+    if country_clean in _country_map:
+        country = _country_map[country_clean]
+    else:
+        country = country_raw.replace(" ", "-")
     region = args.get("регион")
     if region:
         region = str(region).strip().lower().replace(" ", "-")

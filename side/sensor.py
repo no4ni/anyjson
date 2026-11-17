@@ -114,9 +114,10 @@ def handle_text(filepath):
 	except Exception as e:
 		return f"Ошибка чтения текста: {e}"
 
+	import os as _os
 	if len(content) > MAX_TEXT_SIZE:
 		content = content[:MAX_TEXT_SIZE] + "\n... (обрезано)"
-	return f"--- Текстовый файл ---\n{content}"
+	return f"# {_os.path.abspath(filepath)}\n{content}"
 
 def handle_image(filepath, config, lang='rus+eng'):
 	"""Извлекает метаданные, цвета, OCR-текст."""

@@ -26,7 +26,7 @@ def _find_common(args, only_files, only_dirs=False):
                    or args.get("путь") or os.getcwd()),
         search_name=args.get("имя", ""),
         search_content=(args.get("содержание") or args.get("содержимое")
-                        or args.get("подстрока", "")),
+                        or args.get("подстрока") or args.get("запрос", "")),
         search_all=args.get("всё", ""),
         encoding=args.get("кодировка", "utf-8"),
         max_file_size=args.get("макс_размер", 1_000_000),
@@ -50,7 +50,7 @@ def find_file_cmd(args):
       корень      — папка старта (по умолчанию текущая), алиасы: где, путь
       имя         — подстрока в имени файла
       содержание  — подстрока в тексте (поддерживает "a|b" для ИЛИ),
-                    алиас: подстрока
+                    алиасы: подстрока, запрос
       всё         — искать и по имени, и по содержимому
       маска       — glob по имени (например "*mega*", "*.py")
       кодировка   — для чтения (по умолчанию utf-8)

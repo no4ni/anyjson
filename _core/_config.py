@@ -7,12 +7,20 @@ from pathlib import Path
 BASE_DIR = Path(__file__).parent.parent.resolve()
 CONFIG_PATH = BASE_DIR / "side" / "config.json"
 
-try:
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        CONFIG = json.load(f)
-except Exception as e:
-    print(f"❌ Караул! Скрижаль Конфигурации утеряна или осквернена: {e}")
-    sys.exit(1)
+_DEFAULT_CONFIG = {
+    "paths": {},
+    "output_limits": {"max_size_kb": 1, "max_lines": 10, "max_line_length": 150},
+}
+
+if CONFIG_PATH.exists():
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            CONFIG = json.load(f)
+    except Exception as e:
+        print(f"⚠️ Ошибка чтения {CONFIG_PATH}: {e} — использую настройки по умолчанию")
+        CONFIG = json.loads(json.dumps(_DEFAULT_CONFIG))
+else:
+    CONFIG = json.loads(json.dumps(_DEFAULT_CONFIG))
 
 
 def resolve_path(path_str: str, base: Path = BASE_DIR) -> Path:
@@ -50,42 +58,56 @@ WATCHTOGETHER_CLI = EXTERNAL_DIR / "watchtogether" / "watchtogether_cli.py"
 VIDEOHEAR_CLI     = EXTERNAL_DIR / "videohear"     / "videohear_cli.py"
 SPECTRO_CLI       = EXTERNAL_DIR / "videohear"     / "spectro_cli.py"
 ORACUL_CLI        = EXTERNAL_DIR / "oracul"        / "oracul3_fixed.py"
+def _opt_path(key: str, which: str = "") -> Path:
+    """Безопасно достать путь из CONFIG['paths'] или найти бинарник в PATH."""
+    import shutil as _sh
+    raw = (CONFIG.get("paths") or {}).get(key, "")
+    if raw:
+        return resolve_path(raw)
+    if which:
+        found = _sh.which(which)
+        if found:
+            return Path(found).resolve()
+    return Path("")
+
+
 # --- Stable Diffusion WebUI (A1111) ---
-STABLEDIF_DIR   = resolve_path(CONFIG["paths"]["stabledif_dir"])
-STABLEDIF_RUN   = STABLEDIF_DIR / "run.bat"
-STABLEDIF_USER  = STABLEDIF_DIR / "webui" / "webui-user.bat"
+STABLEDIF_DIR   = _opt_path("stabledif_dir")
+STABLEDIF_RUN   = (STABLEDIF_DIR / "run.bat") if str(STABLEDIF_DIR) not in ("", ".") else Path("")
+STABLEDIF_USER  = (STABLEDIF_DIR / "webui" / "webui-user.bat") if str(STABLEDIF_DIR) not in ("", ".") else Path("")
 STABLEDIF_HOST  = "127.0.0.1"
 STABLEDIF_PORT  = 7860
 
 # --- Sim (PyBullet) ---
-SIM_DIR = resolve_path(CONFIG["paths"]["sim_dir"])
+SIM_DIR = _opt_path("sim_dir")
 SIM_CLI = EXTERNAL_DIR / "sim" / "hatasim2.py"
 
 
 HEAR_CLI          = EXTERNAL_DIR / "hear"         / "hear_cli.py"
 
 # TTS Piper (внешний инструмент, пути в side/config.json)
-PIPER_EXE         = resolve_path(CONFIG["paths"]["piper_exe"])
-PIPER_VOICES      = resolve_path(CONFIG["paths"]["piper_voices"])
+PIPER_EXE         = _opt_path("piper_exe", "piper")
+PIPER_VOICES      = _opt_path("piper_voices")
 
 # ffprobe / ffmpeg
-FFPROBE_EXE       = resolve_path(CONFIG["paths"]["ffprobe_exe"])
-FFMPEG_EXE        = resolve_path(CONFIG["paths"]["ffmpeg_exe"])
-SEVEN_ZIP_EXE     = resolve_path(CONFIG["paths"].get("7z_exe", ""))
+FFPROBE_EXE       = _opt_path("ffprobe_exe", "ffprobe")
+FFMPEG_EXE        = _opt_path("ffmpeg_exe", "ffmpeg")
+SEVEN_ZIP_EXE     = _opt_path("7z_exe", "7z")
 
-# Whisper (модель в JerichoSoft, не в Jericho — правило "только наше")
-WHISPER_DIR       = resolve_path(CONFIG["paths"]["whisper_dir"])
+# Whisper
+WHISPER_DIR       = _opt_path("whisper_dir")
 
-WIKI_TEXTS_DIR = Path(CONFIG["paths"]["wiki_texts_dir"])
-_TOR_PATH = Path(CONFIG["paths"]["tor_executable"])
-_TORRC = Path(CONFIG["paths"]["torrc"])
+WIKI_TEXTS_DIR = _opt_path("wiki_texts_dir")
+_TOR_PATH = _opt_path("tor_executable", "tor")
+_TORRC = _opt_path("torrc")
 API_KEYS_FILE = _path_from_config("api_keys_file", "side/api_keys.json")
-_WIKIGET_PATH = Path(CONFIG["paths"]["wikiget_executable"])
-ACTIONS_DIR = CONFIG["paths"].get("actions_dir")
+_WIKIGET_PATH = _opt_path("wikiget_executable", "wikiget")
+ACTIONS_DIR = (CONFIG.get("paths") or {}).get("actions_dir")
 
-MAX_OUTPUT_SIZE = CONFIG["output_limits"]["max_size_kb"] * 1024
-MAX_OUTPUT_LINES = CONFIG["output_limits"]["max_lines"]
-MAX_LINE_LENGTH = CONFIG["output_limits"]["max_line_length"]
+_LIM = CONFIG.get("output_limits") or {}
+MAX_OUTPUT_SIZE = _LIM.get("max_size_kb", 1) * 1024
+MAX_OUTPUT_LINES = _LIM.get("max_lines", 10)
+MAX_LINE_LENGTH = _LIM.get("max_line_length", 150)
 
 if str(TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(TOOLS_DIR))
@@ -407,6 +429,66 @@ def ensure_api_key(name, prompt=None):
     except Exception as e:
         print(f"\u26A0\uFE0F Не удалось сохранить ключ: {e}")
     return val
+
+
+def save_config_path(key: str, value: str) -> Path:
+    """Сохранить путь в side/config.json (merge с текущим файлом) и обновить CONFIG."""
+    data = {}
+    if CONFIG_PATH.exists():
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            data = {}
+    if not isinstance(data, dict):
+        data = {}
+    if not data and (BASE_DIR / "side" / "config.example.json").exists():
+        try:
+            with open(BASE_DIR / "side" / "config.example.json", "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            data = {}
+    paths = data.setdefault("paths", {})
+    paths[key] = value
+    CONFIG.setdefault("paths", {})[key] = value
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    return resolve_path(value) if value else Path("")
+
+
+def ensure_path(key: str, prompt: str = None, kind: str = "any", force_ask: bool = False):
+    """Вернуть существующий Path для CONFIG['paths'][key].
+
+    Если путь не задан или не существует на диске (или force_ask=True) —
+    спросить в консоли, проверить существование и сохранить в side/config.json.
+    """
+    raw = "" if force_ask else (CONFIG.get("paths") or {}).get(key, "")
+    if raw:
+        p = resolve_path(raw)
+        ok = p.is_file() if kind == "file" else (p.is_dir() if kind == "dir" else p.exists())
+        if ok:
+            return p
+    import threading as _th
+    if _th.current_thread() is not _th.main_thread():
+        return None
+    if prompt is None:
+        prompt = f"\U0001F4C2 Путь '{key}' не задан или не найден. Введи путь (Enter — пропустить): "
+    while True:
+        try:
+            val = input(prompt).strip().strip('"').strip("'")
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return None
+        if not val:
+            return None
+        p = resolve_path(val)
+        ok = p.is_file() if kind == "file" else (p.is_dir() if kind == "dir" else p.exists())
+        if ok:
+            save_config_path(key, val)
+            print(f"\u2705 Путь '{key}' сохранён в {CONFIG_PATH}: {p}")
+            return p
+        print(f"\u26A0\uFE0F Не найдено ({kind}): {p} — попробуй ещё раз или нажми Enter.")
 
 # ============================================================
 # Принудительно используем только IPv4 для исходящих соединений.

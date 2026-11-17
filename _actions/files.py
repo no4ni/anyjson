@@ -412,16 +412,61 @@ def _read_full_many(paths):
 
 @register(["прочитать_полностью", "читать_полностью", "открыть", "показать_картинку", "показать_файл"])
 def read_full(args):
-    """Прочитать файл целиком, если его формат поддерживается.
+    """Прочитать файл целиком или адаптивно (в веб-режиме).
 
     Параметры:
       путь — путь к файлу (обязательный)
+      веб  — если true, работает в адаптивном режиме для браузера:
+             • Текст < 8 КБ: читает содержимое целиком.
+             • Текст >= 8 КБ: автоматически делегирует выполнение в «читать_по_кб» (блок 4 КБ).
+             • Изображения: сервер перехватывает запрос, даунскейлит изображение и отдаёт модели в base64.
+             • Прочие форматы: автоматически делегирует выполнение в команду «сенсор».
 
     Примеры:
-      {"прочитать_полностью": {"путь": "E:/docs/report.pdf"}}
-      {"читать_полностью": {"путь": "D:/logs/app.log"}}
+      {"прочитать_полностью": {"путь": "E:/docs/report.txt", "веб": true}}
+      {"читать_полностью": {"путь": "D:/image.png", "веб": true}}
     """
     raw = args.get("путь") or args.get("файл") or ""
+
+    # Веб-режим: адаптивное поведение вместо буфера обмена
+    if args.get("веб") or os.environ.get("ANYJSON_WEB") == "1":
+        path_str = str(raw) if raw else ""
+        if not path_str or not os.path.exists(path_str):
+            return f"❌ Файл не найден: {path_str}"
+        if not os.path.isfile(path_str):
+            from _utils import not_a_file_msg
+            return not_a_file_msg(path_str)
+        
+        full_path = os.path.abspath(path_str)
+        ext = os.path.splitext(full_path)[1].lower()
+        size = os.path.getsize(full_path)
+        
+        # Текстовые форматы
+        _TEXT_EXTS = {".txt", ".md", ".py", ".js", ".ts", ".json", ".xml", ".html", ".css", ".csv", ".log", ".ini", ".cfg", ".conf", ".yaml", ".yml", ".sh", ".bat", ".ps1", ".c", ".cpp", ".h", ".java", ".go", ".rs", ".rb", ".php", ".sql", ".r", ".lua", ".tex", ".rst"}
+        # Графические форматы
+        _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg", ".tiff", ".tif", ".ico", ".heic"}
+        
+        if ext in _TEXT_EXTS:
+            if size < 8 * 1024:  # < 8КБ — читаем целиком с заголовком # <полный путь>
+                try:
+                    with open(full_path, "r", encoding="utf-8", errors="replace") as f:
+                        return f"# {full_path}\n{f.read()}"
+                except Exception as e:
+                    return f"❌ Ошибка чтения: {e}"
+            else:  # >= 8КБ — делегируем в читать_по_кб с 4КБ
+                return read_kb({"путь": full_path, "кб": 4, "скролл": 0})
+        elif ext in _IMAGE_EXTS:
+            # Возвращаем спец. маркер, чтобы _server.py сделал base64 + даунскейл
+            _win = path_str.replace("/", "\\")
+            import json
+            return json.dumps({"_server_image_process": _win}, ensure_ascii=False)
+        else:
+            # Делегируем в сенсор
+            try:
+                from _actions.tools_files import run_sensor
+                return run_sensor(path_str, config=None)
+            except Exception as e:
+                return f"❌ Ошибка вызова сенсора: {e}"
 
     if isinstance(raw, list):
         paths = [str(p).strip() for p in raw if str(p).strip()]
@@ -777,6 +822,10 @@ def list_files(args):
             for root, dirs, files in os.walk(path):
                 if not show_hidden:
                     dirs[:] = [d for d in dirs if not d.startswith(".")]
+                # Добавляем папки (кроме корневой, если она уже учтена, но os.walk даёт вложенные)
+                rel_root = os.path.relpath(root, path)
+                if rel_root != ".":
+                    dirs_all.append(rel_root)
                 for fn in files:
                     if not show_hidden and fn.startswith("."):
                         continue
@@ -896,7 +945,7 @@ def rewrite(args):
 
     Параметры:
       путь                — путь к файлу (обязательный)
-      содержание          — новый текст (обязательный), алиас: содержимое
+      содержание          — новый текст (обязательный), алиасы: содержимое, текст
       подтвердить_потерю  — true: разрешить перезапись, если новый текст меньше старого
 
     Пример:
@@ -912,7 +961,9 @@ def rewrite(args):
     
     _content = args.get("содержание")
     if _content is None:
-        _content = args.get("содержимое", "")
+        _content = args.get("содержимое")
+    if _content is None:
+        _content = args.get("текст", "")
         
     from pathlib import Path as _Path
     if path and _Path(path).is_file():
@@ -946,6 +997,7 @@ def append_(args):
       путь       — путь к файлу (обязательный)
       содержание — текст для добавления (обязательный)
                    алиасы: содержимое, текст
+      склеить    — true: дописать вплотную без авто-перевода строки (по умолч. false)
 
     Обычный вызов (одна строка):
       {"добавить": {"путь": "E:/log.txt", "содержание": "новая строка"}}
@@ -974,5 +1026,6 @@ def append_(args):
     ok, err = _check_write_path(path)
     if not ok:
         return f"⛔ Запись в системную папку {err} запрещена" if (":\\" in err or ":/" in err) else f"⛔ Запись запрещена: {err}"
-    return append_to_file(path, args.get("содержание") or args.get("содержимое") or args.get("текст", ""))
+    raw_join = bool(args.get("склеить") or args.get("без_переноса"))
+    return append_to_file(path, args.get("содержание") or args.get("содержимое") or args.get("текст", ""), raw_join=raw_join)
 

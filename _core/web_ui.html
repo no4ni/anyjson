@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AnyJSON // Jericho Console</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230b1220'/%3E%3Cpath d='M16 2 28 9v14L16 30 4 23V9Z' fill='none' stroke='%2322d3ee' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%23f472b6'/%3E%3C/svg%3E">
 <style>
 /* Палитра консоли: глубокий navy + электрические акценты по ролям */
 :root{
@@ -85,6 +86,9 @@ body:not(.streaming) .gen-timer{display:none}
 .stat span{font:10px var(--mono);color:var(--dim);letter-spacing:.1em}
 .hint{font:11px var(--mono);color:var(--dim);line-height:1.7}
 .hint b{color:var(--amber)}
+/* Сброс сессии: компактная кнопка в правом верхнем углу карточки «Агент» */
+.reset-btn{position:absolute;top:10px;right:10px;padding:4px 8px;font-size:13px;line-height:1}
+.reset-btn:hover{color:var(--red);border-color:var(--red);box-shadow:0 0 10px rgba(248,113,113,.25)}
 /* Живой статус активности агента */
 .act{display:flex;align-items:center;gap:8px;font:12px var(--mono);color:var(--muted)}
 .act-dot{width:8px;height:8px;border-radius:50%;background:var(--dim);flex:none}
@@ -113,6 +117,17 @@ body.streaming .act-dot{background:var(--cyan);box-shadow:0 0 8px var(--cyan);an
 .msg.system{border-left-color:var(--violet)} .msg.system .rname{color:var(--violet)}
 .msg.tool pre{font:12px/1.6 var(--mono);color:var(--muted);background:var(--bg1);
   border:1px solid var(--line);border-radius:8px;padding:10px;max-height:260px;overflow:auto;white-space:pre-wrap}
+.msg.progress{border-left-color:var(--amber);opacity:.9}
+.msg.progress .rname{color:var(--amber)}
+.msg.progress pre{font:12px/1.6 var(--mono);color:var(--amber);background:var(--bg1);
+  border:1px solid var(--line);border-radius:8px;padding:10px;max-height:120px;overflow:auto;white-space:pre-wrap}
+/* Превью вставленных картинок (Ctrl+V) и миниатюры в сообщениях */
+.imgbar{display:none;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.imgchip{position:relative}
+.imgthumb{max-height:64px;max-width:96px;border:1px solid var(--line);border-radius:8px;display:block}
+.imgx{position:absolute;top:-6px;right:-6px;cursor:pointer;border:1px solid var(--red);background:var(--surface);color:var(--red);border-radius:50%;width:20px;height:20px;font-size:11px;line-height:1}
+.msg .imgrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.msg .imgrow img{max-height:140px;max-width:60%;border:1px solid var(--line);border-radius:8px}
 /* Блок мыслей: янтарный, со сканлайном */
 .msg.thought{border-left-color:var(--amber);background:rgba(251,191,36,.05);position:relative;overflow:hidden}
 .msg.thought .rname{color:var(--amber)}
@@ -148,17 +163,7 @@ textarea:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(34,211,238,.15
 body.streaming .send{display:none} body.streaming .stop{display:block}
 .ckey{margin-top:8px;font:10px var(--mono);color:var(--dim)}
 .ckey b{color:var(--muted)}
-/* Drawer системного промпта */
-.scrim{position:fixed;inset:0;background:rgba(4,8,16,.6);backdrop-filter:blur(2px);z-index:30;opacity:0;pointer-events:none;transition:.3s}
-.scrim.show{opacity:1;pointer-events:auto}
-.drawer{position:fixed;top:0;right:0;bottom:0;width:min(480px,92vw);z-index:31;
-  background:var(--surface);border-left:1px solid var(--line2);transform:translateX(100%);transition:.35s cubic-bezier(.2,.8,.2,1);display:flex;flex-direction:column}
-.drawer.open{transform:none}
-.drawer header{display:flex;align-items:center;padding:16px 18px;border-bottom:1px solid var(--line)}
-.drawer header h3{font:12px var(--mono);letter-spacing:.14em;color:var(--violet)}
-.drawer header button{margin-left:auto}
-.drawer-body{flex:1;overflow-y:auto;padding:18px}
-.drawer-body pre{font:12px/1.7 var(--mono);color:var(--muted);white-space:pre-wrap}
+
 @media (max-width:900px){.layout{grid-template-columns:1fr}.rail{display:none}.chat{padding:16px}.composer{padding:12px 16px}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
@@ -174,12 +179,13 @@ body.streaming .send{display:none} body.streaming .stop{display:block}
   </svg>
   <div class="brand"><b>ANYJSON</b> <span>// JERICHO CONSOLE</span></div>
   <div class="status"><span class="dot"></span><span id="statusText">демон онлайн</span><span class="eq"><i></i><i></i><i></i></span><span class="gen-timer" id="genTimer"></span></div>
-  <button class="tbtn" id="sysBtn">⌘ система</button>
+
 </header>
 <div class="layout">
   <aside class="rail">
-    <div class="card">
+    <div class="card" style="position:relative">
       <h3>Агент</h3>
+      <button class="tbtn reset-btn" id="resetSessionBtn" title="Сбросить сессию">🔄</button>
       <div class="agent"><div class="avatar">А</div><div><div class="nm">Аниджсон</div><div class="tg">● persistent daemon</div></div></div>
     </div>
     <div class="card" id="actCard">
@@ -196,13 +202,14 @@ body.streaming .send{display:none} body.streaming .stop{display:block}
     </div>
     <div class="card">
       <h3>История</h3>
-      <div class="stat" style="max-width:100%"><b id="statTokens">0</b><span>ТОКЕНОВ</span></div>
+      <div class="stat" style="max-width:100%" title="текущие / порог сжатия / окно контекста"><b id="statTokens">0/0/0</b><span>ТОКЕНОВ</span></div>
     </div>
   </aside>
   <main class="stage">
     <div id="chat" class="chat"></div>
     <button class="jump" id="jumpBtn">↓ к последнему</button>
     <footer class="composer">
+      <div class="imgbar" id="imgbar"></div>
       <div class="crow">
         <textarea id="input" rows="1" placeholder="Введите сообщение…"></textarea>
         <button class="send" id="sendBtn">SEND ▸</button>
@@ -212,26 +219,25 @@ body.streaming .send{display:none} body.streaming .stop{display:block}
     </footer>
   </main>
 </div>
-<div class="scrim" id="scrim"></div>
-<aside class="drawer" id="drawer">
-  <header><h3>SYSTEM PROMPT</h3><button class="tbtn" id="drawerClose">✕</button></header>
-  <div class="drawer-body"><pre id="sysPre"></pre></div>
-</aside>
+
+
 <script>
 const $=s=>document.querySelector(s);
 const chat=$('#chat'),input=$('#input');
 const ROLES={user:{i:'❯',l:'ОПЕРАТОР'},assistant:{i:'◆',l:'АНИДЖСОН'},tool:{i:'⚙',l:'ИНСТРУМЕНТ'},error:{i:'⚠',l:'ОШИБКА'},system:{i:'⌘',l:'СИСТЕМА'}};
 let es=null,streaming=false,nearBottom=true;
-let thoughtRaw='',assistantRaw='',curThought=null,curAssistant=null;
-let stats={msgs:0,tools:0};
+let thoughtRaw='',assistantRaw='',curThought=null,curAssistant=null,curProgress=null,pendingImages=[],abortCtrl=null;
+let stats={msgs:0,tools:0},serverTokens=0,serverThr=0,serverMax=0;
 let scrollPending=false,genTimerId=null,genStart=0;
 const now=()=>new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
 const clean=s=>String(s).replace(/\x1b\[[0-9;]*[A-Za-z]/g,'').replace(/\[[0-9;]*m/g,'');
 const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const fmt=s=>esc(clean(s)).replace(/\n/g,'<br>');
 function updateStats(){$('#statMsgs').textContent=stats.msgs;$('#statTools').textContent=stats.tools;}
-function countTokens(){let n=0;chat.querySelectorAll('.msg').forEach(m=>{if(m.classList.contains('thought'))return;const t=m._raw||m.textContent||'';n+=Math.ceil(String(t).length/3);});return n;}
-function updateTokens(){$('#statTokens').textContent=countTokens().toLocaleString('ru-RU');}
+// Счётчик токенов приходит с сервера (SSE tokens / поле tokens в /api/history).
+// Клиент не сканирует DOM истории: O(1) запись вместо O(n) на каждое сообщение.
+const formatK=n=>n<1000?String(n):Math.floor(n/1000)+'К';
+function updateTokens(){$('#statTokens').textContent=formatK(serverTokens)+'/'+formatK(serverThr)+'/'+formatK(serverMax);}
 function scroll(){if(!nearBottom||scrollPending)return;scrollPending=true;requestAnimationFrame(()=>{scrollPending=false;if(nearBottom)chat.scrollTop=chat.scrollHeight;});}
 chat.addEventListener('scroll',()=>{nearBottom=chat.scrollHeight-chat.scrollTop-chat.clientHeight<80;$('#jumpBtn').classList.toggle('show',!nearBottom);});
 $('#jumpBtn').onclick=()=>{nearBottom=true;chat.scrollTo({top:chat.scrollHeight,behavior:'smooth'});$('#jumpBtn').classList.remove('show');};
@@ -239,46 +245,112 @@ function removeEmpty(){const e=chat.querySelector('.empty');if(e)e.remove();}
 function showEmpty(){chat.innerHTML='<div class="empty"><h2>Связь с <b>Аниджсоном</b> установлена</h2><p>Локальный агент с постоянным демоном. Говори обычным языком — команды агент выбирает сам.</p><button class="chip" data-say="Сколько времени?">Сколько времени?</button><button class="chip" data-say="Что ты умеешь?">Что ты умеешь?</button></div>';}
 function copyText(t,btn){const done=()=>{btn.textContent='✓';setTimeout(()=>btn.textContent='⧉',1200);};
  if(navigator.clipboard){navigator.clipboard.writeText(t).then(done).catch(()=>{});}else{const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();done();}}
-function addMsg(role,text){removeEmpty();const m=ROLES[role]||{i:'•',l:String(role).toUpperCase()};
+function addMsg(role,text,index,images){removeEmpty();const m=ROLES[role]||{i:'•',l:String(role).toUpperCase()};
  const a=document.createElement('article');a.className='msg '+role;
- a.innerHTML='<header><span class="ric">'+m.i+'</span><span class="rname">'+m.l+'</span><span class="rtime">'+now()+'</span><button class="copy-btn" title="Копировать">⧉</button></header><div class="mbody"></div>';
+ if(index!==undefined)a.dataset.index=index;
+ let extraBtns='';
+ if(role==='user'){extraBtns='<button class="copy-btn" title="Редактировать" style="margin-right:4px;" data-action="edit" data-old-text="'+esc(text)+'">✎</button>';}
+ a.innerHTML='<header><span class="ric">'+m.i+'</span><span class="rname">'+m.l+'</span><span class="rtime">'+now()+'</span>'+extraBtns+'<button class="copy-btn" title="Копировать">⧉</button></header><div class="mbody"></div>';
  const b=a.querySelector('.mbody');
  if(role==='tool'){const p=document.createElement('pre');p.textContent=clean(text);b.appendChild(p);}else b.innerHTML=fmt(text);
- a._raw=clean(text);a.querySelector('.copy-btn').onclick=()=>copyText(a._raw,a.querySelector('.copy-btn'));
+ if(images&&images.length){const row=document.createElement('div');row.className='imgrow';images.forEach(u=>{const im=document.createElement('img');im.src=u;row.appendChild(im);});b.appendChild(row);}
+ a._raw=clean(text);
+ const copyBtn=a.querySelector('.copy-btn[title="Копировать"]');
+ if(copyBtn)copyBtn.onclick=()=>copyText(a._raw,copyBtn);
+ const editBtn=a.querySelector('[data-action="edit"]');
+ if(editBtn)editBtn.onclick=()=>editMsg(editBtn,text);
  chat.appendChild(a);stats.msgs++;updateStats();updateTokens();scroll();return a;}
+function editMsg(btn,oldText){
+ const msg=btn.closest('.msg');const mbody=msg.querySelector('.mbody');const originalHtml=mbody.innerHTML;
+ mbody.innerHTML='<textarea class="edit-area" style="width:100%;min-height:60px;background:var(--bg1);color:var(--text);border:1px solid var(--cyan);border-radius:6px;padding:8px;font-family:inherit;font-size:14px;resize:vertical;">'+esc(oldText)+'</textarea><div style="margin-top:8px;display:flex;gap:8px;"><button class="tbtn" style="color:var(--green);border-color:var(--green);" id="saveEdit">💾 Сохранить и перезапустить</button><button class="tbtn" style="color:var(--red);border-color:var(--red);" id="cancelEdit">✕ Отмена</button></div>';
+ const textarea=mbody.querySelector('.edit-area');textarea.focus();textarea.setSelectionRange(textarea.value.length,textarea.value.length);
+ mbody.querySelector('#cancelEdit').onclick=()=>{mbody.innerHTML=originalHtml;};
+ mbody.querySelector('#saveEdit').onclick=async()=>{
+  const newText=textarea.value.trim();
+  if(!newText||newText===oldText){mbody.innerHTML=originalHtml;return;}
+  const saveBtn=mbody.querySelector('#saveEdit');saveBtn.textContent='⏳ Сохранение...';saveBtn.disabled=true;
+  try{
+   const res=await fetch('/api/edit_message?old_text='+encodeURIComponent(oldText)+'&new_text='+encodeURIComponent(newText));
+   if(res.ok){
+    let next=msg.nextElementSibling;while(next){const toRemove=next;next=next.nextElementSibling;toRemove.remove();}
+    msg.remove();input.value=newText;autoGrow();send();
+   }else{alert('Ошибка при редактировании');mbody.innerHTML=originalHtml;}
+  }catch(e){alert('Ошибка сети: '+e);mbody.innerHTML=originalHtml;}
+ };
+}
 function makeThought(){const a=document.createElement('article');a.className='msg thought live';
  a.innerHTML='<header><span class="ric">💭</span><span class="rname">МЫСЛИ</span><span class="rtime">'+now()+'</span><button class="fold-btn" title="Свернуть">▾</button></header><div class="mbody"></div>';
  a.querySelector('.fold-btn').onclick=()=>{a.classList.toggle('collapsed');a.querySelector('.fold-btn').textContent=a.classList.contains('collapsed')?'▸':'▾';};
  chat.appendChild(a);scroll();return a;}
-function renderThought(t){thoughtRaw+=t;if(!curThought)curThought=makeThought();curThought.querySelector('.mbody').innerHTML=fmt(thoughtRaw);scroll();}
+function renderThought(t){thoughtRaw+=t;
+ if(!curThought){curThought=makeThought();const b=curThought.querySelector('.mbody');b.style.whiteSpace='pre-wrap';curThought._textNode=document.createTextNode('');b.appendChild(curThought._textNode);}
+ // Инкрементальный аппенд: только новый чанк в текстовый узел, без innerHTML-пересборки.
+ curThought._textNode.appendData(clean(t));scroll();}
 function finalizeThought(){if(curThought){curThought.classList.remove('live');curThought.classList.add('collapsed');const fb=curThought.querySelector('.fold-btn');if(fb)fb.textContent='▸';curThought=null;thoughtRaw='';}}
 function renderAssistant(t){finalizeThought();assistantRaw+=t;
- if(!curAssistant){curAssistant=addMsg('assistant','');curAssistant.classList.add('streaming');}
- curAssistant._raw=clean(assistantRaw);curAssistant.querySelector('.mbody').innerHTML=fmt(assistantRaw)+'<span class="caret"></span>';scroll();}
-function finalizeStreams(){finalizeThought();if(curAssistant){curAssistant.classList.remove('streaming');curAssistant.querySelector('.mbody').innerHTML=fmt(assistantRaw);curAssistant._raw=clean(assistantRaw);curAssistant=null;assistantRaw='';}}
+ if(!curAssistant){curAssistant=addMsg('assistant','');curAssistant.classList.add('streaming');
+  const b=curAssistant.querySelector('.mbody');b.style.whiteSpace='pre-wrap';
+  // Текстовый узел + каретка создаются один раз; дальше только appendData.
+  curAssistant._textNode=document.createTextNode('');b.appendChild(curAssistant._textNode);
+  curAssistant._caret=document.createElement('span');curAssistant._caret.className='caret';b.appendChild(curAssistant._caret);}
+ const c=clean(t);curAssistant._textNode.appendData(c);curAssistant._raw=(curAssistant._raw||'')+c;scroll();}
+function finalizeStreams(){finalizeThought();if(curAssistant){curAssistant.classList.remove('streaming');const b=curAssistant.querySelector('.mbody');b.style.whiteSpace='';b.innerHTML=fmt(assistantRaw);curAssistant._raw=clean(assistantRaw);curAssistant=null;assistantRaw='';}}
 function setStreaming(v){streaming=v;document.body.classList.toggle('streaming',v);$('#statusText').textContent=v?'генерация…':'демон онлайн';$('#actText').textContent=v?'генерация…':'ожидание';
  if(v){genStart=performance.now();if(genTimerId)clearInterval(genTimerId);genTimerId=setInterval(()=>{const s=(performance.now()-genStart)/1000;$('#genTimer').textContent=s.toFixed(1)+'s';},100);}else{if(genTimerId){clearInterval(genTimerId);genTimerId=null;}$('#genTimer').textContent='';}}
-function finish(){if(es){es.close();es=null;}finalizeStreams();setStreaming(false);}
-$('#stopBtn').onclick=finish;
-function send(){const msg=input.value.trim();if(!msg||streaming)return;
- addMsg('user',msg);input.value='';try{localStorage.removeItem('aj_draft');}catch(_){}autoGrow();nearBottom=true;setStreaming(true);
- es=new EventSource('/api/chat?msg='+encodeURIComponent(msg));
- es.onmessage=e=>{if(e.data==='[DONE]'){finish();return;}let d;try{d=JSON.parse(e.data);}catch(_){return;}
-  if(d.type==='thought')renderThought(d.content);
-  else if(d.type==='token')renderAssistant(d.content);
-  else if(d.type==='tool'){finalizeStreams();addMsg('tool',d.content);stats.tools++;updateStats();updateTokens();$('#actText').textContent='инструмент';$('#actLast').textContent=clean(d.content).slice(0,90);const ac=$('#actCard');if(ac){ac.classList.remove('act-flash');void ac.offsetWidth;ac.classList.add('act-flash');}}
-  else if(d.type==='error'){finalizeStreams();addMsg('error',d.content);}};
- es.onerror=()=>finish();}
+function renderProgress(t){if(!curProgress){curProgress=document.createElement('article');curProgress.className='msg tool progress';curProgress.innerHTML='<header><span class="ric">⏳</span><span class="rname">ПРОГРЕСС</span><span class="rtime">'+now()+'</span></header><div class="mbody"><pre></pre></div>';chat.appendChild(curProgress);}curProgress.querySelector('pre').textContent=clean(t);$('#actText').textContent='инструмент';$('#actLast').textContent=clean(t).slice(0,90);scroll();}
+function clearProgress(){if(curProgress){curProgress.remove();curProgress=null;}}
+function finish(){if(es){es.close();es=null;}clearProgress();finalizeStreams();setStreaming(false);}
+$('#stopBtn').onclick=()=>{if(abortCtrl)abortCtrl.abort();finish();};
+function renderImgBar(){const bar=$('#imgbar');if(!bar)return;bar.innerHTML='';
+ pendingImages.forEach((u,idx)=>{const w=document.createElement('div');w.className='imgchip';
+ const im=document.createElement('img');im.src=u;im.className='imgthumb';
+ const x=document.createElement('button');x.className='imgx';x.textContent='✕';x.title='Убрать';
+ x.onclick=()=>{pendingImages.splice(idx,1);renderImgBar();};
+ w.appendChild(im);w.appendChild(x);bar.appendChild(w);});
+ bar.style.display=pendingImages.length?'flex':'none';}
+input.addEventListener('paste',e=>{
+ const items=[...(e.clipboardData&&e.clipboardData.items||[])].filter(it=>it.type.startsWith('image/'));
+ if(!items.length)return;e.preventDefault();
+ items.forEach(it=>{if(pendingImages.length>=4)return;const f=it.getAsFile();if(!f||f.size>12*1024*1024)return;
+ const r=new FileReader();r.onload=()=>{if(pendingImages.length<4){pendingImages.push(r.result);renderImgBar();}};r.readAsDataURL(f);});});
+function handleEvent(d){
+ if(d.type==='thought')renderThought(d.content);
+ else if(d.type==='token')renderAssistant(d.content);
+ else if(d.type==='progress')renderProgress(d.content);
+ else if(d.type==='history_compressed'){
+     // Сжатие — серверная оптимизация контекста: DOM истории не трогаем вообще,
+     // /api/history не перезапрашиваем. Обновляется только счётчик (O(1)).
+     serverTokens=Number(d.tokens)||0;updateTokens();
+ }
+ else if(d.type==='tool'){clearProgress();finalizeStreams();addMsg('tool',d.content);stats.tools++;updateStats();updateTokens();$('#actText').textContent='инструмент';$('#actLast').textContent=clean(d.content).slice(0,90);const ac=$('#actCard');if(ac){ac.classList.remove('act-flash');void ac.offsetWidth;ac.classList.add('act-flash');}}
+ else if(d.type==='tokens'){serverTokens=Number(d.count)||0;serverThr=Number(d.thr)||0;serverMax=Number(d.max)||0;updateTokens();}
+ else if(d.type==='error'){clearProgress();finalizeStreams();addMsg('error',d.content);}}
+async function send(){const msg=input.value.trim();if(streaming)return;
+ const imgs=pendingImages.slice();
+ if(msg||imgs.length)addMsg('user',msg,undefined,imgs);
+ input.value='';pendingImages=[];renderImgBar();
+ try{localStorage.removeItem('aj_draft');}catch(_){}autoGrow();nearBottom=true;setStreaming(true);
+ abortCtrl=new AbortController();
+ try{
+  const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({msg,images:imgs}),signal:abortCtrl.signal});
+  if(!res.ok||!res.body){addMsg('error','Сервер отклонил запрос ('+res.status+')');finish();return;}
+  const reader=res.body.getReader();const dec=new TextDecoder();let buf='';
+  while(true){const {done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});
+   let i;while((i=buf.indexOf('\n\n'))>=0){const chunk=buf.slice(0,i);buf=buf.slice(i+2);
+    const line=chunk.split('\n').find(l=>l.startsWith('data: '));if(!line)continue;const ds=line.slice(6);
+    if(ds==='[DONE]'){finish();return;}let d;try{d=JSON.parse(ds);}catch(_){continue;}handleEvent(d);}}
+  finish();
+ }catch(e){if(e.name!=='AbortError')addMsg('error','Сеть: '+e.message);finish();}}
 $('#sendBtn').onclick=send;
 input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}});
 function autoGrow(){input.style.height='auto';input.style.height=Math.min(input.scrollHeight,160)+'px';}
 input.addEventListener('input',()=>{autoGrow();try{localStorage.setItem('aj_draft',input.value);}catch(_){}});
 document.addEventListener('click',e=>{const c=e.target.closest('[data-say]');if(c){input.value=c.dataset.say;try{localStorage.setItem('aj_draft',input.value);}catch(_){}input.focus();autoGrow();}});
-const openDrawer=v=>{$('#drawer').classList.toggle('open',v);$('#scrim').classList.toggle('show',v);};
-$('#sysBtn').onclick=()=>openDrawer(true);$('#drawerClose').onclick=()=>openDrawer(false);$('#scrim').onclick=()=>openDrawer(false);
-document.addEventListener('keydown',e=>{if(e.key==='Escape')openDrawer(false);});
-fetch('/api/history').then(r=>r.json()).then(d=>{$('#sysPre').textContent=d.system||'';
- if(d.messages&&d.messages.length)d.messages.forEach(m=>addMsg(m.role,m.content));else showEmpty();updateStats();updateTokens();})
+
+$('#resetSessionBtn').onclick=async()=>{if(confirm('Сбросить сессию и обновить страницу? История чата будет полностью удалена.')){try{await fetch('/api/reset',{method:'POST'});}catch(_){}location.reload();}};
+
+fetch('/api/history').then(r=>r.json()).then(d=>{
+ if(d.messages&&d.messages.length)d.messages.forEach((m,i)=>{let c=m.content,imgs=null;if(Array.isArray(c)){imgs=c.filter(p=>p.type==='image_url').map(p=>p.image_url.url);c=c.filter(p=>p.type==='text').map(p=>p.text).join(' ')||'(изображение)';}addMsg(m.role,c,i,imgs);});else showEmpty();serverTokens=Number(d.tokens)||0;serverThr=Number(d.thr)||0;serverMax=Number(d.max)||0;updateStats();updateTokens();})
  .catch(()=>showEmpty());
 try{input.value=localStorage.getItem('aj_draft')||'';}catch(_){}autoGrow();
 </script>

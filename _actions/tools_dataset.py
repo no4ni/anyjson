@@ -325,13 +325,31 @@ def find_file(root_path: str, search_name: str = "", search_content: str = "",
     if not root.is_dir():
         return f"Ошибка: корневая папка {root} не существует."
 
-    search_name = (search_name or "").replace("*", "")
-    search_content = (search_content or "").replace("*", "")
+    if isinstance(search_name, bool):
+        return f"❌ Параметр 'имя' должен быть строкой, а не {search_name}."
+    search_name = str(search_name or "").replace("*", "")
+    if only_dirs and search_content:
+        if isinstance(search_content, str) and not search_name:
+            search_name = search_content.replace("*", "")
+        search_content = ""
+    if isinstance(search_content, bool):
+        return f"❌ Параметр 'содержимое' должен быть строкой, а не {search_content}. Исправь вызов, убрав этот параметр или указав текст."
+    search_content = str(search_content or "").replace("*", "")
     # Поддержка "a|b" для имени (как уже работает для содержания)
     search_name_list = ([kw.strip() for kw in search_name.split("|") if kw.strip()]
                         if search_name else [])
-    search_all = (search_all or "").replace("*", "")
-    search_mask = search_mask or ""
+    if isinstance(search_mask, bool):
+        search_mask = "*" if search_mask else ""
+    else:
+        search_mask = str(search_mask or "")
+    if search_all is True or (isinstance(search_all, str) and search_all.strip() == "*"):
+        search_all = ""
+        if not search_mask:
+            search_mask = "*"
+    elif isinstance(search_all, bool):
+        search_all = ""
+    else:
+        search_all = str(search_all or "").replace("*", "")
 
     # Если критерий пуст, но есть прошлый поиск и номер > 1 — берём из памяти.
     if not (search_name or search_content or search_all or search_mask):

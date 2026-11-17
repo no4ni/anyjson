@@ -9,7 +9,14 @@
     "public_tools_dir": "./side",
     "wikiget_executable": "",
     "proxy_dir": "./proxy",
-    "stabledif_dir": ""
+    "stabledif_dir": "",
+    "sim_dir": "",
+    "piper_exe": "",
+    "piper_voices": "",
+    "ffprobe_exe": "",
+    "ffmpeg_exe": "",
+    "7z_exe": "",
+    "whisper_dir": ""
   },
   "network": {
     "tor_port": 9150,

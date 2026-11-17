@@ -216,6 +216,46 @@ def _syn_ok_note(path: Path, skip_check: bool) -> str:
     return " · синтаксис OK"
 
 
+def _bak_note(name: str) -> str:
+    """Хвост к сообщению об успехе: имя созданного бэкапа."""
+    return " · бэкап: " + name if name else ""
+
+
+def _backup_and_write(path, text: str, enc: str, no_backup: bool = False):
+    """Бэкап оригинала + запись. Возвращает (имя_бэкапа, ошибка).
+
+    Бэкап — копия файла НА ДИСКЕ (shutil.copy2), а не нормализованного
+    текста: сохраняются CRLF, BOM, mtime. Имя .bak_YYYYMMDD_HHMMSS
+    совместим с удалить_старые_бэкапы. При ошибке бэкапа запись
+    отменяется — как в «переписать». Предпросмотр сюда не доходит.
+    """
+    if no_backup:
+        try:
+            _write_text(path, text, enc)
+        except Exception as e:
+            return "", "❌ Не удалось записать файл: " + str(e)
+        return "", None
+
+    from datetime import datetime
+    import shutil
+
+    _ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    _dst = path.with_name(path.name + ".bak_" + _ts)
+    _i = 2
+    while _dst.exists():
+        _dst = path.with_name(path.name + ".bak_" + _ts + "_" + str(_i))
+        _i += 1
+    try:
+        shutil.copy2(path, _dst)
+    except Exception as e:
+        return "", "❌ Бэкап не создан — запись отменена: " + str(e)
+    try:
+        _write_text(path, text, enc)
+    except Exception as e:
+        return _dst.name, "❌ Не удалось записать файл: " + str(e)
+    return _dst.name, None
+
+
 @register(["заменить_текст", "замена_текста", "заменить_в_тексте"])
 def replace_text(args: dict) -> str:
     """Заменить X на Y в текстовом файле.
@@ -228,6 +268,10 @@ def replace_text(args: dict) -> str:
       регулярка         — трактовать «найти» как regex (по умолчанию false)
       регистр           — учитывать регистр (по умолчанию true)
       предпросмотр      — не писать файл, только показать diff и счётчик
+      без_бэкапа        — не создавать .bak_<TS> перед записью (по умолчанию
+                          false). Бэкап создаётся при любой реальной записи
+                          во всех режимах (обычный, CRLF, нестрогий);
+                          при ошибке бэкапа запись отменяется.
       показать_близкое  — при «не найдено» показать похожие строки
                           (по умолчанию true)
       порог             — 0..1, минимальное сходство (по умолчанию 0.5)
@@ -244,7 +288,7 @@ def replace_text(args: dict) -> str:
                           совпадении заменяет только непробельную часть,
                           сохраняя оригинальный отступ. Идеально для .py.
       слабый_отступ     — ведущие пробелы/табы в каждой строке якоря
-                          трактуются как \\s* при поиске. По умолчанию
+                          трактуются как [ \\t]* при поиске (не пересекает строки). По умолчанию
                           false для .py, true для остальных. Включай явно
                           для .py, если отступы в якоре и файле расходятся.
                           Замена должна содержать корректные отступы.
@@ -282,10 +326,12 @@ def replace_text(args: dict) -> str:
     case_sensitive = _as_bool(args.get("регистр"), True)
     preview = _as_bool(args.get("предпросмотр"), False)
     skip_check = _as_bool(args.get("без_проверки"), False)
+    # Авто-бэкап оригинала перед записью — паритет с «переписать».
+    no_backup = _as_bool(args.get("без_бэкапа", args.get("no_backup")), False)
 
     path = Path(file_arg).expanduser()
 
-    # Слабый отступ: ведущие пробелы в каждой строке якоря → \s*
+    # Слабый отступ: ведущие пробелы в каждой строке якоря → [ \t]* (не пересекает строки)
     # По умолчанию false для .py (отступ = синтаксис), true для остальных.
     flex_indent = args.get("слабый_отступ", args.get("flex_indent"))
     if flex_indent is None:
@@ -445,13 +491,13 @@ def replace_text(args: dict) -> str:
         # Так «записать_файл» не цепляет «перезаписать_файл»,
         # а «файл» — «подфайл». Фразы/JSON не затрагиваются.
         if flex_indent:
-            # Ведущие пробелы/табы в начале каждой строки → \s*
+            # Ведущие пробелы/табы в начале каждой строки → [ \t]* (не пересекает строки)
             _lines = find_s.split('\n')
             _esc_lines = []
             for _ln in _lines:
                 _m = re.match(r'^([ \t]+)(.*)', _ln, re.DOTALL)
                 if _m:
-                    _esc_lines.append(r'\s*' + re.escape(_m.group(2)))
+                    _esc_lines.append(r'[ \t]*' + re.escape(_m.group(2)))
                 else:
                     _esc_lines.append(re.escape(_ln))
             _pat_src = '\n'.join(_esc_lines)
@@ -510,13 +556,15 @@ def replace_text(args: dict) -> str:
                         _we = _check_py_syntax(_new2, path)
                         if _we:
                             return _we
-                    try:
-                        _write_text(path, _new2, enc)
-                    except Exception as e:
-                        return "❌ Не удалось записать файл: " + str(e)
+                    # Багфикс: CRLF восстанавливается, как в двух других путях.
+                    _new2w = _new2.replace(NL, CR + NL) if _orig_crlf else _new2
+                    _bak, _berr = _backup_and_write(path, _new2w, enc, no_backup)
+                    if _berr:
+                        return _berr
                     return ("✅ Заменено " + str(_cnt2) + " вхождений в "
                             + path.name + " (нашлось после нормализации "
-                            "переводов строк)" + _syn_ok_note(path, skip_check))
+                            "переводов строк)" + _syn_ok_note(path, skip_check)
+                            + _bak_note(_bak))
 
         # --- попытка 3: нестрогий поиск (всегда как fallback) ---
         # ВАЖНО (багфикс): раньше здесь нормализовали ВЕСЬ файл и
@@ -559,15 +607,14 @@ def replace_text(args: dict) -> str:
                         if _we:
                             return _we
                     _new3w = _new3.replace(NL, CR + NL) if _orig_crlf else _new3
-                    try:
-                        _write_text(path, _new3w, enc)
-                    except Exception as e:
-                        return "❌ Не удалось записать файл: " + str(e)
+                    _bak, _berr = _backup_and_write(path, _new3w, enc, no_backup)
+                    if _berr:
+                        return _berr
                     return ("✅ Заменено " + str(_cnt3) + " вхождений в "
                             + path.name + " (нестрогий режим — гибкий "
                             "поиск NBSP/тире/кавычек; остальной файл "
                             "не изменён)"
-                            + _syn_ok_note(path, skip_check))
+                            + _syn_ok_note(path, skip_check) + _bak_note(_bak))
 
         # --- попытка 4: показать похожие строки ---
         out = "❌ Совпадений не найдено в " + path.name
@@ -722,9 +769,9 @@ def replace_text(args: dict) -> str:
                     _prefix = ""
                     _content = _d
                 if len(_content) <= 200:
-                    _line_show = _prefix + repr(_content)
+                    _line_show = _prefix + _content
                 else:
-                    _line_show = _prefix + repr(_content[:200]) + "…"
+                    _line_show = _prefix + _content[:200] + "…"
                 out += NL + "    " + _line_show
 
             if not _any_diff:
@@ -754,12 +801,11 @@ def replace_text(args: dict) -> str:
         if _we:
             return _we
 
-    try:
-        _new_to_write = new_text.replace("\n", "\r\n") if _orig_crlf else new_text
-        _write_text(path, _new_to_write, enc)
-    except Exception as e:
-        return f"❌ Не удалось записать файл: {e}"
+    _new_to_write = new_text.replace("\n", "\r\n") if _orig_crlf else new_text
+    _bak, _berr = _backup_and_write(path, _new_to_write, enc, no_backup)
+    if _berr:
+        return _berr
 
     _out = (f"✅ Заменено {cnt} вхождений в {path.name} (кодировка {enc})"
-            + _syn_ok_note(path, skip_check))
+            + _syn_ok_note(path, skip_check) + _bak_note(_bak))
     return _out + _build_diff_out(text, new_text, examples)

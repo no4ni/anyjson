@@ -160,6 +160,40 @@ def delete_old_backups(args: dict) -> str:
 
     dry = bool(args.get("безопасно", False))
 
+    # Безусловная чистка profiles/*/memory/tmp*.py - вне порога дней.
+    # Временные файлы команд копятся в памяти профилей и сами не исчезают.
+    tmp_candidates = []
+    _profiles_dir = root / "profiles"
+    if _profiles_dir.is_dir():
+        for _tmp in sorted(_profiles_dir.glob("*/memory/tmp*.py")):
+            if _is_blocked(_tmp):
+                continue
+            try:
+                _sz = _tmp.stat().st_size
+            except OSError:
+                _sz = 0
+            tmp_candidates.append((_tmp, _sz))
+    tmp_size = sum(sz for _, sz in tmp_candidates)
+    tmp_removed = 0
+    tmp_failed = 0
+    if not dry:
+        for _p, _ in tmp_candidates:
+            try:
+                _p.unlink()
+                tmp_removed += 1
+            except OSError:
+                tmp_failed += 1
+    tmp_out = []
+    if tmp_candidates:
+        if dry:
+            tmp_out.append(f"[безопасно] tmp*.py: будет удалено "
+                           f"{len(tmp_candidates)} файлов, {_fmt(tmp_size)}")
+        else:
+            tmp_out.append(f"tmp*.py: удалено {tmp_removed} файлов, "
+                           f"{_fmt(tmp_size)}")
+            if tmp_failed:
+                tmp_out.append(f"tmp*.py: не удалось удалить {tmp_failed}")
+
     now = time.time()
     cutoff = now - days * 86400
     cutoff_dt = datetime.fromtimestamp(cutoff).strftime("%Y-%m-%d %H:%M")
@@ -185,9 +219,12 @@ def delete_old_backups(args: dict) -> str:
             groups.setdefault(group_key, []).append((full, ts))
 
     if not groups:
+        _itogo = ("Итого будет освобождено: " if dry
+                  else "Итого освобождено: ") + f"{tmp_size/1048576:.2f} МБ"
         return (f"🧹 Чистка бэкапов: {root}\n"
                 f"   Порог: {days} дн. (старше {cutoff_dt})\n\n"
-                f"Ничего не найдено.")
+                f"Бэкапы: ничего не найдено.\n"
+                + "\n".join(tmp_out + [_itogo]))
 
     # (path, size, ts, kept_name)
     to_delete = []
@@ -270,6 +307,14 @@ def delete_old_backups(args: dict) -> str:
         out.append(f"Удалено: {removed} файлов, {_fmt(total_size)}")
         if failed:
             out.append(f"Не удалось удалить: {failed}")
+
+    if tmp_out:
+        out.append("")
+        out.extend(tmp_out)
+    _total = total_size + tmp_size
+    out.append("")
+    out.append(("Итого будет освобождено: " if dry
+                else "Итого освобождено: ") + f"{_total/1048576:.2f} МБ")
 
     out.append("")
     out.append("Оставлено:")

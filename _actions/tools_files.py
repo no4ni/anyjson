@@ -291,14 +291,23 @@ def write_file(path, content):
         return f"Ошибка записи файла: {e}"
 
 
-def append_to_file(path, content):
+def append_to_file(path, content, raw_join: bool = False):
     _guard = _foreign_guard(path)
     if _guard:
         return _guard
     p = Path(path)
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
+        need_nl = False
+        if content and not raw_join and not content.startswith(("\n", "\r")):
+            if p.is_file() and p.stat().st_size > 0:
+                with open(p, "rb") as rf:
+                    rf.seek(-1, 2)
+                    if rf.read(1) not in (b"\n", b"\r"):
+                        need_nl = True
         with open(p, "a", encoding="utf-8") as f:
+            if need_nl:
+                f.write("\n")
             f.write(content)
         return (f"Содержимое добавлено в конец файла: {path}\n\n"
                 f"💡 Если ты хотел перезаписать файл целиком, используй команду \"переписать\".")

@@ -106,8 +106,56 @@ def _init_agent_core(agent_name):
         traceback.print_exc()
         sys.exit(3)
 
+class _DaemonStdout:
+    """stdout-прокси демона: \r-обновления = эфемерный прогресс (отдельные JSON-строки
+    в реальный stdout), обычный вывод (строки с \n) копится в буфер результата."""
+    def __init__(self, real, buf):
+        self._real = real
+        self._buf = buf
+        self._pending = ""
+    def write(self, s):
+        s = s.replace("\r\n", "\n")
+        parts = s.split("\r")
+        self._pending += parts[0]
+        while "\n" in self._pending:
+            line, self._pending = self._pending.split("\n", 1)
+            self._buf.write(line + "\n")
+        for seg in parts[1:]:
+            txt = seg.strip()
+            if txt:
+                self._real.write(json.dumps({"progress": txt}, ensure_ascii=False) + "\n")
+        self._real.flush()
+        return len(s)
+    def flush(self):
+        pass
+    def close(self):
+        if self._pending:
+            self._buf.write(self._pending)
+            self._pending = ""
+    def __getattr__(self, name):
+        return getattr(self._buf, name)
+
+def _install_virtual_clipboard():
+    """Перенаправить pyperclip в виртуальный буфер памяти в режиме демона."""
+    box = [""]
+    try:
+        import pyperclip
+        def _vcopy(text):
+            box[0] = "" if text is None else str(text)
+        def _vpaste():
+            return box[0]
+        pyperclip.copy = _vcopy
+        pyperclip.paste = _vpaste
+    except Exception:
+        pass
+    return box
+
+
 def run_daemon(agent_name):
     """Бесконечный цикл чтения из stdin и ответа в stdout."""
+    os.environ["ANYJSON_DAEMON"] = "1"
+    os.environ["ANYJSON_WEB"] = "1"
+    _vclip = _install_virtual_clipboard()
     _init_agent_core(agent_name)
     sys.stderr.write(f"[DAEMON] Агент '{agent_name}' запущен и готов.\n")
     sys.stderr.flush()
@@ -129,13 +177,21 @@ def run_daemon(agent_name):
             sys.stdout.flush()
             continue
 
+        # Очищаем виртуальный буфер перед каждой командой
+        _vclip[0] = ""
         # Выполняем команду
         ans = io.StringIO()
         try:
-            with redirect_stdout(ans):
+            _real_stdout = sys.stdout
+            _proxy = _DaemonStdout(_real_stdout, ans)
+            sys.stdout = _proxy
+            try:
                 # process_command_input может вызвать sys.exit, перехватываем
                 from _actions import cmd_parser as _cmd_parser
                 _cmd_parser.process_command_input(line)
+            finally:
+                _proxy.close()
+                sys.stdout = _real_stdout
         except SystemExit as _e:
             pass # Игнорируем exit внутри команд, продолжаем работу демона
         except Exception as _e:
@@ -193,6 +249,33 @@ def main():
         _greeting = f"Ты - агент {_agent_name}."
         if _bio:
             _greeting += f" {_bio}"
+        # Случайные воспоминания из памяти агента (memlist.json + txt/md)
+        _memory_dir = _HERE / "profiles" / _agent_name / "memory"
+        if _memory_dir.exists() and _memory_dir.is_dir():
+            import random
+            _memories_text = []
+            # 1. memlist.json - основной список воспоминаний
+            _memlist = _memory_dir / "memlist.json"
+            if _memlist.exists():
+                try:
+                    _ml_data = json.loads(_memlist.read_text(encoding="utf-8"))
+                    if isinstance(_ml_data, list):
+                        _memories_text.extend([str(m) for m in _ml_data if str(m).strip()])
+                except Exception:
+                    pass
+            # 2. Обычные txt/md, служебные json игнорируются
+            _skip_files = {"reminders.json", "sensor_state.json", "command_stats.json", "memlist.json"}
+            for _mf in _memory_dir.iterdir():
+                if _mf.is_file() and _mf.suffix in (".txt", ".md") and _mf.name not in _skip_files:
+                    try:
+                        _content = _mf.read_text(encoding="utf-8").strip()
+                        if _content:
+                            _memories_text.append(_content)
+                    except Exception:
+                        pass
+            if _memories_text:
+                _random_memories = random.sample(_memories_text, min(3, len(_memories_text)))
+                _greeting += "\n\nСлучайные воспоминания:\n" + "\n".join(_random_memories) + "\nДля получения других можешь использовать команду вспомнить"
         if len(_greeting.encode('utf-8')) > 5120:
             _greeting = _greeting[:5000] + "\n..."
         print(_greeting)

@@ -1,4 +1,6 @@
-# ===== СЕКРЕТЫ =====
+# ===== СЕКРЕТЫ И ЛИЧНЫЕ КОНФИГИ =====
+side/config.json
+!side/config.example.json
 side/api_keys.json
 !side/api_keys.example.json
 **/*.pem

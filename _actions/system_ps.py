@@ -217,26 +217,28 @@ def run_ps(args):
       тишина     — секунд без вывода до убийства
                    (по умолч. max(30, min(таймаут/2, 300)))
     """
-    # Перенаправление: {"запустить": {"путь": "...py"}} — это не PS-whitelist,
-    # а питон-скрипт. У "запуска" параметр "команда", не "путь".
+    # Дружелюбное перенаправление: {"запустить": {"путь": "...py"}} —
+    # это не PS-whitelist, а питон-скрипт. Делегируем в "питон".
     _guess_script = (args.get("путь") or args.get("скрипт")
                      or args.get("файл") or args.get("script"))
     if _guess_script and str(_guess_script).lower().endswith(".py"):
+        from _actions import HANDLERS as _H_rp
+        _run_py = _H_rp.get("питон")
+        if _run_py is not None:
+            _py_args = {"скрипт": str(_guess_script).replace("\\", "/")}
+            _args_rp = args.get("аргументы") or args.get("args")
+            if _args_rp:
+                _py_args["аргументы"] = _args_rp
+            _t_rp = args.get("таймаут")
+            if _t_rp:
+                _py_args["таймаут"] = _t_rp
+            return _run_py(_py_args)
+        # Страховка: обработчик "питон" не зарегистрирован.
         import json as _json_rp
         _obj_rp = {"питон": {"скрипт": str(_guess_script).replace("\\", "/")}}
-        _args_rp = args.get("аргументы") or args.get("args")
-        if _args_rp:
-            _obj_rp["питон"]["аргументы"] = _args_rp
-        _args_hint = ''
-        if not _args_rp:
-            _args_hint = ('\nАргументы — строкой (как в cmd) или списком:\n   '
-                          '{"питон": {"скрипт": "...", "аргументы": "--in a.raw"}}')
-        else:
-            _args_hint = '\nАргументы переданы в поле "аргументы".'
         return ('⚠️ Это Python-скрипт, а "запуск/запустить" — PowerShell-whitelist.\n'
                 'Для .py используй команду "питон":\n   '
-                + _json_rp.dumps(_obj_rp, ensure_ascii=False)
-                + _args_hint)
+                + _json_rp.dumps(_obj_rp, ensure_ascii=False))
 
     command = args.get("команда", "").strip()
     if not command:
