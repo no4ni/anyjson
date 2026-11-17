@@ -142,7 +142,7 @@ SOLO_COMMANDS
 - Stable Diffusion (Forge): запускать ТОЛЬКО через E:\StableDif\run.bat (подсовывает встроенный Python и SKIP_VENV=1). Прямой запуск webui-user.bat создаст сломанный venv с Python 3.13. PID Forge пишется в MY_DIR/stabledif.pid и гасится при выходе anyjson.
 - Удаление текста (убрать_текст): DBNet (E:\StableDif\models\text_detection\dbnet.onnx) → маска → inpaint через forge2_cleaner (/cleanup, big-lama.safetensors). ВАЖНО: патч scripts/api.py (Image→encode_pil_to_base64) откатывается при обновлении расширения.
 - Установка пакетов (установить_пакет): pip без шелла, только фиксация ==version, индексы pypi или pytorch (cu128).
-- Сжатие текста (сжать_текст / подсказать_сокращения): модель rut5-squeeze-fp16 в side/external/squeeze/ (веса в .gitignore, скачиваются с Hugging Face no4ni/rut5-squeeze-fp16; автооткат при потере чисел/путей/баланса скобок).
+- Сжатие текста (сжать_текст / подсказать_сокращения): модель rut5-squeeze-fp16 в side/external/squeeze/ (веса в .gitignore, скачиваются с Hugging Face MACreative/rut5-squeeze-fp16; автооткат при потере чисел/путей/баланса скобок).
 - Lottie (текстурировать_лотти, конвертировать_лотти, лотти_в_видео) и универсальный конвертер (конвертировать): скрипты в side/external/lottie/, бюджет рендера 60 с.
 - Видео и аудио (обрезать_видео, склеить_видео, наложить_звук, создать_видео/морф, затухание_звука, Ken Burns, ScaleSmooth): ffmpeg/ffprobe; склеить_видео без перекодировать: true требует идентичных кодеков и FPS.
 - 3D-модели (создать_3д / сделать_3д): _actions/mesh_3d.py + side/tools_mesh_3d.py — генерация low-poly .glb (Y-up) и изометрического .png из трёх ортогональных проекций.

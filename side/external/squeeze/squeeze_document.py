@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 
 _LOCAL_MODEL = Path(__file__).parent / "rut5-squeeze-fp16"
-DEFAULT_MODEL = str(_LOCAL_MODEL) if _LOCAL_MODEL.exists() else "no4ni/rut5-squeeze-fp16"
+DEFAULT_MODEL = str(_LOCAL_MODEL) if _LOCAL_MODEL.exists() else "MACreative/rut5-squeeze-fp16"
 EMPTY_MARK = "<empty>"
 
 # Разделитель между предложениями: после .!?… идёт whitespace,

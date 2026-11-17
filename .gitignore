@@ -87,3 +87,5 @@ _refactor/lottie/_etalon/_new_*
 # ===== РЕФАКТОРИНГ И IDE =====
 _refactor/
 .gigaide/
+# ===== СЛУЖЕБНЫЕ ФАЙЛЫ КОРНЯ =====
+.last_agent
