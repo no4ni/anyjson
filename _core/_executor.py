@@ -329,10 +329,64 @@ def execute_tool(action: str, params: Dict[str, Any]) -> str:
     return handler(params)
 
 
+_IMPORT_TO_PIP = {
+    "cv2": "opencv-python",
+    "PIL": "pillow",
+    "bs4": "beautifulsoup4",
+    "sklearn": "scikit-learn",
+    "skimage": "scikit-image",
+    "docx": "python-docx",
+    "yaml": "pyyaml",
+    "fitz": "pymupdf",
+    "win32api": "pywin32",
+    "win32clipboard": "pywin32",
+    "win32con": "pywin32",
+    "win32gui": "pywin32",
+    "pybullet_data": "pybullet",
+    "thorvg_python": "thorvg-python",
+    "resvg_py": "resvg-py",
+    "imageio_ffmpeg": "imageio-ffmpeg",
+    "faster_whisper": "faster-whisper",
+    "yt_dlp": "yt-dlp",
+    "langchain_community": "langchain-community",
+}
+
+
+def _format_missing_module(action: str, e: BaseException) -> str:
+    """Возвращает готовую команду установить_пакет для отсутствующего модуля."""
+    import re as _re
+    mod = getattr(e, "name", None) or ""
+    if not mod:
+        m = _re.search(r"No module named ['\"]([^'\"]+)['\"]", str(e))
+        if not m:
+            m = _re.search(r"from ['\"]([^'\"]+)['\"]", str(e))
+        mod = m.group(1) if m else ""
+    top = mod.split(".")[0].strip()
+    if not top or top.startswith("_") or top in {"_core", "_actions", "side", "data"}:
+        return ""
+    pkg = _IMPORT_TO_PIP.get(top, top.replace("_", "-"))
+    return (
+        f"⚠️ Команде «{action}» не хватает библиотеки: {top}\n\n"
+        f"💡 Установить можно прямо сейчас командой:\n"
+        f'{{"установить_пакет": {{"имя": "{pkg}"}}}}'
+    )
+
+
 def execute_tool_safe(action: str, params: Dict[str, Any]) -> str:
     """Безопасный вызов: ловит исключения и возвращает текст."""
     try:
         return execute_tool(action, params)
+    except (ModuleNotFoundError, ImportError) as e:
+        msg = _format_missing_module(action, e)
+        if msg:
+            log(f"Отсутствует библиотека для {action}: {e}")
+            return msg
+        import traceback as _tb
+        log(f"Ошибка импорта в {action}: {e}")
+        tail = _tb.format_exc().strip().splitlines()[-6:]
+        return ("❌ " + action + ": " + type(e).__name__ + ": " + str(e)
+                + chr(10) + chr(10) + "Traceback:" + chr(10)
+                + chr(10).join("  " + l for l in tail))
     except Exception as e:
         import traceback as _tb
         log(f"Ошибка выполнения инструмента {action}: {e}")

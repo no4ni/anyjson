@@ -30,7 +30,8 @@ from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 sys.stdout.reconfigure(encoding='utf-8')
 
 HERE = Path(__file__).resolve().parent
-MODEL_PATH = HERE / "rut5-squeeze-fp16"
+_LOCAL_MODEL = HERE / "rut5-squeeze-fp16"
+MODEL_PATH = _LOCAL_MODEL if _LOCAL_MODEL.exists() else "no4ni/rut5-squeeze-fp16"
 
 # Разделитель предложений: после .!?… идёт whitespace (как в squeeze_document.py)
 SENT_SEP = re.compile(r'((?<=[.!?…])[ \t\n]+|\n+)')

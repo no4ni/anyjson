@@ -51,6 +51,7 @@ pip_cache/
 data/cache/
 side/external/*/models/
 side/external/*/cache/
+side/external/squeeze/rut5-squeeze*/
 
 # ===== OS / РЕДАКТОРЫ =====
 Thumbs.db
