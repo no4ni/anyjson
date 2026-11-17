@@ -1,0 +1,24 @@
+# Базовое ядро (REPL, веб-сервер, работа с картинками, сеть, буфер обмена)
+pillow
+requests
+urllib3
+beautifulsoup4
+ddgs
+pyperclip
+stem
+imageio-ffmpeg
+psutil
+tqdm
+pywin32; sys_platform == "win32"
+
+# Опциональные зависимости ставятся по мере необходимости прямо из чата/консоли
+# командой: {"установить_пакет": {"имя": "<пакет>"}}
+#
+# Медиа, видео и аудио:
+#   opencv-python, numpy, scipy, scikit-image, soundfile, librosa, pydub, pysubs2, yt-dlp, faster-whisper
+# 3D-генерация (создать_3д):
+#   trimesh, matplotlib
+# Сжатие контекста (rut5-squeeze) и ML:
+#   torch, torchvision, transformers, onnxruntime, rembg, mediapipe
+# Документы, SVG и Lottie:
+#   python-docx, openpyxl, reportlab, pdf2image, pytesseract, svglib, resvg-py, thorvg-python
