@@ -75,6 +75,8 @@ def _should_hint_english(path):
 def _is_secret_file(path):
     """True, если файл — приватный ключ или хранилище API-ключей."""
     name = os.path.basename(str(path)).lower()
+    if name == "api_keys.example.json":
+        return False
     return (
         name.endswith("private_key.pem")
         or name in {"api_keys.json", ".env", "secrets.json", "credentials.json"}
