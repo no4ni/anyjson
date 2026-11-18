@@ -89,3 +89,7 @@ _refactor/
 .gigaide/
 # ===== СЛУЖЕБНЫЕ ФАЙЛЫ КОРНЯ =====
 .last_agent
+# ===== RUNTIME СИМУЛЯТОРА =====
+side/external/sim/telemetry.json
+side/external/sim/command.json
+side/external/sim/robot_cam.jpg

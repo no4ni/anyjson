@@ -79,7 +79,7 @@ STABLEDIF_HOST  = "127.0.0.1"
 STABLEDIF_PORT  = 7860
 
 # --- Sim (PyBullet) ---
-SIM_DIR = _opt_path("sim_dir")
+SIM_DIR = _path_from_config("sim_dir", "side/external/sim")
 SIM_CLI = EXTERNAL_DIR / "sim" / "hatasim2.py"
 
 

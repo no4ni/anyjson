@@ -41,7 +41,7 @@ def _send_command(action_dict):
     tmp.replace(_CMD_FILE)
 
 def _get_tel_msg():
-    t_path = Path("E:/Jericho/Private/projects/sim3d/telemetry.json")
+    t_path = SIM_DIR / "telemetry.json"
     if t_path.exists():
         try:
             tel = json.loads(t_path.read_text(encoding="utf-8"))

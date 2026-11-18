@@ -39,7 +39,7 @@ class JerichoSimulator:
         self.cam_pitch = -30
 
         # --- ГРУЗИМ КОЛЛИЗИЮ ПЕРВЫМ ДЕЛОМ ---
-        self.scene_dir = Path(r"E:\Jericho\Private\projects\sim3d")
+        self.scene_dir = Path(os.environ.get("SIM_SCENE_DIR") or Path(__file__).resolve().parent)
         self.rot_quat = p.getQuaternionFromEuler([-math.radians(90), -math.radians(-180), 0])
         print("📦 Загружаю тяжелую коллизию (пол и стены)...")
         p.setAdditionalSearchPath(str(self.scene_dir))
@@ -65,9 +65,8 @@ class JerichoSimulator:
         )
         
         # 2. Загрузка квартиры (визуал, коллизия, пол)
-        self.scene_dir = Path(r"E:\Jericho\Private\projects\sim3d")
         rot_quat = p.getQuaternionFromEuler([-math.radians(90), -math.radians(-180), 0])
-        objects_dir = Path("E:/Jericho/Private/projects/sim3d/objects_opt")
+        objects_dir = self.scene_dir / "objects_opt"
         print(f"🏠 Загружаю квартиру из: {objects_dir}")
         p.setAdditionalSearchPath(str(self.scene_dir))
         
@@ -104,7 +103,7 @@ class JerichoSimulator:
         
         # Robot View: грузим те же 95 объектов, что и GUI (одна картинка)
         self.apartment_cam_bodies = []
-        _obj_dir_cam = Path("E:/Jericho/Private/projects/sim3d/objects_opt")
+        _obj_dir_cam = self.scene_dir / "objects_opt"
         if _obj_dir_cam.exists():
             _count = 0
             for _obj_file in _obj_dir_cam.glob("*.obj"):
@@ -293,7 +292,7 @@ class JerichoSimulator:
         print(f"📍 GPS: {57.164544+pos[0]*0.000009:.6f}, {65.503498+pos[1]*0.000009:.6f}") 
         try:
             import os as _os, json as _json
-            _scene = _os.environ.get("SIM_SCENE_DIR", ".")
+            _scene = _os.environ.get("SIM_SCENE_DIR") or str(self.scene_dir)
             _tel_path = _os.path.join(_scene, "telemetry.json")
             _tel_data = {"lidar": self.format_lidar(angles, distances), "gps": f"{57.164544+pos[0]*0.000009:.6f}, {65.503498+pos[1]*0.000009:.6f}", "compass": compass}
             with open(_tel_path, "w", encoding="utf-8") as _tf:
