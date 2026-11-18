@@ -262,33 +262,31 @@ def run_ps(args):
             return "Пустая команда после снятия обёртки powershell."
 
     if re.search(r'(^|\s|/|\\)(python\d*|py\d*|питон)(\.exe)?(\s|$)', command, re.IGNORECASE):
+        if len(_split_ps_links(command)) == 1:
+            try:
+                import shlex as _shlex_py
+                _toks = _shlex_py.split(command, posix=False)
+                _head_py = (_toks[0].rsplit('\\', 1)[-1].rsplit('/', 1)[-1].lower() if _toks else "")
+                if re.match(r'^(python\d*|py\d*|питон)(\.exe)?$', _head_py):
+                    _toks = _toks[1:]
+                    while _toks and _toks[0].startswith("-"):
+                        _toks = _toks[1:]
+                    if _toks:
+                        _script = _toks[0].strip('"\'')
+                        _py_args = [t.strip('"\'') for t in _toks[1:]]
+                        _py_payload = {"скрипт": _script}
+                        if _py_args:
+                            _py_payload["аргументы"] = _py_args
+                        if "таймаут" in args:
+                            _py_payload["таймаут"] = args["таймаут"]
+                        from _actions.system import run_python as _run_py
+                        _log_run(command, "DELEGATED", "python-to-run_python")
+                        return "ℹ️ Делегировано в «питон»:\n" + _run_py(_py_payload)
+            except Exception:
+                pass
         _log_run(command, "BLOCKED", "python-in-ps")
-        # Собираем готовый {"питон": {...}} из самой команды (если получится).
-        _py_example = ""
-        try:
-            import shlex as _shlex_py
-            _toks = _shlex_py.split(command, posix=False)
-            if _toks:
-                _toks = _toks[1:]
-            while _toks and _toks[0].startswith("-"):
-                _toks = _toks[1:]
-            if _toks:
-                _script = _toks[0].strip('"\'')
-                _args = [t.strip('"\'') for t in _toks[1:]]
-                import json as _json_py
-                _obj = {"питон": {"скрипт": _script}}
-                if _args:
-                    _obj["питон"]["аргументы"] = " ".join(_args)
-                _py_example = ("\n   Готовый JSON для ввода в anyjson:\n     "
-                               + _json_py.dumps(_obj, ensure_ascii=False))
-        except Exception:
-            pass
-        return ("⛔ Запуск Python через PowerShell запрещён.\n"
-                "   «питон» — это НЕ PowerShell-команда, а встроенная JSON-команда anyjson.\n"
-                "   Не пиши её в поле «команда» — PowerShell такого файла не найдёт.\n"
-                "   Формат: {\"питон\": {\"скрипт\": \"путь.py\", \"аргументы\": \"arg1 arg2\"}}\n"
-                "   Параметры: скрипт, аргументы (список или строка), таймаут, в_файл."
-                + _py_example)
+        return ('⛔ Запуск Python в цепочке PowerShell запрещён. Используй команду: '
+                '{"питон": {"скрипт": "путь.py или код", "аргументы": "arg1"}}')
 
     ALLOWED = {
         "dir", "get-childitem", "ls", "gci",

@@ -1,6 +1,7 @@
 {
-  "tavily": "tvly-ЗАМЕНИ",
-  "moltbook": "moltbook_sk_ЗАМЕНИ",
+  "tavily": "ЗАМЕНИ",
+  "moltbook": "ЗАМЕНИ",
   "wolfram": "ЗАМЕНИ",
-  "unaiverse": "ЗАМЕНИ"
+  "unaiverse": "ЗАМЕНИ",
+  "ollama": "ЗАМЕНИ"
 }

@@ -260,15 +260,25 @@ def _suggest_commands(action: str, n: int = 3) -> str:
 def execute_tool(action: str, params: Dict[str, Any]) -> str:
     """Вызывает обработчик команды."""
     ensure_loaded()
-    # --- строгая проверка: имя только кириллица/цифры/подчёркивание ---
+    delegated_note = ""
+    handler = None
+    # --- если латинский синоним однозначно (1-в-1) указывает на русскую команду — делегируем ---
     if _is_latin_name(action):
-        result = _latin_alias_hint(action)
-        sug = _suggest_commands(action)
-        if sug:
-            result += "\n" + sug
-        return result
+        _low = (action or "").lower().strip()
+        _syns = [s for s in _SYNONYMS.get(_low, []) if s in HANDLERS]
+        if len(_syns) == 1:
+            action = _syns[0]
+            handler = HANDLERS[action]
+            delegated_note = f"ℹ️ Делегировано: «{_low}» → «{action}»\n"
+        else:
+            result = _latin_alias_hint(action)
+            sug = _suggest_commands(action)
+            if sug:
+                result += "\n" + sug
+            return result
 
-    handler = HANDLERS.get(action)
+    if handler is None:
+        handler = HANDLERS.get(action)
     if handler is None:
         result = f"❌ Неизвестная команда: {action}"
         sug = _suggest_commands(action)
@@ -326,7 +336,7 @@ def execute_tool(action: str, params: Dict[str, Any]) -> str:
         calls.append(now)
         _write_moltbook_state({"calls": calls, "blocked_until": 0.0, "warned": False})
 
-    return handler(params)
+    return delegated_note + str(handler(params))
 
 
 _IMPORT_TO_PIP = {

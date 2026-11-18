@@ -175,3 +175,10 @@ SOLO_COMMANDS
 Нехватка библиотек (ModuleNotFoundError / ImportError)
 -----------------------------------------------------
 Тяжёлые зависимости в requirements.txt не включены. execute_tool_safe (_core/_executor.py) автоматически перехватывает ModuleNotFoundError / ImportError для внешних библиотек, переводит имя импорта в PyPI-пакет (_IMPORT_TO_PIP) и возвращает готовую команду `{"установить_пакет": {"имя": "..."}}` без падения с traceback.
+---
+Обновления ядра и команд (17.11.2026, v0.2.0 – v0.3.0)
+-------------------------------------------------------
+- Безопасность: в `_actions/files.py` (`_is_secret_file`) заблокировано прямое чтение `api_keys.json` и `.env` (исключение только для `api_keys.example.json`); в `_actions/tools_leak_guard.py` расширен `mask_secrets` для ключей сервисов (`tvly-`, `moltb`, `hf_`, `AIza`, `gsk_` и JSON-пар сервисов).
+- Файловые операции: в `_actions/tools_files.py` добавлена `copy_file_with_progress` (побайтовый `tqdm` для файлов ≥ 5 МБ), подключена в `переместить` (при междисковом переносе) и `копировать`; в `поиск_в_файлах` добавлен алиас `текст`.
+- Мульти-поиск (`веб_поиск`): в `side/web_search.py` и `_actions/web_search.py` встроен авто-фолбэк по 7 движкам (`bing` с развёртыванием `u=a1...`, `ddg_html`, `ddg_lite`, `searxng`, `anysearch`, `exa` MCP, `ddgs`), выбор движка параметром `движок` и поддержка Ollama Web Search API (`ollama` в `api_keys.json` / `OLLAMA_API_KEY`).
+- Настройка (`настроить`): в `_actions/settings.py` добавлен режим мастера `{"настроить": {"мастер": true}}`, запрашивающий только недостающие пути и ключи из `*.example.json`.

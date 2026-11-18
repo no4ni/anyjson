@@ -163,6 +163,7 @@ def web_search(args):
     """
     query_str = args.get("запрос") or ""
     output_format = args.get("формат", "text")
+    engine = str(args.get("движок") or args.get("engine") or "auto").strip().lower()
     if not query_str:
         return "Ошибка: не указан запрос (поле 'запрос' или 'queries')"
 
@@ -201,10 +202,14 @@ def web_search(args):
 
         # ОДИН вызов со всеми запросами через ||| — side-скрипт сам
         # гоняет их параллельно (2 воркера), дедуп и ранжирует
+        ollama_key = API_KEYS.get("ollama") or os.environ.get("OLLAMA_API_KEY") or ""
         _args = [_sys_w.executable, str(web_search_script),
-                 "--queries", "|||".join(queries)]
+                 "--queries", "|||".join(queries),
+                 "--engine", engine]
         if tavily_key:
             _args += ["--tavily-key", tavily_key]
+        if ollama_key:
+            _args += ["--ollama-key", ollama_key]
         try:
             _r = _sp.run(
                 _args, capture_output=True, text=True,
