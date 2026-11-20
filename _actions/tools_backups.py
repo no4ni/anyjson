@@ -124,15 +124,15 @@ def delete_old_backups(args: dict) -> str:
     реальный момент бэкапа.
 
     Параметры:
-      • папка         — корневая папка (обязательно), алиас: путь
+      • папка         — корневая папка (по умолчанию BASE_DIR anyjson),
+                        алиасы: путь, корень
       • старше_дней   — порог в днях (по умолчанию 14, минимум 7;
-                        0..6 поднимаются до 7 с предупреждением)
+                        0..6 поднимаются до 7 с предупреждением), алиасы: дни, дней
       • безопасно     — true: показать, что было бы удалено, но не удалять
     """
+    from _config import BASE_DIR as _DEFAULT_ROOT
     root_arg = (args.get("папка") or args.get("путь")
-                or args.get("корень") or "")
-    if not root_arg:
-        return "❌ удалить_старые_бэкапы: не указана папка"
+                or args.get("корень") or str(_DEFAULT_ROOT))
 
     root = Path(root_arg).expanduser()
     if not root.exists():
@@ -142,8 +142,13 @@ def delete_old_backups(args: dict) -> str:
     if _is_blocked(root):
         return f"❌ удалить_старые_бэкапы: системная папка запрещена: {root}"
 
+    _raw_days = args.get("старше_дней")
+    if _raw_days is None:
+        _raw_days = args.get("дни")
+    if _raw_days is None:
+        _raw_days = args.get("дней")
     try:
-        days = int(args.get("старше_дней", 14) or 14)
+        days = int(_raw_days) if _raw_days is not None else 14
     except (TypeError, ValueError):
         days = 14
     # Минимум 7 дней: 0..6 — почти всегда ошибка ввода (или попытка

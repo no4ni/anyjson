@@ -261,7 +261,7 @@ def replace_text(args: dict) -> str:
     """Заменить X на Y в текстовом файле.
 
     Параметры:
-      путь (обяз.)      — путь к файлу; алиас: файл
+      путь (обяз.)      — путь к файлу (или "память" / "memory" для файла памяти агента); алиас: файл
       найти (обяз.)     — что искать (X); алиасы: что, старое
       заменить (обяз.)  — на что заменить (Y); алиасы: на, новое, на_что
       все               — заменить все вхождения (по умолчанию true)
@@ -329,7 +329,12 @@ def replace_text(args: dict) -> str:
     # Авто-бэкап оригинала перед записью — паритет с «переписать».
     no_backup = _as_bool(args.get("без_бэкапа", args.get("no_backup")), False)
 
-    path = Path(file_arg).expanduser()
+    _is_memory_alias = str(file_arg).strip().lower() in ("память", "memory", "память_агента")
+    if _is_memory_alias:
+        from _storage import MEMLIST_FILE as _MEM_FILE
+        path = Path(_MEM_FILE)
+    else:
+        path = Path(file_arg).expanduser()
 
     # Слабый отступ: ведущие пробелы в каждой строке якоря → [ \t]* (не пересекает строки)
     # По умолчанию false для .py (отступ = синтаксис), true для остальных.
@@ -782,8 +787,20 @@ def replace_text(args: dict) -> str:
                 out += NL + ("    ⚠️ в файле после этой строки только "
                              + str(len(_file_block)) + " строк(и), "
                              + "а в «найти» — " + str(len(_find_lines)))
-        out += NL + NL + ("💡 «Найти» может отличаться пробелами, тире "
-                          "(— vs -), кавычками (« vs \") или переводами строк.")
+        _c0_r, _c0_i, _ = candidates[0]
+        _c0_start = max(1, _c0_i + 1)
+        _c0_end = min(len(text_lines), _c0_i + max(len(_find_lines), 5))
+        _exact_snip = NL.join(text_lines[_c0_start - 1:_c0_end])
+        _bt3 = chr(96) * 3
+        out += (
+            NL + NL + "📋 Точный фрагмент в файле (стр. "
+            + str(_c0_start) + "-" + str(_c0_end) + ", бери якорь отсюда):"
+            + NL + _bt3 + "text" + NL + _exact_snip + NL + _bt3
+            + NL + "💡 Или прочитай шире: "
+            + '{"читать": {"путь": "' + str(path).replace("\\", "/")
+            + '", "начало": ' + str(max(1, _c0_start - 10))
+            + ', "конец": ' + str(min(len(text_lines), _c0_end + 15)) + "}}"
+        )
         return out
 
     if preview:
@@ -800,6 +817,26 @@ def replace_text(args: dict) -> str:
         _we = _check_py_syntax(new_text, path)
         if _we:
             return _we
+
+    if _is_memory_alias or path.suffix.lower() == ".json":
+        import json as _json_chk
+        try:
+            _parsed_mem = _json_chk.loads(new_text)
+        except Exception:
+            if not use_regex and '"' in repl_s and '\\"' not in repl_s:
+                _fixed_repl = repl_s.replace('"', '\\"')
+                _alt_text = new_text.replace(repl_s, _fixed_repl)
+                try:
+                    _parsed_mem = _json_chk.loads(_alt_text)
+                    new_text = _alt_text
+                except Exception as _je:
+                    return f"⛔ Ошибка JSON после замены в {path.name}: {_je}"
+            else:
+                return f"⛔ Ошибка JSON после замены в {path.name} — замена отменена"
+        if _is_memory_alias and isinstance(_parsed_mem, list):
+            _cleaned = [x for x in _parsed_mem if not (isinstance(x, str) and not x.strip())]
+            if len(_cleaned) != len(_parsed_mem):
+                new_text = _json_chk.dumps(_cleaned, ensure_ascii=False, indent=2)
 
     _new_to_write = new_text.replace("\n", "\r\n") if _orig_crlf else new_text
     _bak, _berr = _backup_and_write(path, _new_to_write, enc, no_backup)

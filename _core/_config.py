@@ -88,6 +88,7 @@ HEAR_CLI          = EXTERNAL_DIR / "hear"         / "hear_cli.py"
 # TTS Piper (внешний инструмент, пути в side/config.json)
 PIPER_EXE         = _opt_path("piper_exe", "piper")
 PIPER_VOICES      = _opt_path("piper_voices")
+MIDAS_ONNX        = _opt_path("midas_onnx")
 
 # ffprobe / ffmpeg
 FFPROBE_EXE       = _opt_path("ffprobe_exe", "ffprobe")
@@ -144,6 +145,21 @@ def _extract_name(raw: str):
     if not raw:
         return None
 
+    # -1) JSON-формат: {"имя": "Overseer"} или {"name": "..."} (включая вложенные и в ```text)
+    for jm in re.finditer(r'\{[^{}]*\}', raw):
+        try:
+            obj = json.loads(jm.group(0))
+            if isinstance(obj, dict):
+                for k in ('имя', 'name', 'ник', 'nick', 'agent', 'агент', 'value', 'значение'):
+                    v = obj.get(k)
+                    if isinstance(v, str) and v.strip():
+                        return v.strip()
+        except Exception:
+            pass
+
+    # Убираем маркеры кодовых блоков ```...```, если JSON не распарсился
+    raw = re.sub(r'```(?:text|json)?', '', raw, flags=re.IGNORECASE).replace('```', '').strip()
+
     # 0) "Имя: DeepSeek", "Name: X", "Агент: X"
     m = re.match(r'^(?:имя|name|агент|agent)\s*[:\-]\s*(.+)$', raw, re.IGNORECASE)
     if m:
@@ -159,6 +175,7 @@ def _extract_name(raw: str):
     # 2) «Меня зовут X», «Моё имя X», «Зови меня X», «Я — X», «My name is X», «I am X»
     pats = [
         r'(?:меня зовут|мо[её] имя|зови меня)\s+([^\.,;!?]+)',
+        r'(?:я\s+)?(?:выбираю|выберу|беру|пусть\s+будет|остановлюсь\s+на)(?:\s+имя)?\s+([^\.,;!?—\-]+)',
         r'\bя\s*[—\-]\s*([^\.,;!?]+)',
         r'\bmy name is\s+([^\.,;!?]+)',
         r'\bi am\s+([^\.,;!?]+)',
@@ -263,9 +280,9 @@ def _ask_name():
     except Exception:
         pass
     if hints:
-        _name_line = "Имя: (на выбор: " + ", ".join(hints) + ")"
+        _name_line = "Имя (ответь одним словом): (на выбор: " + ", ".join(hints) + ")"
     else:
-        _name_line = "Имя:"
+        _name_line = "Имя (ответь одним словом):"
     print(_name_line)
     try:
         import pyperclip as _pc

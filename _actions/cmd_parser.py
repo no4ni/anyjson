@@ -839,6 +839,53 @@ def _parse_part(part):
                     return _cmd_trim, None
             except json.JSONDecodeError:
                 pass
+        # Автопочин незакрытого inline-heredoc: если в тексте остался
+        # незакрытый <<< (например, забыли >>> перед финальными }}),
+        # пробуем подставить недостающие >>> перед хвостовыми } / ].
+        _OPEN_HD = chr(60) * 3
+        _CLOSE_HD = chr(62) * 3
+        if _OPEN_HD in part_normalized:
+            _hd_depth = 0
+            _hi_idx = 0
+            _hn = len(part_normalized)
+            while _hi_idx < _hn:
+                if part_normalized.startswith(_OPEN_HD, _hi_idx):
+                    _hd_depth += 1
+                    _hi_idx += 3
+                elif part_normalized.startswith(_CLOSE_HD, _hi_idx) and _hd_depth > 0:
+                    _hd_depth -= 1
+                    _hi_idx += 3
+                else:
+                    _hi_idx += 1
+            if _hd_depth > 0:
+                _m_tail = re.search(r'([\s\}\]]*)$', part_normalized)
+                _tail_str = _m_tail.group(1) if _m_tail else ""
+                _head_str = part_normalized[:len(part_normalized) - len(_tail_str)]
+                _need_nl = "" if (not _head_str or _head_str.endswith(("\n", "\r"))) else "\n"
+                _repaired_hd = _head_str + _need_nl + (_CLOSE_HD * _hd_depth) + _tail_str
+                try:
+                    _hd_cleaned = _expand_inline_heredocs(_repaired_hd)
+                    _hd_cleaned = strip_trailing_comments(_hd_cleaned).strip()
+                    if _hd_cleaned.startswith('\ufeff'):
+                        _hd_cleaned = _hd_cleaned[1:]
+                    _hd_cleaned = _hd_cleaned.encode('utf-8').decode('utf-8-sig')
+                    _hd_cleaned = _fill_bare_keys(_hd_cleaned)
+                    _hd_cleaned = _fix_bad_escapes(_hd_cleaned)
+                    _hd_stack, _hd_in_str = _brace_balance(_hd_cleaned)
+                    if _hd_stack and not _hd_in_str:
+                        _hd_cleaned = _hd_cleaned + "".join(reversed(_hd_stack))
+                    try:
+                        cmd = json.loads(_hd_cleaned)
+                    except json.JSONDecodeError:
+                        cmd = safe_json_parse(_hd_cleaned)
+                    _LAST_PARSE_WARNINGS.append(
+                        "⚠️ Незакрытый inline-heredoc — автопочин добавил "
+                        + (_CLOSE_HD * _hd_depth)
+                        + " перед закрывающими скобками."
+                    )
+                    return cmd, None
+                except Exception:
+                    pass
         # Автопочин: если скобки не сбалансированы и мы не внутри строки —
         # пробуем дописать недостающие закрывающие в конец.
         _stack, _in_str = _brace_balance(cleaned)
@@ -1010,30 +1057,133 @@ def _parse_part(part):
                     )
             except Exception:
                 pass
-            _json_err_hint = (
-                _heredoc_gt_hint
-                + "⚠️ JSON не разобран: " + _err_msg + "\n"
-                + ("   Фрагмент: ..." + _err_frag + "..." + _err_hint + "\n"
-                   if _err_frag else "")
-                + _trim_hint
-                + ("   Открыто без закрытия: " + str(len(_stack))
-                   + " (" + "".join(reversed(_stack)) + ")\n"
-                   if _stack and not _heredoc_gt_hint else "")
-                + "\n"
-            )
+            _has_json_attempt = "{" in (part or "")
+            if _has_json_attempt:
+                _header_msg = (
+                    "⚠️ Не удалось разобрать JSON-команду в блоке ```text "
+                    "(обычный текст вокруг блока писать можно).\n"
+                )
+                _json_err_hint = (
+                    _heredoc_gt_hint
+                    + "   Ошибка парсера: " + _err_msg + "\n"
+                    + ("   Фрагмент: ..." + _err_frag + "..." + _err_hint + "\n"
+                       if _err_frag else "")
+                    + _trim_hint
+                    + ("   Открыто без закрытия: " + str(len(_stack))
+                       + " (" + "".join(reversed(_stack)) + ")\n"
+                       if _stack and not _heredoc_gt_hint else "")
+                    + "\n"
+                )
+            else:
+                _header_msg = (
+                    "ℹ️ В тексте не нашлось JSON-команд в блоке ```text.\n"
+                    '📖 Если оператор не дал конкретную задачу — прочти документацию, статус и список задач, выбери актуальную и сразу приступай к работе (не спрашивай «что делать дальше»):\n'
+                    '   {"прочитать_полностью": {"путь": "./Readme.txt"}}|||{"прочитать_полностью": {"путь": "../../Status.txt"}}|||{"прочитать_полностью": {"путь": "../tasks/TODO.txt"}}\n\n'
+                    + build_welcome_banner() + "\n"
+                )
+                _json_err_hint = ""
+            _last_mem_block = ""
+            try:
+                from _storage import load_memlist as _load_mem
+                _mem_items = _load_mem() or []
+                if _mem_items:
+                    _last_raw = _mem_items[-1]
+                    if isinstance(_last_raw, dict):
+                        _last_txt = ""
+                        for _mk in ("текст", "содержимое", "content", "text", "описание"):
+                            if _mk in _last_raw and _last_raw[_mk]:
+                                _last_txt = str(_last_raw[_mk])
+                                break
+                        if not _last_txt:
+                            _last_txt = str(_last_raw)
+                    else:
+                        _last_txt = str(_last_raw)
+                    _last_txt = " ".join(_last_txt.split())
+                    if len(_last_txt) > 400:
+                        _last_txt = _last_txt[:400] + "…"
+                    _total_mem = len(_mem_items)
+                    _last_mem_block = (
+                        f"\n📝 Последняя запись в памяти (всего: {_total_mem}):\n"
+                        f"  • {_last_txt}\n"
+                        '   • Если это новый чат после сброса — вызови {"вспомнить": ""} и продолжи работу по записи выше.\n'
+                        '   • Несколько команд подряд соединяй через ||| вплотную к } предыдущей команды:\n'
+                        "```text\n"
+                        '{"вспомнить": ""} ||| {"поиск_команд": "файлы"}\n'
+                        "```"
+                    )
+            except Exception:
+                pass
+            if not _has_json_attempt:
+                return None, (
+                    _header_msg
+                    + _last_mem_block
+                    + _python_hint + _extra_hint + _tormoza + _session_hint + _capability_hint + _ending_hint
+                )
             return None, (
-                "❌ Не понял ввод.\n"
+                _header_msg
                 + _json_err_hint
-                + "Ожидаю JSON-команду, например:\n"
+                + "Пример команды:\n"
                 "```text\n"
                 f"{_ex_str}\n"
                 "```\n"
-                'Спецификация:\n'
-                '```text\n'
-                '{"помощь": {"команда": "<имя>"}}\n'
-                '```'
-             + _python_hint + _extra_hint + _tormoza + _session_hint + _capability_hint + _ending_hint)
+                "Несколько команд подряд (строго через ||| вплотную к }):\n"
+                "```text\n"
+                '{"вспомнить": ""} ||| {"поиск_команд": "<запрос>"}\n'
+                "```"
+                + _last_mem_block
+                + _python_hint + _extra_hint + _tormoza + _session_hint + _capability_hint + _ending_hint
+            )
     return cmd, None
+
+
+def build_welcome_banner():
+    """Стартовое приветствие и инструкция по формату JSON + |||."""
+    try:
+        from _config import AGENT_NAME as _ag_name
+    except Exception:
+        _ag_name = "Ассистент"
+    return (
+        f"Привет, {_ag_name}! Я с радостью буду выполнять твои JSON.\n"
+        "Формат:\n"
+        "[произвольный текст]\n"
+        "```text\n"
+        '{"имя_команды": {"параметр": "значение"}}\n'
+        "   ↑ подставь любое, что придумаешь (команды и параметры — по-русски)\n"
+        "```\n"
+        "ИЛИ — inline-heredoc внутри JSON\n"
+        "(<<< и >>> прямо в значении, без экранирования):\n"
+        "```text\n"
+        '{"имя_команды": {"параметр": <<<\n'
+        "многострочное\n"
+        "значение\n"
+        ">>>}}\n"
+        "```\n"
+        "Внутри <<<...>>> не оставляй 3 пустые строки подряд.\n"
+        "[произвольный текст]\n\n"
+        "Несколько команд:\n"
+        "  • последовательно — ||| вплотную к } предыдущей команды: {\"а\": {}}|||{\"б\": {}}\n"
+        '  • одновременно — команда {"параллельно": [{"а": {}}, {"б": {}}]} (не для зависимых шагов)\n'
+        'С чего начать: {"поиск_команд": "файлы"} · {"справка": "имя_команды"}\n'
+        'Память (чат может сброситься): {"запомнить": "важный факт"} · {"вспомнить": ""}'
+    )
+
+
+try:
+    from _actions import register as _reg_welcome
+except Exception:
+    _reg_welcome = None
+
+if _reg_welcome is not None:
+    @_reg_welcome(["привет", "приветствие"])
+    def welcome_cmd(args):
+        """Показать стартовое приветствие и инструкцию по формату команд.
+
+        Параметров нет.
+
+        Пример:
+          {"привет": {}}
+        """
+        return build_welcome_banner()
 
 
 def _extract_actions(cmd):
@@ -1338,6 +1488,37 @@ def _process_command_input_inner(input_str: str, pre_notes=None) -> None:
     except Exception:
         pass
 
+    if input_str and "|||" not in input_str:
+        _raw_s = input_str.strip()
+        if _raw_s.startswith("{"):
+            _dec_s = json.JSONDecoder()
+            _pos_s = 0
+            _chunks_s = []
+            while _pos_s < len(_raw_s):
+                while _pos_s < len(_raw_s) and _raw_s[_pos_s].isspace():
+                    _pos_s += 1
+                if _pos_s >= len(_raw_s):
+                    break
+                if _chunks_s:
+                    _m_par_sep = re.match(r"^(?:параллельно|parallel)\b[:\s]*", _raw_s[_pos_s:], re.IGNORECASE)
+                    if _m_par_sep:
+                        _pos_s += _m_par_sep.end()
+                        while _pos_s < len(_raw_s) and _raw_s[_pos_s].isspace():
+                            _pos_s += 1
+                try:
+                    _, _end_s = _dec_s.raw_decode(_raw_s, _pos_s)
+                except Exception:
+                    _chunks_s = []
+                    break
+                _chunks_s.append(_raw_s[_pos_s:_end_s])
+                _pos_s = _end_s
+            if len(_chunks_s) >= 2:
+                input_str = "|||".join(_chunks_s)
+                pre_notes = list(pre_notes or []) + [
+                    f"⚠️ Обнаружено {len(_chunks_s)} JSON-команд без ||| — "
+                    f"склеил и выполнил последовательно. В следующий раз ставь ||| вплотную к }} или используй {{\"параллельно\": [...]}}."
+                ]
+
     parts = split_preserving_quotes(input_str)
 
     # === Фаза 1: разбор (без выполнения) ===
@@ -1563,13 +1744,35 @@ def _process_command_input_inner(input_str: str, pre_notes=None) -> None:
                               + "может быть перезаписан.\n"
                               + "   Добавь \"в_контекст\": false каждой такой команде.")
         msg = "Всего команд: " + str(total_actions) + "\n" + "\n".join(_parts)
-        print(color_red("\n" + msg))
-        try:
-            pyperclip.copy(msg)
-            print(color_yellow("📋 Скопировано в буфер обмена."))
-        except Exception:
-            pass
-        return
+        if bad_pipe and not bad_par:
+            _filtered = []
+            for _entry in parsed:
+                _e_cmd = _entry[2]
+                if not _entry[3] and isinstance(_e_cmd, dict):
+                    _e_acts = _extract_actions(_e_cmd)
+                    if any(_a in SOLO_COMMANDS for _a in _e_acts):
+                        continue
+                _filtered.append(_entry)
+            if _filtered:
+                _warn_txt = "⚠️ Пропущены SOLO-команды в цепочке:\n" + "\n".join(_parts)
+                _LAST_PARSE_WARNINGS.append(_warn_txt)
+                parsed = _filtered
+            else:
+                print(color_red("\n" + msg))
+                try:
+                    pyperclip.copy(msg)
+                    print(color_yellow("📋 Скопировано в буфер обмена."))
+                except Exception:
+                    pass
+                return
+        else:
+            print(color_red("\n" + msg))
+            try:
+                pyperclip.copy(msg)
+                print(color_yellow("📋 Скопировано в буфер обмена."))
+            except Exception:
+                pass
+            return
 
     # === Склейка нескольких веб_поисков в один запрос ===
     _WEB_SEARCH_ALIASES = {"веб_поиск", "поиск_информации"}
@@ -1670,7 +1873,7 @@ def _process_command_input_inner(input_str: str, pre_notes=None) -> None:
         else:
             plain_results = _notes_text + "\n".join(results)
         try:
-            pyperclip.copy(plain_results)
+            pyperclip.copy(plain_results.replace("\x00", ""))
             print(color_yellow("📋 Результаты скопированы в буфер обмена."))
         except Exception as e:
             print(f"⚠️ Не удалось скопировать в буфер: {e}")
@@ -1724,6 +1927,14 @@ def _process_command_input_inner(input_str: str, pre_notes=None) -> None:
                                 f"\n   Ты пробовал(а) команду «{_rnd_cmd}»?"
                                 f" Что это: {{\"справка\": \"{_rnd_cmd}\"}}"
                             )
+                    # 5% — напоминание про память
+                    if _first_cmd not in ("запомнить", "вспомнить") and _rnd_hint.random() < 0.05:
+                        _hint_parts.append(
+                            "\n💡 Запоминай цель и важное — сессия может внезапно оборваться:\n"
+                            "```text\n"
+                            '{"запомнить": {"содержимое": "..."}}\n'
+                            "```"
+                        )
                     if _hint_parts:
                         _hint = "".join(_hint_parts)
                         print(color_yellow(_hint))

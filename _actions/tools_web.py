@@ -13,13 +13,16 @@ from _actions import _tools_core
 
 
 # ---------- Прокси ----------
-def _test_proxy(proxy_str, timeout=5):
-    """True, если прокси отвечает на тестовый HTTP-запрос."""
+_LIVE_PROXY_CACHE = {"ts": 0.0, "list": []}
+_LIVE_PROXY_TTL = 600.0  # 10 минут
+
+
+def _test_proxy(proxy_str, timeout=4.0):
+    """True, если прокси реально держит HTTPS (TLS CONNECT), а не HTTP-заглушку."""
+    proxies = {"http": proxy_str, "https": proxy_str}
     try:
-        proxies = {"http": proxy_str, "https": proxy_str}
-        resp = requests.get("http://httpbin.org/ip",
-                            proxies=proxies, timeout=timeout)
-        return resp.status_code == 200
+        resp = requests.get("https://example.com", proxies=proxies, timeout=timeout, allow_redirects=False)
+        return (200 <= resp.status_code < 400) and ("Example Domain" in resp.text or len(resp.text) > 100)
     except Exception:
         return False
 
@@ -60,17 +63,25 @@ def _remove_proxy_from_data(data, ip, port):
     return modified
 
 
-def get_local_proxies(proxy_dir, count=5, check=False, proxy_type=None):
-    """Читает локальные JSON-файлы с прокси (формат {'value': [...]})."""
+def get_local_proxies(proxy_dir, count=5, check=False, proxy_type=None, max_sec=10.0):
+    """Читает локальные JSON и TXT файлы с прокси; при check=True проверяет параллельно до count штук."""
+    import time as _tm
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     proxy_dir = Path(proxy_dir)
     if not proxy_dir.exists():
         return []
 
-    json_files = list(proxy_dir.rglob("*.json"))
+    ptype_filter = str(proxy_type).strip().lower() if proxy_type else None
     proxies = []
     seen = set()
 
-    for jf in json_files:
+    _json_files = sorted(
+        proxy_dir.rglob("*.json"),
+        key=lambda p: p.stat().st_mtime if p.exists() else 0,
+        reverse=True,
+    )
+    for jf in _json_files:
         try:
             with open(jf, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -88,26 +99,122 @@ def get_local_proxies(proxy_dir, count=5, check=False, proxy_type=None):
                 continue
             ip = item.get("ip")
             port = item.get("port")
-            protocol = item.get("protocol") or (
-                "https" if item.get("https") else "http")
+            protocol = (item.get("protocol") or ("https" if item.get("https") else "http")).lower()
+            if protocol == "socks5":
+                protocol = "socks5h"
+            elif protocol == "socks4":
+                protocol = "socks4a"
             if not ip or not port:
                 continue
-            key = (ip, port)
+            if ptype_filter and ptype_filter not in protocol:
+                continue
+            key = (protocol, str(ip), str(port))
             if key not in seen:
                 seen.add(key)
                 proxies.append(f"{protocol}://{ip}:{port}")
 
+    for tf in proxy_dir.rglob("*.txt"):
+        default_proto = "socks5h" if "socks" in tf.name.lower() else "http"
+        try:
+            lines = tf.read_text(encoding="utf-8", errors="ignore").splitlines()
+        except Exception:
+            continue
+        for raw in lines:
+            s = raw.strip()
+            if not s or s.startswith("#"):
+                continue
+            if "://" in s:
+                proto, addr = s.split("://", 1)
+                proto = proto.lower()
+                if proto == "socks5":
+                    proto = "socks5h"
+                elif proto == "socks4":
+                    proto = "socks4a"
+            else:
+                proto, addr = default_proto, s
+            if ":" not in addr:
+                continue
+            ip, port = addr.split(":", 1)
+            ip, port = ip.strip(), port.strip()
+            if not ip or not port.isdigit():
+                continue
+            if ptype_filter and ptype_filter not in proto:
+                continue
+            key = (proto, ip, port)
+            if key not in seen:
+                seen.add(key)
+                proxies.append(f"{proto}://{ip}:{port}")
+
+    if not proxies:
+        return []
+
+    target_n = max(1, int(count)) if count else 5
+
     if check:
+        now = _tm.monotonic()
+        cached = [p for p in _LIVE_PROXY_CACHE["list"] if (not ptype_filter or ptype_filter in p.lower())]
+        if cached and (now - _LIVE_PROXY_CACHE["ts"]) < _LIVE_PROXY_TTL and len(cached) >= target_n:
+            return cached[:target_n]
+
+        # Файлы уже отсортированы от самых свежих к старым — берём свежайшие первыми!
+        socks_cands = [p for p in proxies if p.startswith("socks")]
+        other_cands = [p for p in proxies if not p.startswith("socks")]
+        # Перемешиваем только внутри свежей головы (первые 300), не разбавляя старьём
+        _head_s = socks_cands[:300]
+        _head_o = other_cands[:300]
+        random.shuffle(_head_s)
+        random.shuffle(_head_o)
+        candidates = (_head_s + _head_o)[:max(target_n * 50, 200)]
         tested = []
-        for proxy in proxies:
-            if _test_proxy(proxy):
-                tested.append(proxy)
-        proxies = tested
+        deadline = _tm.monotonic() + float(max_sec)
 
-    if count and len(proxies) > count:
-        proxies = random.sample(proxies, count)
+        ex = ThreadPoolExecutor(max_workers=48)
+        try:
+            futs = {ex.submit(_test_proxy, p, 3.5): p for p in candidates}
+            for fut in as_completed(futs, timeout=float(max_sec)):
+                if _tm.monotonic() >= deadline:
+                    break
+                p = futs[fut]
+                try:
+                    if fut.result():
+                        tested.append(p)
+                        if len(tested) >= target_n:
+                            break
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        finally:
+            ex.shutdown(wait=False, cancel_futures=True)
 
+        if tested:
+            _LIVE_PROXY_CACHE["ts"] = _tm.monotonic()
+            # Добавляем свежие живые в начало кэша без дублей
+            merged = tested + [x for x in _LIVE_PROXY_CACHE["list"] if x not in tested]
+            _LIVE_PROXY_CACHE["list"] = merged[:20]
+        return tested[:target_n]
+
+    if len(proxies) > target_n:
+        return random.sample(proxies, target_n)
     return proxies
+
+
+def get_working_proxy_dict(proxy_dir=None, exclude=None):
+    """Возвращает {'http': url, 'https': url} первого живого прокси из кэша или локального пула."""
+    exclude = set(exclude or [])
+    if not proxy_dir:
+        try:
+            from _config import PROXY_DIR as _PD
+            proxy_dir = _PD
+        except Exception:
+            return None
+    if not proxy_dir:
+        return None
+    live = get_local_proxies(str(proxy_dir), count=3, check=True, max_sec=8.0)
+    for p in live:
+        if p not in exclude:
+            return {"http": p, "https": p}
+    return None
 
 
 def remove_local_proxy(proxy_dir, target_proxy):
@@ -126,7 +233,12 @@ def remove_local_proxy(proxy_dir, target_proxy):
         return 0
 
     files_removed = 0
-    for jf in proxy_dir.rglob("*.json"):
+    _json_files = sorted(
+        proxy_dir.rglob("*.json"),
+        key=lambda p: p.stat().st_mtime if p.exists() else 0,
+        reverse=True,
+    )
+    for jf in _json_files:
         try:
             with open(jf, "r", encoding="utf-8") as f:
                 data = json.load(f)

@@ -252,6 +252,11 @@ _HINTS = {
         '   {"питон": {"скрипт": "demo.py"}}            — запустить .py-файл\n'
         '   {"питон": {"скрипт": "demo.py", "аргументы": ["a", "b"]}} — то же с аргументами'
     ),
+    "sysinfo": (
+        'Сведения о GPU, CUDA, CPU, RAM, дисках и системе — встроенной командой:\n'
+        '   {"разведка_системы": {}}                   — полная сводка об оборудовании и ОС\n'
+        '   {"запуск": {"команда": "nvidia-smi"}}      — или через PowerShell с whitelist'
+    ),
 }
 
 
@@ -343,7 +348,11 @@ def _audit(event, args):
                 _raw = "?"
             if _raw:
                 _label += " → " + _raw
-        _fail(_label, "", "exec", soft=True, silent=_silent)
+        _base = (_name or "").removesuffix(".exe")
+        _hkey = "sysinfo" if _base in {
+            "nvidia-smi", "wmic", "systeminfo", "dxdiag", "tasklist", "driverquery", "msinfo32"
+        } else "exec"
+        _fail(_label, "", _hkey, soft=True, silent=_silent)
     elif event in ("os.system", "os.exec"):
         _fail(event, "", "exec", soft=True)
 

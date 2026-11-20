@@ -1121,8 +1121,8 @@ def subs_to_text(args):
 def frame_with_subtitle(args):
     """Простой кадр видео на указанной секунде + субтитр -> буфер обмена.
     Параметры:
-      путь      — файл видео (обязательно)
-      секунда   — момент в секундах (по умолчанию 0.0)
+      путь / видео — файл видео (обязательно)
+      секунда / время — момент в секундах (по умолчанию 0.0)
       slit_scan — true/false, применить slit-scan (по умолч. FALSE)
       окно      — ширина окна slit-scan в сек (по умолч. 3.0)
       субтитр   — true/false, накладывать субтитр (по умолч. TRUE
@@ -1141,7 +1141,10 @@ def frame_with_subtitle(args):
     if _redir is not None:
         return _redir
 
-    sec = float(args.get("секунда", args.get("sec", 0.0)) or 0.0)
+    raw_sec = args.get("секунда") if args.get("секунда") is not None else args.get("время")
+    if raw_sec is None:
+        raw_sec = args.get("sec", 0.0)
+    sec = float(raw_sec or 0.0)
     _ensure_companion_srt(video)
     _sec_err = _check_sec_in_range(video, sec, "кадр+субтитр")
     if _sec_err:
@@ -1180,8 +1183,8 @@ def listen_video(args):
     """Полный layout плеера (спектрограмма + линия нот + подписи + видео-кадр)
     на указанной секунде.
     Параметры:
-      путь      — файл видео (обязательно)
-      секунда   — момент в секундах (по умолчанию 0.0)
+      путь / видео — файл видео (обязательно)
+      секунда / время — момент в секундах (по умолчанию 0.0)
       размер    — WxH, по умолчанию 1366x768
       сохранить — путь для сохранения PNG. Если задан и "в_контекст"
                   не указан явно — буфер не трогаем, результат только
@@ -1197,7 +1200,10 @@ def listen_video(args):
     if _redir is not None:
         return _redir
 
-    sec = float(args.get("секунда", args.get("sec", 0.0)) or 0.0)
+    raw_sec = args.get("секунда") if args.get("секунда") is not None else args.get("время")
+    if raw_sec is None:
+        raw_sec = args.get("sec", 0.0)
+    sec = float(raw_sec or 0.0)
     _ensure_companion_srt(video)
     _sec_err = _check_sec_in_range(video, sec, "слушать_видео")
     if _sec_err:

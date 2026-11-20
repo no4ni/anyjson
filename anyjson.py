@@ -588,7 +588,9 @@ def main():
             "```\n"
             "Внутри <<<...>>> не оставляй 3 пустые строки подряд.\n"
             "[произвольный текст]\n\n"
-            "Несколько команд: ||| (последовательно; ||| вплотную к } предыдущей команды) или «параллельно» (одновременно, для зависимых шагов не годится)."
+            "Несколько команд: ||| (последовательно; ||| вплотную к } предыдущей команды) или «параллельно» (одновременно, для зависимых шагов не годится).\n"
+            "С чего начать: {\"поиск_команд\": \"файлы\"} · {\"справка\": \"имя_команды\"}\n"
+            "Память (чат может сброситься): {\"запомнить\": \"важный факт\"} · {\"вспомнить\": \"\"}"
         )
         _full = _banner
         if _inbox_text.strip():
@@ -608,6 +610,22 @@ def main():
     while True:
         try:
             line = input(prompt).rstrip('\n')
+            try:
+                import msvcrt as _ms, time as _tms
+                _extra_lines = []
+                while True:
+                    if not _ms.kbhit():
+                        _tms.sleep(0.008)
+                        if not _ms.kbhit():
+                            break
+                    _nxt = sys.stdin.readline()
+                    if not _nxt:
+                        break
+                    _extra_lines.append(_nxt.rstrip('\r\n'))
+                if _extra_lines:
+                    line = line + '\n' + '\n'.join(_extra_lines)
+            except Exception:
+                pass
         except EOFError:
             if buffer:
                 print("\n(Ввод отменён)")
@@ -718,7 +736,7 @@ def main():
                 continue
             if line.strip() == "":
                 empty_line_count += 1
-                if empty_line_count >= 3:
+                if empty_line_count >= 6:
                     _full = "\n".join(buffer)
                     buffer.clear()
                     empty_line_count = 0

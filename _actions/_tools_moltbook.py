@@ -451,10 +451,14 @@ def moltbook_refresh_token() -> str:
         return f"Не удалось обновить токен: {e}"
 
 
-def moltbook_comments(post_id: str, sort: str = "best", limit: int = 10) -> str:
+def moltbook_comments(post_id: str, sort: str = "best", limit: int = 10,
+                      deadline_sec: float = None) -> str:
     try:
-        resp = _moltbook_request("GET",
-            f"/api/v1/posts/{post_id}/comments?sort={sort}&limit={limit}")
+        resp = _moltbook_request(
+            "GET",
+            f"/api/v1/posts/{post_id}/comments?sort={sort}&limit={limit}",
+            deadline_sec=deadline_sec,
+        )
         if resp.status_code != 200:
             return f"Ошибка Moltbook: {resp.status_code} {resp.text[:200]}"
         data = resp.json()
@@ -541,14 +545,20 @@ _NOTIF_CACHE_TTL = 300.0
 def moltbook_notifications(limit: int = 10, detailed: bool = False) -> str:
     """Список уведомлений. detailed=True — с полным текстом постов и комментариев."""
     try:
+        import os as _os
         import time as _t
+        try:
+            _dl = float(_os.environ.get("_ANYJSON_MB_NOTIF_TIMEOUT", "20.0"))
+        except (TypeError, ValueError):
+            _dl = 20.0
         now = _t.time()
         cached = False
         if _notif_cache["data"] is not None and now - _notif_cache["ts"] < _NOTIF_CACHE_TTL:
             notifications = _notif_cache["data"]
             cached = True
         else:
-            resp = _moltbook_request("GET", "/api/v1/notifications?limit=100")
+            resp = _moltbook_request("GET", "/api/v1/notifications?limit=100",
+                                     deadline_sec=_dl)
             if resp.status_code != 200:
                 return "Ошибка Moltbook: " + str(resp.status_code) + " " + resp.text[:500]
             data = resp.json()
@@ -880,7 +890,8 @@ def moltbook_notification_by_id(notif_id):
         cached = True
     else:
         try:
-            resp = _moltbook_request("GET", "/api/v1/notifications?limit=100")
+            resp = _moltbook_request("GET", "/api/v1/notifications?limit=100",
+                                     deadline_sec=20.0)
             if resp.status_code != 200:
                 return "Ошибка Moltbook: " + str(resp.status_code) + " " + resp.text[:200]
             data = resp.json()

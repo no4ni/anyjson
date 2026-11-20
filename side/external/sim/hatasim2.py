@@ -129,6 +129,9 @@ class JerichoSimulator:
         p.setGravity(0,0,0, physicsClientId=self.client_cam)
         
         self.robot_view_positioned = False
+        self.update_overview_camera()
+        p.resetBasePositionAndOrientation(self.robot_cam, self.start_pos, [0, 0, 0, 1], physicsClientId=self.client_cam)
+        self.show_robot_view()
         
         # Интерфейс и консоль
         _cmd_env = os.environ.get("SIM_CMD_FILE")
@@ -141,7 +144,7 @@ class JerichoSimulator:
         self.step_counter = 0
         self.console_thread = threading.Thread(target=self.console_reader, daemon=True)
         self.console_thread.start()
-        print("✅ Симулятор запущен. Вводите команды в консоли...")
+        print("✅ Симулятор запущен! Команды: fwd 0.2 | turn 0.5 | reset | quit", flush=True)
         
         time.sleep(0.5)
         hwnd = win32gui.FindWindow(None, "Bullet Physics ExampleBrowser using OpenGL3+ [btgl] Release build")
@@ -187,6 +190,34 @@ class JerichoSimulator:
             angle_deg = round(np.degrees(angle_rad))
             parts.append(f"{angle_deg}°:{dist:.2f}м")
         return " | ".join(parts)
+
+    def update_overview_camera(self, desired=1.8, cam_pitch=-25):
+        pos, _ = p.getBasePositionAndOrientation(self.robot, physicsClientId=self.client)
+        _target = [pos[0], pos[1], pos[2] + 0.2]
+        _pr = math.radians(cam_pitch)
+        best_yaw, best_dist = 45, 0.6
+        for _y in range(0, 360, 30):
+            _yr = math.radians(_y)
+            _dir = [math.cos(_pr) * math.cos(_yr), math.cos(_pr) * math.sin(_yr), math.sin(_pr)]
+            _to = [_target[i] + _dir[i] * desired for i in range(3)]
+            _hit = p.rayTest(_target, _to)[0]
+            if _hit[0] == -1 or _hit[0] == self.robot:
+                _free = desired
+            else:
+                _free = max(0.5, desired * _hit[2] * 0.85)
+            if _free > best_dist:
+                best_dist = _free
+                best_yaw = _y
+            if _free >= desired * 0.95:
+                best_yaw = _y
+                best_dist = desired
+                break
+        p.resetDebugVisualizerCamera(
+            cameraDistance=best_dist,
+            cameraYaw=best_yaw,
+            cameraPitch=cam_pitch,
+            cameraTargetPosition=_target
+        )
 
     def show_robot_view(self):
         pos, orn = p.getBasePositionAndOrientation(self.robot, physicsClientId=self.client)
@@ -251,36 +282,7 @@ class JerichoSimulator:
         
         # После движения обновляем камеру, чтобы она следовала за роботом
         pos, orn = p.getBasePositionAndOrientation(self.robot, physicsClientId=self.client)
-
-        # Камера: ищем свободный угол вокруг робота
-        import math as _m
-        _target = [pos[0], pos[1], pos[2] + 0.2]
-        cam_pitch = -25
-        desired = 2.5
-        _pr = _m.radians(cam_pitch)
-        best_yaw, best_dist = 45, 0.5
-        for _y in range(0, 360, 45):
-            _yr = _m.radians(_y)
-            _dir = [_m.cos(_pr) * _m.cos(_yr), _m.cos(_pr) * _m.sin(_yr), _m.sin(_pr)]
-            _to = [_target[i] + _dir[i] * desired for i in range(3)]
-            _hit = p.rayTest(_target, _to)[0]
-            if _hit[0] == -1 or _hit[0] == self.robot:
-                _free = desired
-            else:
-                _free = desired * _hit[2]
-            if _free > best_dist:
-                best_dist = _free
-                best_yaw = _y
-            if _free >= desired * 0.95:
-                best_yaw = _y
-                best_dist = desired
-                break
-        p.resetDebugVisualizerCamera(
-            cameraDistance=best_dist,
-            cameraYaw=best_yaw,
-            cameraPitch=cam_pitch,
-            cameraTargetPosition=_target
-        )
+        self.update_overview_camera()
         # После получения pos, orn:
         euler = p.getEulerFromQuaternion(orn)
         print(f"🤖 POS=({pos[0]:.2f}, {pos[1]:.2f}, {pos[2]:.2f})  RPY=({math.degrees(euler[0]):.1f}°, {math.degrees(euler[1]):.1f}°, {math.degrees(euler[2]):.1f}°)", flush=True)
@@ -318,8 +320,6 @@ class JerichoSimulator:
             return None
         if cmd == "reset":
             return {"action": "reset"}
-        if cmd == "lidar":
-            return {"action": "lidar"}
         if cmd in ["fwd", "forward"]:
             speed = float(parts[1]) if len(parts) > 1 else 0.1
             return {"action": "forward", "speed": speed}

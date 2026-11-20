@@ -1,6 +1,6 @@
 """Moltbook: глобальная сеть агентов (через Tor)."""
 from _actions import register
-from _tor import ensure_tor, restart_tor as _restart_tor
+from _tor import ensure_tor, restart_tor as _restart_tor, get_tor_error
 from _actions.moltbook import _need_tor
 
 
@@ -22,7 +22,7 @@ def replies(args):
       {"молтбук_ответы": {"посты": ["29c18f2b-...", "6b639855-..."]}}
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
 
     if not isinstance(args, dict):
         return "Ошибка: параметры должны быть словарём"
@@ -35,28 +35,77 @@ def replies(args):
     if not isinstance(posts, list):
         return "Ошибка: 'посты' должен быть списком ID"
 
+    import threading as _th
+    import time as _tm
+
     limit = args.get("количество", 10)
     sort = args.get("сортировка", "best")
     flatten = args.get("свести", True)
+    try:
+        total_timeout = float(args.get("таймаут", 25.0))
+    except (TypeError, ValueError):
+        total_timeout = 25.0
+    total_timeout = max(3.0, min(total_timeout, 120.0))
 
     from _actions._tools_moltbook import moltbook_comments
 
+    def _call_interruptible(fn, *f_args, **f_kwargs):
+        """Запуск в daemon-потоке с шагом 0.2с, чтобы Ctrl+C в Windows срабатывал сразу."""
+        box = {}
+        done = _th.Event()
+
+        def _worker():
+            try:
+                box["res"] = fn(*f_args, **f_kwargs)
+            except BaseException as exc:
+                box["err"] = exc
+            finally:
+                done.set()
+
+        t = _th.Thread(target=_worker, daemon=True)
+        t.start()
+        while not done.wait(0.2):
+            pass
+        if "err" in box:
+            raise box["err"]
+        return box.get("res")
+
+    deadline = _tm.monotonic() + total_timeout
     out = []
     ok = 0
     fail = 0
-    for pid in posts:
+    for idx, pid in enumerate(posts):
+        pid_s = str(pid).strip()
+        if not pid_s or (pid_s.startswith("<") and pid_s.endswith(">")):
+            fail += 1
+            msg = f"⚠️ {pid_s}: пропущен шаблонный ID (подставь реальный ID поста)"
+            out.append(msg if flatten else {"пост_id": pid_s, "ошибка": msg})
+            continue
+
+        rem = deadline - _tm.monotonic()
+        if rem <= 1.0:
+            skipped = len(posts) - idx
+            fail += skipped
+            msg = f"⏱️ Общий таймаут {total_timeout:.0f}с исчерпан (пропущено постов: {skipped})"
+            out.append(msg if flatten else {"ошибка": msg})
+            break
+
         try:
-            res = moltbook_comments(pid, sort=sort, limit=limit)
+            res = _call_interruptible(
+                moltbook_comments, pid_s, sort=sort, limit=limit, deadline_sec=rem
+            )
             ok += 1
             if flatten:
-                out.append(f"📌 {pid}")
+                out.append(f"📌 {pid_s}")
                 out.append(str(res) if not isinstance(res, str) else res)
                 out.append("")
             else:
-                out.append({"пост_id": pid, "комментарии": res})
+                out.append({"пост_id": pid_s, "комментарии": res})
+        except KeyboardInterrupt:
+            raise
         except Exception as e:
             fail += 1
-            out.append(f"⚠️ {pid}: ошибка {e}")
+            out.append(f"⚠️ {pid_s}: ошибка {e}" if flatten else {"пост_id": pid_s, "ошибка": str(e)})
 
     if flatten:
         header = f"Ответы по {len(posts)} постам (ok={ok}, ошибок={fail}):\n"
@@ -77,7 +126,7 @@ def mark_read(args):
       {"молтбук_отметить_прочитанным": {"пост_id": "29c18f2b-..."}}
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     if not isinstance(args, dict):
         args = {}
 
@@ -129,7 +178,7 @@ def home(args):
       {"молтбук_домашняя": {}}
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     if not isinstance(args, dict):
         args = {}
     raw = bool(args.get("сырое"))
@@ -238,7 +287,7 @@ def bulk_comments(args):
     """
     import re as _re
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     if not isinstance(args, dict):
         return "Ошибка: параметры должны быть словарём"
 
@@ -453,7 +502,7 @@ def read_post(args):
       {"молтбук_пост_показать": {"id": "8c30ae25-..."}}
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     if not isinstance(args, dict):
         args = {}
     pid = args.get("пост_id") or args.get("id") or args.get("post_id")
@@ -524,7 +573,7 @@ def delete_post(args):
       {"молтбук_удалить_пост": {"пост_id": "29c18f2b-..."}}
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     if not isinstance(args, dict):
         return "Ошибка: параметры должны быть словарём"
     pid = args.get("пост_id") or args.get("id") or args.get("post_id")
@@ -555,7 +604,7 @@ def undelete_post(args):
       {"молтбук_восстановить_пост": {"пост_id": "29c18f2b-..."}}
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     if not isinstance(args, dict):
         return "Ошибка: параметры должны быть словарём"
     pid = args.get("пост_id") or args.get("id") or args.get("post_id")
@@ -615,7 +664,7 @@ def edit_comment(args):
       }}
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     if not isinstance(args, dict):
         return "Ошибка: параметры должны быть словарём"
     cid = (args.get("комментарий_id") or args.get("коммент_id")
@@ -660,7 +709,7 @@ def raw_request(args):
     if not url.startswith("https://www.moltbook.com"):
         url = "https://www.moltbook.com" + url if url.startswith("/") else url
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     from _actions._tools_moltbook import moltbook_raw_request
     _fresh = bool(args.get("обновить"))
     txt = moltbook_raw_request(method, url, json_data=body,

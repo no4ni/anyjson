@@ -5,6 +5,62 @@ from _actions import register
 
 
 _MODES = ("normal", "multiply", "screen", "overlay", "add", "subtract")
+_VIDEO_EXTS = (".webm", ".mp4", ".mov", ".mkv", ".avi", ".gif")
+
+
+def _is_video_path(path):
+    return Path(str(path)).suffix.lower() in _VIDEO_EXTS
+
+
+def _probe_video_rgba(path):
+    import json as _json
+    import subprocess as _sp
+    from PIL import Image
+    p = Path(path).expanduser()
+    if not p.is_file():
+        raise FileNotFoundError("Не найден файл: " + str(p))
+    ffprobe_cmd = [
+        "ffprobe", "-v", "error", "-select_streams", "v:0",
+        "-show_entries", "stream=width,height,r_frame_rate,codec_name",
+        "-of", "json", str(p),
+    ]
+    pr = _sp.run(ffprobe_cmd, capture_output=True)
+    if pr.returncode != 0:
+        raise RuntimeError("ffprobe error: " + pr.stderr.decode("utf-8", errors="replace")[-200:])
+    info = _json.loads(pr.stdout.decode("utf-8", errors="replace"))
+    streams = info.get("streams") or []
+    if not streams:
+        raise RuntimeError("В файле нет видеопотока: " + str(p))
+    st = streams.__getitem__(0)
+    w, h = int(st.get("width", 0)), int(st.get("height", 0))
+    codec = str(st.get("codec_name", "")).lower()
+    r_str = str(st.get("r_frame_rate", "25/1"))
+    if "/" in r_str:
+        num, den = r_str.split("/", 1)
+        fps = float(num) / max(1.0, float(den))
+    else:
+        fps = float(r_str or 25.0)
+    if fps <= 0 or fps > 120:
+        fps = 25.0
+    dec_cmd = ["ffmpeg", "-v", "error"]
+    if codec == "vp9" or p.suffix.lower() == ".webm":
+        dec_cmd += ["-c:v", "libvpx-vp9"]
+    elif codec == "vp8":
+        dec_cmd += ["-c:v", "libvpx"]
+    dec_cmd += ["-i", str(p), "-f", "rawvideo", "-pix_fmt", "rgba", "-"]
+    dp = _sp.run(dec_cmd, capture_output=True)
+    if dp.returncode != 0 or not dp.stdout:
+        raise RuntimeError("ffmpeg decode error: " + dp.stderr.decode("utf-8", errors="replace")[-200:])
+    frame_bytes = w * h * 4
+    n_frames = len(dp.stdout) // frame_bytes
+    frames = []
+    for idx in range(n_frames):
+        chunk = dp.stdout[idx * frame_bytes:(idx + 1) * frame_bytes]
+        frames.append(Image.frombytes("RGBA", (w, h), chunk))
+    ap_cmd = ["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(p)]
+    ap = _sp.run(ap_cmd, capture_output=True)
+    has_audio = bool(ap.stdout.strip())
+    return frames, fps, has_audio
 
 
 def _load_rgba(path):
@@ -202,8 +258,9 @@ def layers(args):
     """Собрать картинку из слоёв: фон + наложения.
 
     Параметры:
-      низ           — нижний слой (путь к PNG/JPG; обязательный)
-      сверху        — список путей к верхним слоям (в порядке наложения)
+      низ           — нижний слой (путь к PNG/JPG или видео WEBM/MP4/MOV/GIF; обязательный)
+      сверху        — список путей к верхним слоям (картинки или видео, в т.ч. прозрачный WEBM yuva420p)
+      fps           — частота кадров для видеорежима (по умолчанию от самого длинного видео или 25)
       позиции       — список [x, y] для каждого верхнего слоя.
                       Это ЦЕНТР слоя (по границам непрозрачного).
                       По умолчанию — центр холста.
@@ -231,7 +288,7 @@ def layers(args):
                       (-180..180). Применяется после склейки.
       режим         — normal (по умолч.) / multiply / screen / overlay / add / subtract
       размер        — [ширина, высота] — вписать результат (по умолч. как у нижнего)
-      сохранить     — путь к PNG
+      сохранить     — путь к PNG (или к WEBM/MP4 при наличии видеослоёв)
       в_контекст    — положить в контекст (по умолч. true)
 
     Пример:
@@ -269,8 +326,25 @@ def layers(args):
     base_path = args.get("низ") or args.get("фон") or args.get("base")
     if not base_path:
         return 'Укажи нижний слой: {"слои": {"низ": "C:/bg.png"}}'
+
+    _raw_over_check = args.get("сверху") or args.get("слои") or []
+    if isinstance(_raw_over_check, str):
+        _raw_over_check = [_raw_over_check]
+    _over_paths_check = []
+    if isinstance(_raw_over_check, list):
+        for _it in _raw_over_check:
+            if isinstance(_it, dict):
+                _p = _extract_path(_it)
+                if _p:
+                    _over_paths_check.append(str(_p))
+            elif isinstance(_it, (str, Path)):
+                _over_paths_check.append(str(_it))
+
+    if not args.get("_video_frame_mode") and (_is_video_path(base_path) or any(_is_video_path(_p) for _p in _over_paths_check)):
+        return _layers_video(args, base_path, _over_paths_check)
+
     try:
-        base = _load_rgba(base_path)
+        base = args.get("_base_pil").copy() if args.get("_base_pil") is not None else _load_rgba(base_path)
     except Exception as e:
         return "❌ " + str(e)
 
@@ -448,10 +522,14 @@ def layers(args):
                 + ". Доступно: " + ", ".join(_MODES))
 
     _fx_parts = []
+    _over_pils = args.get("_over_pils") or []
     W, H = base.size
     for i, layer_path in enumerate(over):
         try:
-            top = _load_rgba(layer_path)
+            if i < len(_over_pils) and _over_pils[i] is not None:
+                top = _over_pils[i].copy()
+            else:
+                top = _load_rgba(layer_path)
         except Exception as e:
             return "❌ Слой #" + str(i + 1) + ": " + str(e)
 
@@ -467,17 +545,19 @@ def layers(args):
             new_h = max(1, int(top.size[1] * sc))
             top = top.resize((new_w, new_h), Image.LANCZOS)
 
-        # центр ОРИГИНАЛЬНОГО слоя (по bbox непрозрачного)
-        # — до теней/отражений. Именно в него «указывает» координата.
-        try:
-            _bbox0 = top.split()[-1].getbbox()
-        except Exception:
-            _bbox0 = None
-        if _bbox0:
-            _center_orig = ((_bbox0[0] + _bbox0[2]) / 2.0,
-                            (_bbox0[1] + _bbox0[3]) / 2.0)
-        else:
+        # центр ОРИГИНАЛЬНОГО слоя (для видео — геометрический центр кадра, чтобы не дрожало от bbox альфы)
+        if args.get("_video_frame_mode"):
             _center_orig = (top.size[0] / 2.0, top.size[1] / 2.0)
+        else:
+            try:
+                _bbox0 = top.split()[-1].getbbox()
+            except Exception:
+                _bbox0 = None
+            if _bbox0:
+                _center_orig = ((_bbox0[0] + _bbox0[2]) / 2.0,
+                                (_bbox0[1] + _bbox0[3]) / 2.0)
+            else:
+                _center_orig = (top.size[0] / 2.0, top.size[1] / 2.0)
 
         # цветокоррекция слоя (если задана)
         _lc = layer_cc[i] if i < len(layer_cc) else None
@@ -598,6 +678,8 @@ def layers(args):
                              + " разм=" + format(_rb, ".0f"))
 
         pos = positions[i] if i < len(positions) else None
+        if isinstance(pos, dict):
+            pos = (pos.get("x", pos.get("0", W // 2)), pos.get("y", pos.get("1", H // 2)))
         if not pos:
             pos = (W // 2, H // 2)
         try:
@@ -681,7 +763,7 @@ def layers(args):
     out_path = None
     save_arg = args.get("сохранить")
     if save_arg:
-        out_path = Path(save_arg).expanduser()
+        out_path = Path(save_arg).expanduser().resolve()
         try:
             out_path.parent.mkdir(parents=True, exist_ok=True)
         except Exception:
@@ -708,6 +790,125 @@ def layers(args):
         info += " | цвет: " + _cc_applied
     if _fx_parts:
         info += " | " + " ; ".join(_fx_parts)
+    if args.get("_return_pil"):
+        return base
     if out_path:
         info += " -> " + str(out_path)
     return prefix + "Склеено: " + info
+
+def _layers_video(args, base_path, over_paths):
+    import subprocess as _sp
+    from _config import MY_DIR
+
+    try:
+        if _is_video_path(base_path):
+            base_frames, base_fps, base_audio = _probe_video_rgba(base_path)
+        else:
+            base_frames, base_fps, base_audio = [_load_rgba(base_path)], None, False
+    except Exception as e:
+        return "❌ " + str(e)
+
+    over_sources = []
+    fps = base_fps
+    audio_src = str(Path(base_path).expanduser()) if base_audio else None
+    for idx, p in enumerate(over_paths):
+        try:
+            if _is_video_path(p):
+                fr, v_fps, v_aud = _probe_video_rgba(p)
+                if fps is None:
+                    fps = v_fps
+                if v_aud:
+                    audio_src = str(Path(p).expanduser())
+                over_sources.append(fr)
+            else:
+                over_sources.append([_load_rgba(p)])
+        except Exception as e:
+            return "❌ Слой #" + str(idx + 1) + ": " + str(e)
+
+    if fps is None or fps <= 0:
+        fps = float(args.get("fps") or 25.0)
+    else:
+        fps = float(args.get("fps") or fps)
+
+    total_frames = max([len(base_frames)] + [len(s) for s in over_sources])
+    if total_frames <= 0:
+        return "❌ Не удалось прочитать кадры видео."
+
+    save_arg = args.get("сохранить")
+    if save_arg:
+        out_path = Path(save_arg).expanduser().resolve()
+    else:
+        out_path = (Path(MY_DIR) / "layers_out.webm").resolve()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    first_base = base_frames.__getitem__(0)
+    first_overs = [s.__getitem__(0) for s in over_sources]
+    probe_args = dict(args)
+    probe_args["_video_frame_mode"] = True
+    probe_args["_return_pil"] = True
+    probe_args["в_контекст"] = False
+    probe_args["сохранить"] = None
+    probe_args["_base_pil"] = first_base
+    probe_args["_over_pils"] = first_overs
+    sample_out = layers(probe_args)
+    if isinstance(sample_out, str):
+        return sample_out
+    out_w, out_h = sample_out.size
+
+    is_webm = out_path.suffix.lower() == ".webm"
+    if is_webm:
+        ff_cmd = [
+            "ffmpeg", "-y",
+            "-f", "rawvideo", "-pix_fmt", "rgba", "-s", f"{out_w}x{out_h}",
+            "-r", str(fps), "-i", "-",
+        ]
+        if audio_src:
+            ff_cmd += ["-i", audio_src]
+        ff_cmd += [
+            "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p",
+            "-auto-alt-ref", "0", "-deadline", "realtime", "-cpu-used", "4",
+            "-b:v", "1800k",
+        ]
+        if audio_src:
+            ff_cmd += ["-map", "0:v:0", "-map", "1:a:0", "-c:a", "libopus", "-shortest"]
+        ff_cmd.append(str(out_path))
+    else:
+        ff_cmd = [
+            "ffmpeg", "-y",
+            "-f", "rawvideo", "-pix_fmt", "rgba", "-s", f"{out_w}x{out_h}",
+            "-r", str(fps), "-i", "-",
+        ]
+        if audio_src:
+            ff_cmd += ["-i", audio_src]
+        ff_cmd += [
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "fast", "-crf", "20",
+        ]
+        if audio_src:
+            ff_cmd += ["-map", "0:v:0", "-map", "1:a:0", "-c:a", "aac", "-shortest"]
+        ff_cmd.append(str(out_path))
+
+    proc = _sp.Popen(ff_cmd, stdin=_sp.PIPE, stderr=_sp.DEVNULL)
+    try:
+        for fi in range(total_frames):
+            if fi == 0:
+                comp = sample_out
+            else:
+                f_args = dict(probe_args)
+                f_args["_base_pil"] = base_frames[fi % len(base_frames)]
+                f_args["_over_pils"] = [s[fi % len(s)] for s in over_sources]
+                comp = layers(f_args)
+                if isinstance(comp, str):
+                    break
+            proc.stdin.write(comp.convert("RGBA").tobytes())
+    finally:
+        if proc.stdin:
+            proc.stdin.close()
+        proc.wait()
+
+    if proc.returncode != 0:
+        return f"❌ Ошибка кодирования видео ffmpeg (код {proc.returncode})"
+
+    return (
+        f"Склеено видео: {out_w}x{out_h}, {total_frames} кадр. @ {fps:.2f} fps, "
+        f"слоёв: {len(over_sources) + 1} -> {out_path}"
+    )

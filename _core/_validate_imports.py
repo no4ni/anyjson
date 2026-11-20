@@ -13,7 +13,7 @@ ALLOWED_OUR = {
     "_config", "_utils", "_executor", "_storage", "_tor", "_ps",
     "_color", "_web", "_validate",
     "cmd_parser", "_command",
-    "_actions", "_core",
+    "_actions", "_core", "side",
 }
 
 # --- известные сторонние пакеты ---

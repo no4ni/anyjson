@@ -25,9 +25,53 @@ _open_pages_cache = {}
 _search_results_cache = {}
 _last_search_query = None
 
-# --- кэш HTTP-ответов ---
+# --- кэш HTTP-ответов и доменов, требующих Tor из РФ ---
 _http_cache = {}
 _HTTP_CACHE_TTL = 300  # сек
+_TOR_DOMAINS_CACHE = {}  # host -> expiry_ts
+_TOR_DOMAIN_TTL = 1800   # 30 минут
+_TOR_PROXY_DICT = {"http": "socks5h://127.0.0.1:9050", "https": "socks5h://127.0.0.1:9050"}
+_BLOCKED_HTTP_CODES = {403, 429, 451, 503}
+
+
+def _host_of(url: str) -> str:
+    try:
+        return (urllib.parse.urlparse(url).hostname or "").lower()
+    except Exception:
+        return ""
+
+
+def _domain_needs_tor(url: str) -> bool:
+    host = _host_of(url)
+    if not host:
+        return False
+    exp = _TOR_DOMAINS_CACHE.get(host, 0.0)
+    if exp > time.time():
+        return True
+    if host in _TOR_DOMAINS_CACHE:
+        _TOR_DOMAINS_CACHE.pop(host, None)
+    return False
+
+
+def _mark_domain_tor(url: str):
+    host = _host_of(url)
+    if host:
+        _TOR_DOMAINS_CACHE[host] = time.time() + _TOR_DOMAIN_TTL
+
+
+def _get_fallback_proxy_dict():
+    """Возвращает Tor (если доступен) или живой прокси из PROXY_DIR."""
+    if ensure_tor():
+        return dict(_TOR_PROXY_DICT), "Tor"
+    try:
+        from _actions.tools_web import get_working_proxy_dict
+        p = get_working_proxy_dict()
+        if p:
+            addr = p.get("http") or p.get("https") or "прокси"
+            return p, addr
+    except Exception:
+        pass
+    return None, ""
 
 
 def _http_cache_key(method, url, body, proxy_tag=""):
@@ -82,9 +126,11 @@ def _with_progress(func, timeout_sec, label="⏳ запрос"):
                 bar = "=" * bar_w
             else:
                 bar = "=" * filled + ">" + "." * (bar_w - filled - 1)
-            line = f"\r{label}: {secs}/{timeout_sec}с [{bar}]"
+            cur_lbl = label[0] if isinstance(label, list) else (label() if callable(label) else label)
+            line = f"\r{cur_lbl}: {secs}/{timeout_sec}с [{bar}]"
+            pad = " " * max(0, last_len - len(line))
             try:
-                _sys.stderr.write(line)
+                _sys.stderr.write(line + pad)
                 _sys.stderr.flush()
                 last_len = len(line)
             except Exception:
@@ -268,6 +314,7 @@ def web_search(args):
             lines.append(item['snippet'])
         lines.append(f"🔗 {item['url']}")
         lines.append("")
+    lines.append('💡 Открыть страницу из выдачи по номеру (без копирования URL): {"веб_страница": {"id": 0}}')
     return "\n".join(lines).strip()
 
 
@@ -276,11 +323,12 @@ def web_search(args):
 # ============================================================
 @register(["запрос", "веб_запрос"])
 def http_request(args):
-    """HTTP-запрос: GET / POST / PUT / DELETE.
+    """HTTP-запрос: GET / HEAD / POST / PUT / DELETE / OPTIONS.
 
     Параметры:
-      адрес         — URL (обязательный), алиас: урл
-      метод         — GET (по умолчанию), POST, PUT, DELETE
+      адрес         — URL (обязательный, если не передан id из выдачи поиска), алиас: урл
+      id            — номер результата из последнего веб_поиск (0, 1, 2...), алиас: cursor
+      метод         — GET (по умолчанию), HEAD, POST, PUT, DELETE, OPTIONS
       заголовки     — свои HTTP-заголовки (объект)
       тело          — тело для POST/PUT (объект для JSON или строка)
       сохранить_как — путь для сохранения ответа в файл
@@ -301,8 +349,22 @@ def http_request(args):
       {"запрос": {"адрес": "https://cdn.example.com/big.zip",
                   "сохранить_как": "E:/tmp/big.zip"}}
     """
+    if isinstance(args, int):
+        args = {"id": args}
     method = args.get("метод", "GET").upper()
     url = args.get("урл") or args.get("адрес") or ""
+    if not url and ("id" in args or "cursor" in args):
+        _raw_id = args.get("id") if "id" in args else args.get("cursor")
+        try:
+            _idx = int(_raw_id)
+            if _idx in _search_results_cache:
+                url = _search_results_cache[_idx].get("url", "")
+            elif not _search_results_cache:
+                return "❌ Кэш поиска пуст — сначала выполни веб_поиск."
+            else:
+                return f"❌ В выдаче поиска нет id={_idx} (доступны: 0..{max(_search_results_cache.keys())})."
+        except (TypeError, ValueError):
+            return f"❌ Параметр id должен быть числом (получено: {_raw_id!r})."
     custom_headers = args.get("заголовки", {})
     body = args.get("тело", None)
     save_path = args.get("сохранить_как", None)
@@ -312,7 +374,10 @@ def http_request(args):
         proxy = {"http": proxy, "https": proxy}
     elif proxy is not None and not isinstance(proxy, dict):
         return f"Ошибка: неверный формат 'прокси' ({type(proxy).__name__})"
-    auto_proxy = args.get("авто_прокси", False)
+    auto_proxy = args.get("авто_прокси", True)
+    if isinstance(auto_proxy, str):
+        _ap_low = auto_proxy.strip().lower()
+        auto_proxy = False if _ap_low in ("0", "false", "нет", "off") else _ap_low
     timeout_sec = args.get("таймаут", 30)
     if not isinstance(timeout_sec, (int, float)):
         timeout_sec = 30
@@ -320,8 +385,11 @@ def http_request(args):
     if not url:
         return "Ошибка: не указан URL"
 
-    if auto_proxy and not proxy and ensure_tor():
-        proxy = {"http": "socks5h://127.0.0.1:9050", "https": "socks5h://127.0.0.1:9050"}
+    _force_tor = str(auto_proxy).lower() in ("always", "всегда", "tor")
+    if auto_proxy and not proxy and (_force_tor or _domain_needs_tor(url)):
+        _fb_p, _ = _get_fallback_proxy_dict()
+        if _fb_p:
+            proxy = _fb_p
 
     headers = {**DEFAULT_HEADERS, **custom_headers}
     proxies = proxy if proxy else None
@@ -348,6 +416,10 @@ def http_request(args):
                         headers.setdefault("Content-Type", "application/json")
                         return requests.put(url, json=body, **kw)
                     return requests.put(url, data=body, **kw)
+                if method == "HEAD":
+                    return requests.head(url, allow_redirects=True, **kw)
+                if method == "OPTIONS":
+                    return requests.options(url, **kw)
                 if method == "DELETE":
                     return requests.delete(url, **kw)
                 raise ValueError(f"Неподдерживаемый метод: {method}")
@@ -419,15 +491,63 @@ def http_request(args):
                         headers.setdefault("Content-Type", "application/json")
                         return requests.put(url, json=body, **kw)
                     return requests.put(url, data=body, **kw)
+                if method == "HEAD":
+                    return requests.head(url, allow_redirects=True, **kw)
+                if method == "OPTIONS":
+                    return requests.options(url, **kw)
                 if method == "DELETE":
                     return requests.delete(url, **kw)
                 raise ValueError(f"Неподдерживаемый метод: {method}")
 
+            if auto_proxy and not proxies:
+                kw["timeout"] = (min(8.0, float(timeout_sec)), float(timeout_sec))
             _label = "⏳ запрос через прокси" if proxies else "⏳ запрос"
             try:
                 resp = _with_progress(_do_request, timeout_sec, label=_label)
             except ValueError as _ve:
                 return str(_ve)
+            except Exception:
+                if auto_proxy and not proxies:
+                    _fb_p, _fb_lbl = _get_fallback_proxy_dict()
+                    if _fb_p:
+                        _mark_domain_tor(url)
+                        proxies = _fb_p
+                        kw["proxies"] = proxies
+                        kw["timeout"] = timeout_sec
+                        resp = _with_progress(_do_request, timeout_sec, label=f"⏳ запрос через {_fb_lbl}")
+                    else:
+                        raise
+                else:
+                    raise
+
+            if resp.status_code in _BLOCKED_HTTP_CODES and auto_proxy and not proxies:
+                _fb_p, _fb_lbl = _get_fallback_proxy_dict()
+                if _fb_p:
+                    _mark_domain_tor(url)
+                    proxies = _fb_p
+                    kw["proxies"] = proxies
+                    kw["timeout"] = timeout_sec
+                    resp = _with_progress(_do_request, timeout_sec, label=f"⏳ запрос через {_fb_lbl}")
+
+            if resp.status_code in (403, 503) and proxies == _TOR_PROXY_DICT:
+                try:
+                    from _tor import new_circuit as _nc_req
+                    if _nc_req(1.5):
+                        resp = _with_progress(_do_request, timeout_sec, label="⏳ запрос через Tor (новая цепочка)")
+                except Exception:
+                    pass
+            if resp.status_code in _BLOCKED_HTTP_CODES and proxies == _TOR_PROXY_DICT:
+                try:
+                    from _actions.tools_web import get_working_proxy_dict as _gw_p
+                    _alt_p = _gw_p()
+                    if _alt_p:
+                        proxies = _alt_p
+                        kw["proxies"] = proxies
+                        kw["timeout"] = timeout_sec
+                        _alt_lbl = _alt_p.get("http") or "прокси"
+                        resp = _with_progress(_do_request, timeout_sec, label=f"⏳ запрос через {_alt_lbl}")
+                except Exception:
+                    pass
             status_code = resp.status_code
             content_type = resp.headers.get("content-type", "")
             if content_type.startswith("application/json"):
@@ -541,7 +661,8 @@ def web_page(args):
     """Загрузить веб-страницу и вернуть её текст.
 
     Параметры:
-      адрес         — URL (обязательный), алиас: урл
+      адрес         — URL (обязательный, если не передан id из выдачи поиска), алиас: урл
+      id            — номер результата из последнего веб_поиск (0, 1, 2...), алиас: cursor
       авто_прокси   — true: через Tor
       проверять_ssl — проверять сертификат (по умолчанию true)
       сессия        — true: с куками и редиректами (по умолчанию true)
@@ -568,10 +689,27 @@ def web_page(args):
     from urllib.parse import urlparse, unquote
     from _actions.tools_web import find_canonical
 
+    if isinstance(args, int):
+        args = {"id": args}
     open_list = args.get("открыть_список")
     find_list = args.get("найти_в_списке")
     url = args.get("урл") or args.get("адрес", "")
-    auto_proxy = args.get("авто_прокси", False)
+    if not url and ("id" in args or "cursor" in args):
+        _raw_id = args.get("id") if "id" in args else args.get("cursor")
+        try:
+            _idx = int(_raw_id)
+            if _idx in _search_results_cache:
+                url = _search_results_cache[_idx].get("url", "")
+            elif not _search_results_cache:
+                return "❌ Кэш поиска пуст — сначала выполни веб_поиск."
+            else:
+                return f"❌ В выдаче поиска нет id={_idx} (доступны: 0..{max(_search_results_cache.keys())})."
+        except (TypeError, ValueError):
+            return f"❌ Параметр id должен быть числом (получено: {_raw_id!r})."
+    auto_proxy = args.get("авто_прокси", True)
+    if isinstance(auto_proxy, str):
+        _ap_low = auto_proxy.strip().lower()
+        auto_proxy = False if _ap_low in ("0", "false", "нет", "off") else _ap_low
     verify = args.get("проверять_ssl", True)
     use_session = args.get("сессия", True)
     allow_redirects = args.get("редиректы", True)
@@ -583,11 +721,15 @@ def web_page(args):
         _p = {"http": _p, "https": _p}
     if isinstance(_p, dict):
         proxies = _p
-    elif auto_proxy and ensure_tor():
-        proxies = {"http": "socks5h://127.0.0.1:9050", "https": "socks5h://127.0.0.1:9050"}
+    else:
+        _force_tor = str(auto_proxy).lower() in ("always", "всегда", "tor")
+        if auto_proxy and (_force_tor or _domain_needs_tor(url)):
+            _fb_p, _ = _get_fallback_proxy_dict()
+            if _fb_p:
+                proxies = _fb_p
 
-    def _fetch(target_url, proxies=None, verify=True):
-        clean_html = True
+    def _fetch(target_url, proxies=None, verify=True, req_timeout=30):
+        clean_html = not view_source
         if use_session:
             session = requests.Session()
             session.max_redirects = 10
@@ -601,9 +743,15 @@ def web_page(args):
             })
             try:
                 resp = session.get(target_url, proxies=proxies, verify=verify,
-                                   allow_redirects=allow_redirects, timeout=30)
+                                   allow_redirects=allow_redirects, timeout=req_timeout)
                 resp.raise_for_status()
-                content = resp.text if resp.encoding else resp.content.decode('utf-8', errors='replace')
+                _enc = resp.encoding or ""
+                if not _enc or _enc.lower() in ("iso-8859-1", "latin-1", "ascii"):
+                    _enc = resp.apparent_encoding or "utf-8"
+                try:
+                    content = resp.content.decode(_enc, errors="replace")
+                except Exception:
+                    content = resp.content.decode("utf-8", errors="replace")
                 if clean_html:
                     soup = BeautifulSoup(content, 'html.parser')
                     for script in soup(["script", "style"]):
@@ -692,6 +840,29 @@ def web_page(args):
                     _proxies = args.get("прокси") or proxies
                     _verify = args.get("проверять_ssl", True)
                     content, final_url, cookies = _fetch(url_to_fetch, proxies=_proxies, verify=_verify)
+                    if content.startswith("Ошибка") and auto_proxy and not _proxies:
+                        _fb_p, _ = _get_fallback_proxy_dict()
+                        if _fb_p:
+                            _mark_domain_tor(url_to_fetch)
+                            _proxies = _fb_p
+                            content, final_url, cookies = _fetch(url_to_fetch, proxies=_proxies, verify=_verify)
+                            if content.startswith("Ошибка") and _proxies == _TOR_PROXY_DICT:
+                                if "403" in content or "503" in content:
+                                    try:
+                                        from _tor import new_circuit as _nc_pg
+                                        if _nc_pg(1.5):
+                                            content, final_url, cookies = _fetch(url_to_fetch, proxies=_proxies, verify=_verify)
+                                    except Exception:
+                                        pass
+                                if content.startswith("Ошибка"):
+                                    try:
+                                        from _actions.tools_web import get_working_proxy_dict as _gw_pg
+                                        _alt_pg = _gw_pg()
+                                        if _alt_pg:
+                                            _proxies = _alt_pg
+                                            content, final_url, cookies = _fetch(url_to_fetch, proxies=_proxies, verify=_verify)
+                                    except Exception:
+                                        pass
 
                 if content.startswith("Ошибка"):
                     results.append({"error": content, "url": url_to_fetch})
@@ -850,24 +1021,144 @@ def web_page(args):
         content = _cache_entry[_want_key]
         _from_cache = True
     else:
-        _label = "📄 загрузка через Tor" if auto_proxy else "📄 загрузка страницы"
+        _status_lbl = ["📄 1/3 прямое соединение"]
+        _trace_steps = []
+        _via_note = [""]
+
+        def _cascaded_single_fetch():
+            _verify = args.get("проверять_ssl", True)
+            _manual_p = proxies  # если пользователь явно передал "прокси"
+            _force_tor_only = str(auto_proxy).lower() in ("always", "всегда", "tor")
+
+            def _try_step(step_name, p_dict, t_val):
+                _status_lbl[0] = f"📄 {step_name}"
+                t0 = time.monotonic()
+                txt, fin_u, _ = _fetch(url, proxies=p_dict, verify=_verify, req_timeout=t_val)
+                dt = time.monotonic() - t0
+                if not txt.startswith("Ошибка") and txt.strip():
+                    _trace_steps.append(f"  ✅ {step_name}: OK ({dt:.1f}с)")
+                    return txt
+                err_short = txt.replace("\n", " ")[:140]
+                _trace_steps.append(f"  ❌ {step_name} ({dt:.1f}с): {err_short}")
+                return None
+
+            # Если задан ручной прокси — идём только через него
+            if _manual_p:
+                res = _try_step("ручной прокси", _manual_p, 25)
+                if res is not None:
+                    return res
+                return "Ошибка загрузки " + url + ":\n" + "\n".join(_trace_steps)
+
+            # Шаг 1/4: быстрый прямой запрос
+            if not _force_tor_only and not _domain_needs_tor(url):
+                res = _try_step("1/4 прямое соединение", None, (5.0, 10.0))
+                if res is not None:
+                    return res
+                if not auto_proxy:
+                    return "Ошибка загрузки " + url + ":\n" + "\n".join(_trace_steps)
+                _mark_domain_tor(url)
+            elif _domain_needs_tor(url) and not _force_tor_only:
+                _trace_steps.append("  ⏭️ 1/4 прямое соединение: пропущено (домен в кэше недоступных из РФ)")
+
+            # Шаг 2/4: Zapret DPI (если прямой запрос не прошёл)
+            if not _force_tor_only:
+                try:
+                    import _actions.video as _vid_mod
+                    import os as _os_z
+                    import subprocess as _sp_z
+                    _host_z = _host_of(url)
+                    _base_z = _host_z.removeprefix("www.") if _host_z else ""
+                    _ul_path = _os_z.path.join(_vid_mod._ZAPRET_LISTS, "list-general-user.txt")
+                    _added_z = False
+                    if _base_z and _os_z.path.isfile(_ul_path):
+                        _cur_ul = open(_ul_path, "r", encoding="utf-8", errors="ignore").read().splitlines()
+                        _clean_ul = {x.strip().lower() for x in _cur_ul if x.strip()}
+                        if _base_z not in _clean_ul:
+                            with open(_ul_path, "a", encoding="utf-8") as _f_ul:
+                                _f_ul.write("\n" + _base_z + "\n")
+                            _added_z = True
+                    if _added_z:
+                        try:
+                            _sp_z.run(["taskkill", "/F", "/IM", "winws.exe"], capture_output=True, timeout=4,
+                                        creationflags=getattr(_sp_z, "CREATE_NO_WINDOW", 0))
+                        except Exception:
+                            pass
+                        _vid_mod._zapret_started = False
+                    _status_lbl[0] = "📄 2/4 запуск Zapret DPI"
+                    _z_err = _vid_mod._ensure_zapret()
+                    if _z_err is None:
+                        res = _try_step("2/4 Zapret DPI (прямой)", None, (8.0, 14.0))
+                        if res is not None:
+                            _via_note[0] = " [через Zapret DPI]"
+                            return res
+                    else:
+                        _trace_steps.append(f"  ⏭️ 2/4 Zapret DPI пропущен: {_z_err}")
+                except Exception as _ze:
+                    _trace_steps.append(f"  ⏭️ 2/4 Zapret DPI пропущен: {_ze}")
+
+            # Шаг 3/4: Tor (только если bootstrap == 100%)
+            if auto_proxy:
+                _status_lbl[0] = "📄 3/4 проверка Tor (bootstrap)"
+                _tor_ok = ensure_tor()
+                try:
+                    from _tor import get_tor_status as _gts, get_tor_error as _gte
+                    _t_ready, _t_pct, _t_reason = _gts()
+                except Exception:
+                    _t_ready, _t_pct, _t_reason = _tor_ok, (100 if _tor_ok else -1), ""
+                if _tor_ok and _t_ready:
+                    res = _try_step("3/4 Tor (127.0.0.1:9050)", dict(_TOR_PROXY_DICT), (6.0, 12.0))
+                    if res is not None:
+                        _via_note[0] = " [через Tor]"
+                        return res
+                    if _trace_steps and ("403" in _trace_steps[-1] or "503" in _trace_steps[-1]):
+                        try:
+                            from _tor import new_circuit as _nc_s
+                            if _nc_s(1.5):
+                                res = _try_step("3/4 Tor (новая цепочка)", dict(_TOR_PROXY_DICT), (6.0, 12.0))
+                                if res is not None:
+                                    _via_note[0] = " [через Tor]"
+                                    return res
+                        except Exception:
+                            pass
+                else:
+                    _why_t = _t_reason or (_gte() if "_gte" in locals() else "не готов")
+                    _trace_steps.append(f"  ⏭️ 3/4 Tor пропущен: {_why_t}")
+
+            # Шаг 4/4: живой HTTPS-прокси из PROXY_DIR (до 2 разных прокси)
+            if auto_proxy and not _force_tor_only:
+                _status_lbl[0] = "📄 4/4 поиск живого HTTPS-прокси"
+                try:
+                    from _actions.tools_web import get_working_proxy_dict as _gw_s, remove_local_proxy as _rm_p
+                    from _config import PROXY_DIR as _PD_s
+                    tried_p = set()
+                    for attempt_idx in range(1, 3):
+                        _p_dict = _gw_s(exclude=tried_p)
+                        if not _p_dict:
+                            _trace_steps.append("  ⚠️ 4/4 резервный прокси: живых HTTPS-прокси в PROXY_DIR не найдено")
+                            break
+                        _p_url = _p_dict.get("http") or _p_dict.get("https") or ""
+                        tried_p.add(_p_url)
+                        res = _try_step(f"4/4 прокси #{attempt_idx} ({_p_url})", _p_dict, (6.0, 12.0))
+                        if res is not None:
+                            _via_note[0] = f" [через {_p_url}]"
+                            return res
+                        if _PD_s and _p_url:
+                            try:
+                                _rm_p(_PD_s, _p_url)
+                            except Exception:
+                                pass
+                except Exception as _pe:
+                    _trace_steps.append(f"  ❌ 4/4 резервный прокси: {_pe}")
+
+            return f"❌ Не удалось загрузить {url}. Что произошло по этапам:\n" + "\n".join(_trace_steps)
+
         try:
-            content = _with_progress(
-                lambda: fetch_page_content(url, use_tor=auto_proxy,
-                                           clean_html=not view_source),
-                45, label=_label)
+            content = _with_progress(_cascaded_single_fetch, 45, label=_status_lbl)
         except TimeoutError:
-            return "Ошибка: превышен таймаут (45 сек)"
-        if content.startswith("Ошибка"):
+            _steps_txt = ("\nПройденные этапы:\n" + "\n".join(_trace_steps)) if _trace_steps else ""
+            return f"Ошибка: превышен общий таймаут (45 сек) на этапе: {_status_lbl[0]}{_steps_txt}"
+        if content.startswith(("Ошибка", "❌")):
             return content
-        if not content.strip() and not view_source:
-            try:
-                content = _with_progress(
-                    lambda: fetch_page_content(url, use_tor=auto_proxy,
-                                               clean_html=False),
-                    45, label=_label)
-            except TimeoutError:
-                return "Ошибка: превышен таймаут (45 сек)"
         _lines = content.splitlines()
         if _cache_entry is None:
             _cache_entry = {"url": url, "fetched_at": time.time(),
@@ -891,7 +1182,8 @@ def web_page(args):
     chunk = content[start:end]
 
     _cache_mark = " [кэш]" if _from_cache else ""
-    header = ("📄 " + url + _cache_mark + "\n"
+    _via_mark = _via_note[0] if (not _from_cache and "_via_note" in locals() and _via_note[0]) else ""
+    header = ("📄 " + url + _via_mark + _cache_mark + "\n"
               + "Страница " + str(_page) + "/" + str(total_pages)
               + " (символов " + str(start + 1) + "-" + str(end)
               + " из " + str(total) + ")\n"

@@ -85,33 +85,49 @@ def remember(args):
     if not text:
         return "Ошибка: пусто"
     memlist = load_memlist()
-    dated = f"{datetime.now().strftime('%d.%m.%Y')} - {text}"
+    import re as _re_dt
+    _clean_txt = _re_dt.sub(r"^\d{2}\.\d{2}\.\d{4}\s*-\s*", "", str(text).strip())
+    dated = f"{datetime.now().strftime('%d.%m.%Y')} - {_clean_txt}"
     if dated in memlist:
         return f"⚠️ Такая запись уже есть за сегодня: {dated}"
     memlist.append(dated)
     save_memlist(memlist)
-    return f"Запись добавлена: {dated}"
+    return (
+        f"Запись добавлена: {dated}\n"
+        '💡 Обязанность агента: устаревшие или дублирующиеся записи памяти переписывай и чисти через:\n'
+        '{"заменить_текст": {"путь": "память", "найти": "<старый фрагмент>", "заменить": "<актуальный текст>"}}'
+    )
 
 
 @register(["вспомнить", "воспоминание"])
 def recall(args):
-    """Вспомнить записи из памяти агента.
+    """Вспомнить записи из памяти агента (от самых свежих к старым).
 
     Параметры:
-      про  — подстрока для поиска (регистр не важен);
-             поддерживает "|" для ИЛИ: "AGI|LLM"
-             без параметра — вернуть последние записи
-      кб   — максимальный размер вывода в КБ (по умолчанию 4)
+      про        — подстрока для поиска (регистр не важен);
+                   поддерживает "|" для ИЛИ: "AGI|LLM"
+                   без параметра — вернуть последние записи
+      количество — сколько последних записей показать (алиасы: лимит, limit, n)
+      кб         — максимальный размер вывода в КБ (по умолчанию 4)
 
     Примеры:
       {"вспомнить": {"про": "Moltbook"}}
       {"вспомнить": {"про": "ошибка|403"}}
+      {"вспомнить": {"количество": 5}}
       {"вспомнить": {}}
 
     Алиас: воспоминание.
     """
+    args = args if isinstance(args, dict) else {"про": str(args)}
     keyword = (args.get("про") or args.get("инцидент")
                or args.get("ключ") or args.get("запрос") or "")
+    raw_limit = (args.get("количество") or args.get("лимит")
+                 or args.get("limit") or args.get("n"))
+    try:
+        max_items = max(1, int(raw_limit)) if raw_limit is not None else None
+    except (TypeError, ValueError):
+        max_items = None
+
     memlist = load_memlist()
 
     def normalize(item):
@@ -129,7 +145,7 @@ def recall(args):
     max_bytes = int(args.get("кб", 4)) * 1024
     found = []
     total = 0
-    for item in memlist:
+    for item in reversed(memlist):
         text = normalize(item)
         if keywords and not any(kw in text.lower() for kw in keywords):
             continue
@@ -139,8 +155,14 @@ def recall(args):
             break
         found.append(text)
         total += size
+        if max_items is not None and len(found) >= max_items:
+            break
     if found:
-        return "\n".join(found)
+        return (
+            "\n".join(found)
+            + '\n\n💡 Если видишь устаревшие/дублирующиеся воспоминания — перепиши или удали их:\n'
+            + '{"заменить_текст": {"путь": "память", "найти": "<устаревший фрагмент>", "заменить": "<новый текст или пусто>"}}'
+        )
     return ("Ничего не найдено.\n\n"
             "💡 Используй \"запомнить\" — сессия конечна, а память останется.\n"
             '{"запомнить": {"содержимое": "..."}}')

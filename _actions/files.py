@@ -188,7 +188,7 @@ def _binary_redirect_msg(path, size=None):
     return chr(10).join(lines)
 
 
-@register(["читать", "прочитать", "прочитай", "прочитать_файл", "читать_файл"])
+@register(["читать", "прочитать", "прочитай", "прочитать_файл", "читать_файл", "читать_строки", "прочитать_строки", "строки"])
 def read_(args):
     """Прочитать файл или показать содержимое папки.
 
@@ -203,8 +203,8 @@ def read_(args):
       путь      — путь к файлу или папке (обязательный)
       кодировка — принудительная (по умолчанию utf-8, с fallback)
       скрытые   — если true, показывать скрытые файлы (для папок)
-      начало    — с какой строки читать (алиас: с_строки)
-      конец     — по какую строку читать включительно (алиас: по_строку)
+      начало    — с какой строки читать; отрицательное — с конца файла (алиас: с_строки)
+      конец     — по какую строку читать включительно; отрицательное — с конца (алиас: по_строку)
 
     Примеры:
       {"читать": {"путь": "C:/log.txt"}}
@@ -243,24 +243,63 @@ def read_(args):
 
     if start_line is not None or end_line is not None:
         try:
-            start = max(1, int(start_line)) if start_line is not None else 1
-            end = int(end_line) if end_line is not None else None
-            if end is not None and end < start:
-                return "❌ Параметр 'конец' не может быть меньше 'начало'."
-            
+            raw_start = int(start_line) if start_line is not None else 1
+            raw_end = int(end_line) if end_line is not None else None
+
+            from collections import deque
             encoding = args.get("кодировка") or "utf-8"
-            lines_out = []
-            with open(path, "r", encoding=encoding, errors="replace") as f:
-                for i, line in enumerate(f, 1):
-                    if i >= start:
-                        if end is not None and i > end:
-                            break
-                        lines_out.append(line)
+
+            if (raw_start is not None and raw_start < 0) or (raw_end is not None and raw_end < 0):
+                with open(path, "r", encoding=encoding, errors="replace") as f:
+                    all_lines = f.readlines()
+                total_lines = len(all_lines)
+                if total_lines == 0:
+                    return f"⚠️ Файл {path} пуст."
+                start = max(1, total_lines + raw_start + 1) if raw_start < 0 else max(1, raw_start)
+                if raw_end is None:
+                    end = total_lines
+                elif raw_end < 0:
+                    end = total_lines + raw_end + 1
+                else:
+                    end = raw_end
+                if end < start:
+                    return "❌ Параметр 'конец' не может быть меньше 'начало'."
+                lines_out = all_lines[start - 1:end]
+                tail_buf = deque([(i, all_lines[i - 1]) for i in range(max(1, total_lines - 49), total_lines + 1)], maxlen=50)
+            else:
+                start = max(1, raw_start)
+                end = raw_end
+                if end is not None and end < start:
+                    return "❌ Параметр 'конец' не может быть меньше 'начало'."
+                want = (end - start + 1) if (end is not None and end >= start) else 50
+                tail_buf = deque(maxlen=want)
+                lines_out = []
+                total_lines = 0
+                with open(path, "r", encoding=encoding, errors="replace") as f:
+                    for i, line in enumerate(f, 1):
+                        total_lines = i
+                        tail_buf.append((i, line))
+                        if i >= start:
+                            if end is None or i <= end:
+                                lines_out.append(line)
+
             if not lines_out:
-                return f"⚠️ Файл пуст или диапазон [{start}-{end if end else 'до конца'}] вне границ."
+                if total_lines == 0:
+                    return f"⚠️ Файл {path} пуст."
+                t_start = tail_buf[0][0]
+                t_end = tail_buf[-1][0]
+                tail_text = "".join(ln for _, ln in tail_buf)
+                return (
+                    f"⚠️ Диапазон [{start}-{end if end else 'до конца'}] вне границ (всего {total_lines} строк). "
+                    f"Показаны последние строки [{t_start}-{t_end}]:\n" + tail_text
+                )
             
-            _end_str = str(end) if end else 'конца'
-            return f"📄 {path} [строки {start}-{_end_str}]:\n" + "".join(lines_out)
+            _actual_end = min(end, total_lines) if end else total_lines
+            _win_p = str(path).replace("/", "\\")
+            _full_hint = ""
+            if start > 1 or _actual_end < total_lines:
+                _full_hint = f'\n\n💡 Весь файл ({total_lines} строк): {{"прочитать_полностью": {{"путь": "{_win_p}"}}}}'
+            return f"📄 {path} [строки {start}-{_actual_end} из {total_lines}]:\n" + "".join(lines_out) + _full_hint
         except ValueError:
             return "❌ Параметры 'начало' и 'конец' должны быть целыми числами."
     # --- КОНЕЦ НОВОГО ---
@@ -419,19 +458,14 @@ def _read_full_many(paths):
 
 @register(["прочитать_полностью", "читать_полностью", "открыть", "показать_картинку", "показать_файл"])
 def read_full(args):
-    """Прочитать файл целиком или адаптивно (в веб-режиме).
+    """Прочитать файл целиком.
 
     Параметры:
       путь — путь к файлу (обязательный)
-      веб  — если true, работает в адаптивном режиме для браузера:
-             • Текст < 8 КБ: читает содержимое целиком.
-             • Текст >= 8 КБ: автоматически делегирует выполнение в «читать_по_кб» (блок 4 КБ).
-             • Изображения: сервер перехватывает запрос, даунскейлит изображение и отдаёт модели в base64.
-             • Прочие форматы: автоматически делегирует выполнение в команду «сенсор».
 
     Примеры:
-      {"прочитать_полностью": {"путь": "E:/docs/report.txt", "веб": true}}
-      {"читать_полностью": {"путь": "D:/image.png", "веб": true}}
+      {"прочитать_полностью": {"путь": "E:/docs/report.txt"}}
+      {"читать_полностью": {"путь": "D:/image.png"}}
     """
     raw = args.get("путь") or args.get("файл") or ""
 
@@ -494,7 +528,8 @@ def read_full(args):
         return not_a_file_msg(path)
     win_path = str(path).replace("/", "\\")
 
-    ext = os.path.splitext(str(path))[1].lower()
+    _clean_name = re.sub(r"\.bak(?:[._][^/\\]*)?$", "", str(path), flags=re.IGNORECASE)
+    ext = os.path.splitext(_clean_name)[1].lower()
     if not ext:
         status = "⚠️ Файл без расширения — формат определить невозможно."
         supported = False

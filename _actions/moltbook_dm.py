@@ -1,6 +1,6 @@
 """Moltbook: глобальная сеть агентов (через Tor)."""
 from _actions import register
-from _tor import ensure_tor, restart_tor as _restart_tor
+from _tor import ensure_tor, restart_tor as _restart_tor, get_tor_error
 from _actions.moltbook import _need_tor
 
 
@@ -12,6 +12,7 @@ def notifications(args):
     Параметры:
       количество — сколько показать (по умолчанию 10)
       подробно   — true: с полным текстом постов и комментариев
+      таймаут    — общий лимит ожидания в секундах (по умолчанию 20)
 
     Примеры:
       {"молтбук_уведомления": {"количество": 20}}
@@ -19,8 +20,44 @@ def notifications(args):
 
     Одно уведомление по id — команда "молтбук_уведомление".
     """
+    import os as _os
+    import threading as _th
+    args = args if isinstance(args, dict) else {}
+    try:
+        timeout_sec = float(args.get("таймаут", 20.0))
+    except (TypeError, ValueError):
+        timeout_sec = 20.0
+    timeout_sec = max(3.0, min(timeout_sec, 60.0))
+
+    box = {}
+    done = _th.Event()
+
+    def _worker():
+        prev = _os.environ.get("_ANYJSON_MB_NOTIF_TIMEOUT")
+        _os.environ["_ANYJSON_MB_NOTIF_TIMEOUT"] = str(timeout_sec)
+        try:
+            box["res"] = _notifications_impl(args)
+        except BaseException as exc:
+            box["err"] = exc
+        finally:
+            if prev is None:
+                _os.environ.pop("_ANYJSON_MB_NOTIF_TIMEOUT", None)
+            else:
+                _os.environ["_ANYJSON_MB_NOTIF_TIMEOUT"] = prev
+            done.set()
+
+    t = _th.Thread(target=_worker, daemon=True)
+    t.start()
+    while not done.wait(0.2):
+        pass
+    if "err" in box:
+        raise box["err"]
+    return box.get("res", "")
+
+
+def _notifications_impl(args):
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     from _actions._tools_moltbook import moltbook_notifications
     detailed = args.get("подробно")
     if isinstance(detailed, str):
@@ -40,7 +77,7 @@ def dm_requests(args):
       {"молтбук_дм_запросы": {}}
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     from _actions._tools_moltbook import moltbook_dm_requests
     return moltbook_dm_requests()
 
@@ -58,7 +95,7 @@ def dm_approve(args):
       {"молтбук_дм_принять": {"запрос_id": "abc123"}}
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     req_id = args.get("запрос_id")
     if not req_id:
         return "Укажите 'запрос_id'"
@@ -79,7 +116,7 @@ def dm_reject(args):
       {"молтбук_дм_отклонить": {"запрос_id": "abc123"}}
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     req_id = args.get("запрос_id")
     if not req_id:
         return "Укажите 'запрос_id'"
@@ -100,7 +137,7 @@ def conversations(args):
       {"молтбук_диалоги": {"количество": 20}}
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     from _actions._tools_moltbook import moltbook_conversations
     return moltbook_conversations(args.get("количество", 10))
 
@@ -119,7 +156,7 @@ def messages(args):
       {"молтбук_сообщения": {"диалог_id": "abc123", "количество": 50}}
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     conv_id = args.get("диалог_id")
     if not conv_id:
         return "Укажите 'диалог_id'"
@@ -143,7 +180,7 @@ def send_dm(args):
       {"молтбук_дм_отправить": {"агент": "vina", "текст": "привет"}}
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     agent = args.get("агент")
     text = args.get("текст")
     if not agent or not text:
@@ -171,7 +208,7 @@ def read_notifications(args):
     Синонимы: молтбук_отметить_прочитанным, молтбук_прочитать_всё.
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     from _actions._tools_moltbook import moltbook_read_notifications
     return moltbook_read_notifications(args.get("пост_id") or args.get("id") or args.get("post_id"))
 

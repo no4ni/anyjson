@@ -347,12 +347,35 @@ def diagnostics(args):
     Для многословных запросов совмещает точное попадание фразы с пословными
     альтернативами (с пониженным весом), оставляя точное совпадение на первом месте.
     """
-    if not isinstance(args, dict):
-        return 'Укажи сервис: {"поиск_команд": {"сервис": "text"}}'
-    q = (args.get("сервис") or args.get("подстрока") or args.get("запрос") or "").strip()
+    q = ""
+    if isinstance(args, dict):
+        q = (args.get("сервис") or args.get("подстрока") or args.get("запрос") or "").strip()
+    elif isinstance(args, str):
+        q = args.strip()
     if not q:
-        return ('Укажи сервис: {"поиск_команд": {"сервис": "text"}}\n'
-            'Например: {"поиск_команд": {"сервис": "молтбук"}}')
+        import random
+        pool = []
+        seen = set()
+        for name, fn in PRIMARY_HANDLERS.items():
+            if not name or id(fn) in seen or name in ("поиск_команд", "диагностика", "поиск"):
+                continue
+            seen.add(id(fn))
+            doc = (fn.__doc__ or "").strip()
+            doc_short = doc.split("\n", 1)[0].strip() if doc else ""
+            if "временно недоступно" in doc_short.lower() or "⚠️" in doc_short:
+                continue
+            pool.append((name, doc_short, _params_of(fn)))
+        sample = random.sample(pool, min(5, len(pool))) if pool else []
+        lines = [f"🎲 Пустой запрос — вот {len(sample)} случайных команд (всего доступно {len(pool)}):", ""]
+        for name, doc_short, params in sample:
+            lines.append(f"• команда: {name}")
+            if doc_short:
+                lines.append(f"  {doc_short}")
+            if params:
+                lines.append(f"  параметры: {', '.join(params)}")
+            lines.append("")
+        lines.append('💡 Поиск по теме: {"поиск_команд": {"сервис": "файлы"}} · Подробнее: {"справка": "имя_команды"}')
+        return "\n".join(lines).rstrip()
     where = (args.get("где") or "всё").strip().lower()
     has_explicit_lim = "лимит" in args
 
@@ -448,6 +471,22 @@ def diagnostics(args):
 
     lim = _parse_lim()
 
+    def _not_found_with_memory(query_str: str) -> str:
+        from _color import color_red
+        head = color_red(f"Команды {query_str} нет.")
+        try:
+            from _actions.social_memory import recall as _recall
+            mem_hit = _recall({"про": query_str})
+            if not mem_hit or mem_hit.startswith("Ничего не найдено."):
+                words = [w for w in _re.findall(r"[а-яА-ЯёЁa-zA-Z0-9_-]{3,}", query_str)]
+                if len(words) > 1:
+                    mem_hit = _recall({"про": "|".join(words)})
+            if mem_hit and not mem_hit.startswith("Ничего не найдено."):
+                return f"{head}\n\n🧠 Но нашлось в памяти агента:\n{mem_hit}"
+        except Exception:
+            pass
+        return f'{head}\n💡 Поиск по памяти: {{"вспомнить": {{"про": "{query_str}"}}}}'
+
     if len(subqs) == 1:
         sq = subqs[0]
         alts = _alts(sq)
@@ -471,8 +510,7 @@ def diagnostics(args):
                 merged[name] = [e["score"], name, e["aliases"], e["doc"], e["params"], False]
 
         if not merged:
-            from _color import color_red
-            return color_red(f"Команды {_original_q} нет.")
+            return _not_found_with_memory(_original_q)
 
         has_exact = any(v[5] for v in merged.values())
         all_list = sorted(merged.values(), key=lambda x: (-int(x[5]), -x[0], x[1]))
@@ -512,8 +550,7 @@ def diagnostics(args):
             e["queries"].add(qi)
 
     if not agg:
-        from _color import color_red
-        return color_red(f"Команды {q} нет.")
+        return _not_found_with_memory(q)
 
     matches = [(e["score"], name, e["aliases"], e["doc"], e["params"])
                for name, e in agg.items()]

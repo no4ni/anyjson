@@ -51,19 +51,25 @@ _INDEX_SHORTCUTS = {
 }
 
 
-def _validate_index_url(raw):
+def _extract_cu_tag(pkg_spec):
+    m = re.search(r"\+(cu\d+|cpu|rocm[\d.]*)", pkg_spec or "", re.I)
+    return m.group(1).lower() if m else ""
+
+
+def _validate_index_url(raw, pkg_spec=""):
     """Проверить и нормализовать URL индекса pip.
 
     Возвращает (url|None, error|None). None, None — индекс не задан.
     """
-    from urllib.parse import urlparse
+    from urllib.parse import urlparse, urlunparse
     s = (raw or "").strip()
     if not s:
         return None, None
+    cu_tag = _extract_cu_tag(pkg_spec)
     if s.lower() in _INDEX_SHORTCUTS:
         s = _INDEX_SHORTCUTS[s.lower()]
-    # Голый домен/путь без схемы — подставить https:// (единственная
-    # разрешённая схема; подстановка не открывает новый канал).
+        if cu_tag and "download.pytorch.org" in s:
+            s = f"https://download.pytorch.org/whl/{cu_tag}"
     if "://" not in s:
         s = "https://" + s.lstrip("/")
     try:
@@ -76,10 +82,18 @@ def _validate_index_url(raw):
     if p.username or p.password:
         return None, "❌ Учётные данные в URL индекса запрещены."
     host = (p.hostname or "").lower()
+    if host in ("pytorch.org", "www.pytorch.org"):
+        host = "download.pytorch.org"
+        p = p._replace(netloc=host)
+    if host == "download.pytorch.org" and p.path.strip("/") in ("", "whl"):
+        tag = cu_tag or "cu128"
+        p = p._replace(path=f"/whl/{tag}")
+    s = urlunparse(p)
     if host not in _ALLOWED_INDEX_HOSTS:
         return None, (f"❌ Домен индекса {host!r} не разрешён. "
                       f"Допустимо: {sorted(_ALLOWED_INDEX_HOSTS)}. "
-                      f"Расширение — задача оператора/LLM, не агента.")
+                      f"Для PyTorch укажи \"индекс\": \"pytorch\" или "
+                      f"\"https://download.pytorch.org/whl/{cu_tag or 'cu124'}\".")
     if ".." in (p.path or ""):
         return None, "❌ '..' в пути индекса запрещён."
     if p.query or p.fragment:
@@ -103,6 +117,9 @@ def pip_install(args):
                  "pypi" → https://pypi.org/simple/,
                  "pytorch" → https://download.pytorch.org/whl/cu128.
                  Без индекса — дефолт pip (pypi.org).
+      без_зависимостей — true: передать --no-deps (алиас: no_deps)
+      тор      — true: качать через Tor (socks5h://127.0.0.1:9050);
+                 по умолч. auto: при DNS/сетевом сбое pip сам пробует через Tor
       таймаут  — секунд (по умолч. 300, макс 1800)
 
     Принцип: никаких тихих операций. Поток pip идёт в консоль
@@ -148,16 +165,67 @@ def pip_install(args):
 
     index_raw = (args.get("индекс") or args.get("index_url")
                  or args.get("источник") or "")
-    index_url, index_err = _validate_index_url(index_raw)
+    index_url, index_err = _validate_index_url(index_raw, name)
     if index_err:
         return index_err
 
+    no_deps = args.get("без_зависимостей")
+    if no_deps is None:
+        no_deps = args.get("no_deps", False)
+    if isinstance(no_deps, str):
+        no_deps = no_deps.strip().lower() in ("1", "true", "да", "on")
+
+    _tor_explicit = ("тор" in args) or ("tor" in args)
+    use_tor = args.get("тор") if "тор" in args else args.get("tor")
+    if isinstance(use_tor, str):
+        use_tor = use_tor.strip().lower() not in ("0", "false", "нет", "off", "")
+    else:
+        use_tor = bool(use_tor)
+
+    _tor_proxy = None
+    if use_tor:
+        try:
+            from _tor import ensure_tor
+            if ensure_tor():
+                _tor_proxy = "socks5h://127.0.0.1:9050"
+        except Exception:
+            pass
+
+    _upgrade = bool(args.get("_upgrade", False))
+
     # --progress-bar raw: rich-движок pip в non-TTY (пайп) молчит,
     # а raw печатает прогресс простыми строками — оператор видит.
-    cmd = [sys.executable, "-m", "pip", "install", name,
-           "--progress-bar", "raw"]
-    if index_url:
-        cmd += ["--index-url", index_url]
+    def _build_cmd(proxy_url=None):
+        c = [sys.executable, "-m", "pip", "install"]
+        if _upgrade:
+            c.append("--upgrade")
+        c += [name, "--progress-bar", "raw"]
+        if no_deps:
+            c.append("--no-deps")
+        if index_url:
+            c += ["--index-url", index_url]
+        if proxy_url:
+            c += ["--proxy", proxy_url]
+        return c
+
+    cmd = _build_cmd(_tor_proxy)
+
+    # Защита от случайного сноса CUDA-сборки torch при установке сторонних пакетов
+    _constraint_path = None
+    _pkg_base = re.split(r"[\[=]", name, maxsplit=1)[0].strip().lower()
+    if not no_deps and _pkg_base not in ("torch", "torchvision", "torchaudio"):
+        try:
+            import importlib.metadata as _im
+            _tv = _im.version("torch")
+            if "+cu" in _tv:
+                import tempfile as _tf
+                _cf = _tf.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8")
+                _cf.write(f"torch=={_tv}\n")
+                _cf.close()
+                _constraint_path = _cf.name
+                cmd += ["--constraint", _constraint_path]
+        except Exception:
+            pass
 
     _t0 = time.perf_counter()
     # PIP_PROGRESS_BAR=on: pip по умолчанию отключает прогресс-бар,
@@ -269,8 +337,53 @@ def pip_install(args):
             pass
 
     _t.join(timeout=2)
-    _dt = time.perf_counter() - _t0
     output = "\n".join(output_lines)
+    _net_err = any(k in output for k in (
+        "NameResolutionError", "getaddrinfo failed", "connection-failed",
+        "ConnectTimeoutError", "ReadTimeoutError", "Failed to resolve",
+    ))
+    _used_tor_fallback = False
+    if not _killed and proc.returncode != 0 and not _tor_proxy and not _tor_explicit and _net_err:
+        try:
+            from _tor import ensure_tor
+            if ensure_tor():
+                _tor_proxy = "socks5h://127.0.0.1:9050"
+                cmd2 = _build_cmd(_tor_proxy)
+                if _constraint_path:
+                    cmd2 += ["--constraint", _constraint_path]
+                try:
+                    sys.stdout.write("\n🌐 Сетевой/DNS сбой pip — повторяю через Tor (socks5h://127.0.0.1:9050)...\n")
+                    sys.stdout.flush()
+                except Exception:
+                    pass
+                output_lines.clear()
+                _prog_state["active"] = False
+                proc = subprocess.Popen(
+                    cmd2, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    bufsize=0, env=_env,
+                )
+                _t2 = _th.Thread(target=_reader, daemon=True)
+                _t2.start()
+                try:
+                    proc.wait(timeout=timeout)
+                except subprocess.TimeoutExpired:
+                    _killed = True
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+                _t2.join(timeout=2)
+                _used_tor_fallback = True
+                output = "\n".join(output_lines)
+        except Exception:
+            pass
+
+    if _constraint_path:
+        try:
+            os.unlink(_constraint_path)
+        except Exception:
+            pass
+    _dt = time.perf_counter() - _t0
     output = re.sub(r"\n{3,}", "\n\n", output)
     _lines = output.split("\n")
 
@@ -280,10 +393,29 @@ def pip_install(args):
                 f"{{\"имя\": \"{name}\", \"таймаут\": {timeout * 2}}}}}")
 
     if proc.returncode == 0:
+        _tor_tag = " (через Tor)" if (_tor_proxy or _used_tor_fallback) else ""
         _tail = "\n".join(_lines[-15:])
-        return (f"✅ Установлено: {name}  ({_dt:.1f} сек)\n{_tail}")
+        return (f"✅ Установлено: {name}{_tor_tag}  ({_dt:.1f} сек)\n{_tail}")
 
     _tail = "\n".join(_lines[-25:])
     return (f"❌ pip install {name} вернул код {proc.returncode} "
             f"({_dt:.1f} сек)\n"
             f"```text\n{_tail}\n```")
+
+
+@register(["пип_обновить", "обновить_пип", "pip_upgrade"])
+def pip_upgrade(args):
+    """Обновить сам pip до актуальной версии (python -m pip install --upgrade pip).
+
+    Параметры (все опциональны):
+      тор     — true: качать через Tor (по умолч. авто-фолбэк при сбое сети)
+      таймаут — секунд (по умолч. 300, макс 1800)
+    """
+    params = {"имя": "pip", "_upgrade": True}
+    if "тор" in args:
+        params["тор"] = args["тор"]
+    elif "tor" in args:
+        params["tor"] = args["tor"]
+    if "таймаут" in args:
+        params["таймаут"] = args["таймаут"]
+    return pip_install(params)

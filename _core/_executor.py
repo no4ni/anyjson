@@ -336,7 +336,77 @@ def execute_tool(action: str, params: Dict[str, Any]) -> str:
         calls.append(now)
         _write_moltbook_state({"calls": calls, "blocked_until": 0.0, "warned": False})
 
-    return delegated_note + str(handler(params))
+    return delegated_note + str(_run_with_spinner(action, handler, params))
+
+
+def _run_with_spinner(action: str, handler, params):
+    """Показывает оператору в TTY-консоли живой спиннер и таймер (>0.35с), уступая строку tqdm."""
+    import os as _os
+    import sys as _sys
+    import threading as _th
+    import time as _tm
+
+    _skip = {"настроить", "настройка", "очистить", "выход", "exit", "quit"}
+    if (
+        _os.environ.get("ANYJSON_DAEMON")
+        or _os.environ.get("ANYJSON_WEB")
+        or (action or "").lower() in _skip
+        or not getattr(_sys.stdout, "isatty", lambda: False)()
+    ):
+        return handler(params)
+
+    done = _th.Event()
+    t0 = _tm.monotonic()
+    state = {"shown": False, "last_ext": 0.0}
+    orig_stderr = _sys.stderr
+
+    class _StderrHook:
+        def __init__(self, stream):
+            self._s = stream
+        def write(self, data):
+            if data:
+                state["last_ext"] = _tm.monotonic()
+                state["shown"] = False
+            return self._s.write(data)
+        def flush(self):
+            return self._s.flush()
+        def __getattr__(self, name):
+            return getattr(self._s, name)
+
+    def _spin():
+        if done.wait(0.35):
+            return
+        frames = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
+        i = 0
+        while not done.is_set():
+            now = _tm.monotonic()
+            if now - state["last_ext"] >= 0.7:
+                el = now - t0
+                msg = f"\r\033[93m{frames[i % len(frames)]} {action}… {el:.1f}с\033[0m   "
+                try:
+                    _sys.stdout.write(msg)
+                    _sys.stdout.flush()
+                    state["shown"] = True
+                except Exception:
+                    break
+                i += 1
+            done.wait(0.15)
+
+    _sys.stderr = _StderrHook(orig_stderr)
+    th = _th.Thread(target=_spin, daemon=True)
+    th.start()
+    try:
+        return handler(params)
+    finally:
+        done.set()
+        th.join(timeout=0.3)
+        _sys.stderr = orig_stderr
+        if state["shown"]:
+            try:
+                _sys.stdout.write("\r" + (" " * 60) + "\r")
+                _sys.stdout.flush()
+            except Exception:
+                pass
 
 
 _IMPORT_TO_PIP = {
@@ -375,34 +445,136 @@ def _format_missing_module(action: str, e: BaseException) -> str:
     if not top or top.startswith("_") or top in {"_core", "_actions", "side", "data"}:
         return ""
     pkg = _IMPORT_TO_PIP.get(top, top.replace("_", "-"))
+    if pkg in ("torch", "torchvision", "torchaudio"):
+        _hint_cmd = f'{{"установить_пакет": {{"имя": "{pkg}", "индекс": "pytorch", "таймаут": 1800}}}}'
+    else:
+        _hint_cmd = f'{{"установить_пакет": {{"имя": "{pkg}"}}}}'
     return (
         f"⚠️ Команде «{action}» не хватает библиотеки: {top}\n\n"
         f"💡 Установить можно прямо сейчас командой:\n"
-        f'{{"установить_пакет": {{"имя": "{pkg}"}}}}'
+        f"{_hint_cmd}"
     )
+
+
+_RECALL_WINDOW_CALLS = 6
+_GOAL_REMIND_STATE = {
+    "calls": 0,
+    "last_saved_call": 0,
+    "last_reminded_ts": 0.0,
+    "recalled_until_call": 0,
+}
+_MEMORY_SAVE_ACTIONS = {"запомнить", "запомнить_факт", "обновить_память", "записать_в_память"}
+_MEMORY_READ_ACTIONS = {"вспомнить", "память"}
+_MEMORY_SKIP_ACTIONS = _MEMORY_SAVE_ACTIONS | _MEMORY_READ_ACTIONS | {"очистить_память", "выход", "exit", "quit"}
+
+
+def _get_last_memory_snippet() -> str:
+    """Возвращает последнюю + до 2 случайных записей из памяти для восстановления контекста."""
+    try:
+        from _storage import load_memlist as _load_mem
+        items = _load_mem() or []
+        if not items:
+            return ""
+
+        def _fmt_item(raw, max_len=350):
+            if isinstance(raw, dict):
+                t = ""
+                for k in ("текст", "содержимое", "content", "text", "описание"):
+                    if k in raw and raw[k]:
+                        t = str(raw[k])
+                        break
+                if not t:
+                    t = str(raw)
+            else:
+                t = str(raw)
+            t = " ".join(t.split())
+            return (t[:max_len] + "…") if len(t) > max_len else t
+
+        last_txt = _fmt_item(items[-1], 380)
+        lines = [
+            f"\n\n📝 Справка из памяти (записей: {len(items)}):",
+            f"  • [Последняя] {last_txt}",
+        ]
+        if len(items) > 1:
+            pool = items[:-1]
+            picks = random.sample(pool, min(2, len(pool)))
+            for p in picks:
+                lines.append(f"  • [Случайная] {_fmt_item(p, 220)}")
+        lines.append('   • Если это новый чат после внезапного сброса — сразу вызови {"вспомнить": ""} и продолжи работу по последней записи.')
+        lines.append('   • Если чат не сбрасывался — продолжай задачу и сам обновляй память через {"запомнить": "Глобально: ... | Сейчас: ... | Следующий шаг: ..."}.')
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
+def _maybe_append_goal_reminder(action: str, output: str) -> str:
+    """Подсказывает последнюю + случайные записи памяти (если recalled истёк) и напоминает сохранять цель."""
+    import time as _tm
+    if not isinstance(output, str) or not output.strip():
+        return output
+    act = (action or "").strip().lower()
+    _GOAL_REMIND_STATE["calls"] += 1
+    call_num = _GOAL_REMIND_STATE["calls"]
+
+    if act in _MEMORY_SAVE_ACTIONS and not output.lstrip().startswith("❌"):
+        _GOAL_REMIND_STATE["last_saved_call"] = call_num
+        return output
+    if act in _MEMORY_READ_ACTIONS:
+        _GOAL_REMIND_STATE["recalled_until_call"] = call_num + _RECALL_WINDOW_CALLS
+        return output
+    if act in _MEMORY_SKIP_ACTIONS:
+        return output
+
+    now = _tm.monotonic()
+    # Если окно recalled (6 ходов) истекло или ещё не открыто — подкладываем последнее воспоминание
+    if call_num > _GOAL_REMIND_STATE["recalled_until_call"]:
+        _GOAL_REMIND_STATE["recalled_until_call"] = call_num + _RECALL_WINDOW_CALLS
+        _GOAL_REMIND_STATE["last_reminded_ts"] = now
+        mem_snip = _get_last_memory_snippet()
+        if mem_snip:
+            return output + mem_snip
+
+    # Не спамим внутри одной |||-цепочки (интервал >= 1.5 сек между пакетами)
+    if now - _GOAL_REMIND_STATE["last_reminded_ts"] < 1.5:
+        return output
+
+    since_save = call_num - _GOAL_REMIND_STATE["last_saved_call"]
+    is_error = output.lstrip().startswith(("❌", "⚠️"))
+    need_remind = (is_error and since_save >= 1) or (since_save >= 2 and (since_save % 2 == 0))
+    if not need_remind:
+        return output
+
+    _GOAL_REMIND_STATE["last_reminded_ts"] = now
+    hint = (
+        "\n\n💡 Чат сбрасывается внезапно — добавь в следующую цепочку обновление памяти:\n"
+        '   {"запомнить": "Глобально: ... | Сейчас: ... | Следующий шаг: ..."}'
+    )
+    return output + hint
 
 
 def execute_tool_safe(action: str, params: Dict[str, Any]) -> str:
     """Безопасный вызов: ловит исключения и возвращает текст."""
     try:
-        return execute_tool(action, params)
+        res = execute_tool(action, params)
     except (ModuleNotFoundError, ImportError) as e:
         msg = _format_missing_module(action, e)
         if msg:
             log(f"Отсутствует библиотека для {action}: {e}")
-            return msg
-        import traceback as _tb
-        log(f"Ошибка импорта в {action}: {e}")
-        tail = _tb.format_exc().strip().splitlines()[-6:]
-        return ("❌ " + action + ": " + type(e).__name__ + ": " + str(e)
-                + chr(10) + chr(10) + "Traceback:" + chr(10)
-                + chr(10).join("  " + l for l in tail))
+            res = msg
+        else:
+            import traceback as _tb
+            log(f"Ошибка импорта в {action}: {e}")
+            tail = _tb.format_exc().strip().splitlines()[-6:]
+            res = ("❌ " + action + ": " + type(e).__name__ + ": " + str(e)
+                   + chr(10) + chr(10) + "Traceback:" + chr(10)
+                   + chr(10).join("  " + l for l in tail))
     except Exception as e:
         import traceback as _tb
         log(f"Ошибка выполнения инструмента {action}: {e}")
         tb = _tb.format_exc()
         # короткий хвост — где упало
         tail = tb.strip().splitlines()[-6:]
-        return ("❌ " + action + ": " + type(e).__name__ + ": " + str(e)
-                + chr(10) + chr(10) + "Traceback:" + chr(10)
-                + chr(10).join("  " + l for l in tail))
+        res = ("❌ " + action + ": " + type(e).__name__ + ": " + str(e)
+               + chr(10) + chr(10) + "Traceback:" + chr(10)
+               + chr(10).join("  " + l for l in tail))
+    return _maybe_append_goal_reminder(action, res)

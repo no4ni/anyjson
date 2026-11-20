@@ -199,3 +199,158 @@ def _export_lowpoly_glb(solid_voxel, glb_path: Path, target_faces: int = 3000, s
 
 
 
+
+
+def _photo_to_3d_glb(image_path: Path, model_path: Path, glb_path: Path, preview_path: Path, depth_scale: float = 0.6, target_faces: int = 65000, smooth_sigma: float = 0.8, near_pct: float = 45.0, gamma=None) -> int:
+    """Построить цветной рельефный .glb и изометрическое превью по одной картинке через MiDaS ONNX."""
+    import numpy as np
+    from PIL import Image, ImageDraw
+    from scipy import ndimage
+    import onnxruntime as ort
+    import trimesh
+
+    if not image_path.is_file():
+        raise FileNotFoundError(f"Картинка не найдена: {image_path}")
+    if not model_path or not Path(model_path).is_file():
+        raise FileNotFoundError(f"ONNX-модель MiDaS не найдена: {model_path}")
+
+    rgb_img = _open_projection_rgb(image_path, _N)
+    rgb_np = np.array(rgb_img, dtype=np.float32) / 255.0
+    inp = rgb_np.transpose(2, 0, 1)[np.newaxis, ...].astype(np.float32)
+
+    avail = set(ort.get_available_providers())
+    pref = [p for p in ("DmlExecutionProvider", "CPUExecutionProvider") if p in avail] or ["CPUExecutionProvider"]
+    sess = None
+    for prov in pref:
+        try:
+            sess = ort.InferenceSession(str(model_path), providers=[prov])
+            break
+        except Exception:
+            pass
+    if sess is None:
+        sess = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
+
+    in_name = sess.get_inputs()[0].name
+    raw_depth = np.asarray(sess.run(None, {in_name: inp})[0], dtype=np.float32).squeeze()
+    if raw_depth.shape != (_N, _N):
+        d_pil = Image.fromarray(raw_depth).resize((_N, _N), Image.Resampling.BILINEAR)
+        raw_depth = np.array(d_pil, dtype=np.float32)
+
+    if smooth_sigma > 0:
+        raw_depth = ndimage.gaussian_filter(raw_depth, sigma=smooth_sigma)
+
+    d_min, d_max = float(raw_depth.min()), float(raw_depth.max())
+    depth_norm = (raw_depth - d_min) / (d_max - d_min) if (d_max - d_min) > 1e-6 else np.zeros_like(raw_depth)
+
+    np_pct = float(np.clip(near_pct, 0.1, 100.0))
+    if np_pct < 100.0:
+        thr = float(np.percentile(depth_norm, 100.0 - np_pct))
+        denom = max(1.0 - thr, 1e-6)
+        depth_norm = np.clip((depth_norm - thr) / denom, 0.0, 1.0)
+    if gamma is None or str(gamma).lower() in ("auto", "авто", "none", ""):
+        pos = depth_norm[depth_norm > 1e-5]
+        med = float(np.median(pos)) if pos.size > 0 else 0.5
+        med = float(np.clip(med, 0.05, 0.95))
+        g_val = float(np.clip(np.log(0.5) / np.log(med), 0.25, 4.0))
+    else:
+        g_val = max(float(gamma), 0.1)
+    depth_norm = np.power(np.clip(depth_norm, 0.0, 1.0), g_val)
+
+    step = 2 if (0 < target_faces <= 32000) else 1
+    d_sub = depth_norm[::step, ::step]
+    c_sub = np.array(rgb_img, dtype=np.uint8)[::step, ::step]
+    H, W = d_sub.shape
+
+    orig_pil = Image.open(str(image_path)).convert("RGB")
+    aspect = float(orig_pil.width) / max(float(orig_pil.height), 1.0)
+    xs = np.linspace(-0.5 * aspect, 0.5 * aspect, W, dtype=np.float32)
+    ys = np.linspace(0.5, -0.5, H, dtype=np.float32)
+    gx, gy = np.meshgrid(xs, ys)
+    gz = d_sub * float(depth_scale)
+
+    front_verts = np.column_stack([gx.ravel(), gy.ravel(), gz.ravel()])
+    back_verts = np.column_stack([gx.ravel(), gy.ravel(), np.full(H * W, -0.02, dtype=np.float32)])
+    verts = np.vstack([front_verts, back_verts])
+    u_grid = np.linspace(0.0, 1.0, W, dtype=np.float32)
+    v_grid = np.linspace(1.0, 0.0, H, dtype=np.float32)
+    gu, gv = np.meshgrid(u_grid, v_grid)
+    front_uv = np.column_stack([gu.ravel(), gv.ravel()])
+    back_uv = np.zeros((H * W, 2), dtype=np.float32)
+    v_uv = np.vstack([front_uv, back_uv])
+
+    fg_pt = d_sub > 1e-5
+    if not np.any(fg_pt):
+        fg_pt = np.ones_like(d_sub, dtype=bool)
+
+    cell_mask = fg_pt[:-1, :-1] & fg_pt[:-1, 1:] & fg_pt[1:, :-1] & fg_pt[1:, 1:]
+    if not np.any(cell_mask):
+        cell_mask = np.ones((H - 1, W - 1), dtype=bool)
+
+    idx = np.arange(H * W, dtype=np.int32).reshape(H, W)
+    cm_flat = cell_mask.ravel()
+    v00 = idx[:-1, :-1].ravel()[cm_flat]
+    v01 = idx[:-1, 1:].ravel()[cm_flat]
+    v10 = idx[1:, :-1].ravel()[cm_flat]
+    v11 = idx[1:, 1:].ravel()[cm_flat]
+    f_front = np.vstack([np.column_stack([v00, v10, v11]), np.column_stack([v00, v11, v01])])
+
+    off = H * W
+    b00, b01, b10, b11 = v00 + off, v01 + off, v10 + off, v11 + off
+    f_back = np.vstack([np.column_stack([b00, b11, b10]), np.column_stack([b00, b01, b11])])
+
+    # Строим замкнутые боковые стенки строго по внешнему контуру вырезанной маски
+    side_faces = []
+    pad_c = np.pad(cell_mask, 1, mode="constant", constant_values=False)
+    top_b = cell_mask & (~pad_c[:-2, 1:-1])
+    bot_b = cell_mask & (~pad_c[2:, 1:-1])
+    left_b = cell_mask & (~pad_c[1:-1, :-2])
+    right_b = cell_mask & (~pad_c[1:-1, 2:])
+
+    for mask_b, e0_grid, e1_grid in (
+        (top_b, idx[:-1, :-1], idx[:-1, 1:]),
+        (bot_b, idx[1:, 1:], idx[1:, :-1]),
+        (left_b, idx[1:, :-1], idx[:-1, :-1]),
+        (right_b, idx[:-1, 1:], idx[1:, 1:]),
+    ):
+        m_flat = mask_b.ravel()
+        if np.any(m_flat):
+            e0, e1 = e0_grid.ravel()[m_flat], e1_grid.ravel()[m_flat]
+            side_faces.append(np.column_stack([e0, e0 + off, e1 + off]))
+            side_faces.append(np.column_stack([e0, e1 + off, e1]))
+
+    faces = np.vstack([f_front, f_back] + side_faces)
+    used_verts, inv_idx = np.unique(faces.ravel(), return_inverse=True)
+    verts_clean = verts[used_verts]
+    uv_clean = v_uv[used_verts]
+    faces_clean = inv_idx.reshape(-1, 3)
+
+    from trimesh.visual.texture import TextureVisuals
+    from trimesh.visual.material import PBRMaterial
+    mat = PBRMaterial(baseColorTexture=orig_pil, metallicFactor=0.0, roughnessFactor=0.85)
+    vis = TextureVisuals(uv=uv_clean, material=mat)
+    mesh = trimesh.Trimesh(vertices=verts_clean, faces=faces_clean, visual=vis, process=False)
+    mesh.export(str(glb_path))
+
+    # Рендерим изометрическое цветное превью только по вырезанным передним объектам
+    az, el = np.radians(32.0), np.radians(24.0)
+    rx = gx * np.cos(az) - gz * np.sin(az)
+    rz = gx * np.sin(az) + gz * np.cos(az)
+    ry = gy * np.cos(el) - rz * np.sin(el)
+    z_ord = gy * np.sin(el) + rz * np.cos(el)
+
+    S = 512
+    px = np.clip(((rx - rx.min()) / max(float(rx.max() - rx.min()), 1e-6) * (S - 40) + 20).astype(np.int32), 0, S - 1)
+    py = np.clip(((1.0 - (ry - ry.min()) / max(float(ry.max() - ry.min()), 1e-6)) * (S - 40) + 20).astype(np.int32), 0, S - 1)
+    fg_flat = fg_pt.ravel()
+    px_fg, py_fg, z_fg, col_fg = px.ravel()[fg_flat], py.ravel()[fg_flat], z_ord.ravel()[fg_flat], c_sub.reshape(-1, 3)[fg_flat]
+    order = np.argsort(z_fg)
+    canvas = np.full((S, S, 3), 242, dtype=np.uint8)
+    px_f, py_f, col_f = px_fg[order], py_fg[order], col_fg[order]
+    rad = 2 if step == 1 else 3
+    for dy in range(-rad, rad + 1):
+        for dx in range(-rad, rad + 1):
+            yy = np.clip(py_f + dy, 0, S - 1)
+            xx = np.clip(px_f + dx, 0, S - 1)
+            canvas[yy, xx] = col_f
+    Image.fromarray(canvas).save(str(preview_path))
+    return len(faces)

@@ -21,13 +21,14 @@ def _find_common(args, only_files, only_dirs=False):
     from _actions.tools_dataset import find_file
     if not isinstance(args, dict):
         args = {}
-    return find_file(
+    content_q = (args.get("содержание") or args.get("содержимое")
+                 or args.get("текст") or args.get("подстрока")
+                 or args.get("запрос") or args.get("что", ""))
+    res = find_file(
         root_path=(args.get("корень") or args.get("где")
                    or args.get("путь") or os.getcwd()),
         search_name=args.get("имя", ""),
-        search_content=(args.get("содержание") or args.get("содержимое")
-                        or args.get("текст") or args.get("подстрока")
-                        or args.get("запрос") or args.get("что", "")),
+        search_content=content_q,
         search_all=args.get("всё", ""),
         encoding=args.get("кодировка", "utf-8"),
         max_file_size=args.get("макс_размер", 1_000_000),
@@ -39,6 +40,16 @@ def _find_common(args, only_files, only_dirs=False):
         ignore_cache=bool(args.get("свежий")),
         others_limit=args.get("других_путей") or args.get("лимит", 30),
     )
+    if content_q and isinstance(res, str):
+        clean_cmd = str(content_q).strip().strip('"\'«»`')
+        if clean_cmd:
+            try:
+                from _actions import HANDLERS
+                if clean_cmd in HANDLERS:
+                    res += f'\n\n💡 Ищешь реализацию команды «{clean_cmd}»? Быстрее через: {{"найти_функцию": {{"имя": "{clean_cmd}"}}}}'
+            except Exception:
+                pass
+    return res
 
 
 @register(["найти_файл", "поиск_в_файлах"])

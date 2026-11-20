@@ -167,8 +167,8 @@ def overlay_sound(args: dict) -> str:
 
     Параметры:
       видео    — путь к видеофайлу (обязательно)
-      звук     — путь к аудиофайлу (обязательно)
-      путь / сохранить — куда (иначе MY_DIR/video_sound/<TS>.<ext>)
+      звук / аудио — путь к аудиофайлу (обязательно)
+      путь / сохранить / выход — куда (иначе MY_DIR/video_sound/<TS>.<ext>)
       заменить — true (по умолч.): заменить аудиодорожку;
                   false: смешать с оригинальным звуком
       задержка — сдвиг звука вправо, сек (0 — со старта)
@@ -185,7 +185,7 @@ def overlay_sound(args: dict) -> str:
                   По умолчанию false.
     """
     video = args.get("видео") or args.get("video")
-    out_arg = args.get("путь") or args.get("сохранить")
+    out_arg = args.get("путь") or args.get("сохранить") or args.get("выход")
     replace = bool(args.get("заменить", True))
     obrezat = bool(args.get("обрезать", False))
 

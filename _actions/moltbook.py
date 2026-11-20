@@ -1,6 +1,6 @@
 """Moltbook: глобальная сеть агентов (через Tor)."""
 from _actions import register
-from _tor import ensure_tor, restart_tor as _restart_tor
+from _tor import ensure_tor, restart_tor as _restart_tor, get_tor_error
 
 
 
@@ -24,7 +24,7 @@ def feed(args):
       {"молтбук_лента": {"только_подписки": true, "количество": 20}}
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     from _actions._tools_moltbook import moltbook_feed
     return moltbook_feed(sort=args.get("сортировка", "new"),
                          limit=args.get("количество", 5),
@@ -42,7 +42,7 @@ def profile(args):
       {"молтбук_профиль": {"агент": "vina"}}
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     agent = args.get("агент")
     if not agent:
         return "Укажите 'агент'"
@@ -63,7 +63,7 @@ def create_post(args):
       {"молтбук_пост": {"заголовок": "AGI", "содержание": "...", "сообщество": "general"}}
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     title = args.get("заголовок", "")
     content = args.get("содержание", "")
     submolt = args.get("сообщество")
@@ -86,7 +86,7 @@ def upvote(args):
     Алиасы команды: молтбук_голос.
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     post_id = args.get("пост_id") or args.get("id") or args.get("post_id")
     if not post_id:
         return "Укажите 'пост_id'"
@@ -106,7 +106,7 @@ def refresh_token(args):
       {"молтбук_токен": {}}
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     from _actions._tools_moltbook import moltbook_refresh_token
     return moltbook_refresh_token()
 
@@ -129,7 +129,7 @@ def comments(args):
       {"молтбук_комментарии": {"постов": 3}}
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     from _actions._tools_moltbook import moltbook_comments
     post_id = args.get("пост_id") or args.get("id") or args.get("post_id")
 
@@ -213,7 +213,7 @@ def add_comment(args):
     Для пакетной отправки нескольких комментариев — команда "рассылка".
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     post_id = args.get("пост_id") or args.get("id") or args.get("post_id")
     content = args.get("содержание", "")
     if not post_id or not content:
@@ -233,7 +233,7 @@ def follow(args):
       {"молтбук_подписаться": {"агент": "vina"}}
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     agent = args.get("агент")
     if not agent:
         return "Укажите 'агент'"
@@ -253,7 +253,7 @@ def submolts(args):
       {"молтбук_сообщества": {"количество": 10}}
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     from _actions._tools_moltbook import moltbook_submolts
     return moltbook_submolts(sort=args.get("сортировка", "popular"),
                              limit=args.get("количество", 5))
@@ -270,7 +270,7 @@ def join_submolt(args):
       {"молтбук_сообщество_подписаться": {"имя": "general"}}
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     name = args.get("имя") or args.get("агент")
     if not name:
         return "Укажите 'имя'"
@@ -290,7 +290,7 @@ def search(args):
       {"молтбук_поиск": {"запрос": "AGI", "тип": "posts"}}
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     query = args.get("запрос")
     if not query:
         return "Укажите 'запрос'"
@@ -310,7 +310,7 @@ def create_submolt(args):
       {"молтбук_создать_сообщество": {"имя": "my-submolt", "описание": "..."}}
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     name = args.get("имя")
     if not name:
         return "Укажите 'имя'"
@@ -329,7 +329,7 @@ def followers(args):
       {"молтбук_подписчики": {"агент": "qwen-jericho"}}
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     agent = args.get("агент")
     if not agent:
         return "Укажите 'агент'"
@@ -348,7 +348,7 @@ def following(args):
       {"молтбук_подписки": {"агент": "qwen-jericho"}}
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     agent = args.get("агент")
     if not agent:
         return "Укажите 'агент'"
@@ -366,7 +366,7 @@ def whoami_moltbook(args):
       {"молтбук_кто_я": {}}
     """
     if not _need_tor():
-        return "❌ Tor недоступен."
+        return f"❌ Tor недоступен: {get_tor_error()}"
     from _actions._tools_moltbook import moltbook_whoami
     return moltbook_whoami()
 

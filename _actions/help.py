@@ -81,17 +81,67 @@ def show_help(args):
         import random as _rnd
         import re as _re_help
         _ru_only = _re_help.compile(r'^[а-яА-ЯёЁ0-9_]+$')
-        names = [n for n in HANDLERS if n and _ru_only.match(n)]
-        picks = _rnd.sample(names, min(3, len(names))) if names else []
-        lines = ['Укажи имя команды: {"помощь": "имя_команды"}']
+        _unique_fns = {id(fn) for fn in HANDLERS.values() if fn}
+        _core = [
+            "поиск_команд", "читать", "переписать", "заменить_текст",
+            "питон", "веб_поиск", "настроить",
+        ]
+        lines = [f"📚 Справка по системе (всего уникальных команд: {len(_unique_fns)})", ""]
+        _mem_items = []
+        _mem_total = 0
+        try:
+            from _actions.social_memory import load_memlist as _load_mem
+            _raw_mem = _load_mem() or []
+            _mem_total = len(_raw_mem)
+            for _it in _raw_mem[-5:]:
+                if isinstance(_it, str):
+                    _s = _it.strip()
+                elif isinstance(_it, dict):
+                    _s = str(_it.get("текст") or _it.get("содержимое") or _it.get("content") or _it).strip()
+                else:
+                    _s = str(_it).strip()
+                if _s:
+                    if len(_s) > 180:
+                        _s = _s[:180] + "…"
+                    _mem_items.append(_s)
+        except Exception:
+            pass
+
+        if _mem_items:
+            lines.append(f"🧠 Из памяти агента (последние {len(_mem_items)} из {_mem_total}):")
+            for _m in _mem_items:
+                lines.append(f"  • {_m}")
+            lines.append('  → Поиск по памяти: {"вспомнить": {"про": "ключевое_слово"}} · Сохранить: {"запомнить": "важный факт"}')
+        else:
+            lines.append("🧠 Память агента пока пуста:")
+            lines.append('  • {"запомнить": "важный факт"} — сохранить прогресс на случай сброса чата')
         lines.append("")
-        lines.append("Имя не обязательно точное — если такого нет, "
-                     "найдутся похожие и предложатся варианты.")
+        lines.append("🔑 Основные команды:")
+        for c in _core:
+            _fn = HANDLERS.get(c)
+            if _fn:
+                lines.append(f'  • "{c}" — {_short(_fn.__doc__)}')
+
+        _seen_ids = {id(HANDLERS[c]) for c in _core if c in HANDLERS}
+        _pool = []
+        for n, fn in HANDLERS.items():
+            if not n or not _ru_only.match(n) or id(fn) in _seen_ids:
+                continue
+            _sd = _short(fn.__doc__)
+            if "временно недоступно" in _sd.lower() or "⚠️" in _sd:
+                continue
+            _seen_ids.add(id(fn))
+            _pool.append((n, _sd))
+
+        picks = _rnd.sample(_pool, min(3, len(_pool))) if _pool else []
         if picks:
             lines.append("")
-            lines.append("Возможно, тебя интересует:")
-            for n in picks:
-                lines.append(f'  • "{n}"')
+            lines.append("🎲 Случайные команды из каталога:")
+            for n, _sd in picks:
+                lines.append(f'  • "{n}" — {_sd}')
+
+        lines.append("")
+        lines.append('💡 Подробно о команде: {"помощь": "имя_команды"}  ·  Поиск по теме: {"поиск_команд": "видео"}')
         return "\n".join(lines)
 
     fn = HANDLERS.get(query)

@@ -126,58 +126,36 @@ def show_screen(args):
 # ============================================================
 #  питон / execute_code
 # ============================================================
-def _collapse_tqdm(text):
-    """Сжать серии tqdm: оставить последнюю строку в каждой серии.
-
-    Два слоя детекции кадра:
-      1) ANSI-маркер ESC[A (курсор вверх) — как tqdm пишет в pipe-режиме;
-      2) сам формат tqdm «имя: N%|...» — если ESC потерялся (копипаст,
-         терминал проглотил, старый tqdm без \x1b[A).
-
-    Группируем по префиксу до ":" и оставляем последний кадр серии.
-    Пустые кадры пропускаем — иначе вывод распухает пустыми строками.
-    """
+def _collapse_tqdm(text: str) -> str:
+    """Сжимает tqdm-прогресс в выводе, сохраняя строки с цветовыми ANSI-кодами ошибок."""
     if not text:
         return text
-    if "\r" in text:
-        text = text.replace("\r\n", "\n").replace("\r", "\n")
-    _ansi_re = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
-    # Ищем формат tqdm: «[префикс:] N%|...» (префикс может отсутствовать)
-    _tqdm_re = re.compile(r"^\s*(?:.*?:\s*)?\d+%\|")
-    out = []
-    last_idx = {}
-    for ln in text.split("\n"):
-        _head = ln.rstrip()
-        _is_frame = ("\x1b[A" in _head) or _head.endswith("[A")
-        clean = None
-        if _is_frame:
-            # слой 1: ANSI-маркер
-            clean = _ansi_re.sub("", ln).replace("[A", "").rstrip()
-        else:
-            # слой 2: сам формат tqdm «имя: N%|» или «N%|»
-            m = _tqdm_re.match(ln)
-            if m:
-                clean = ln.rstrip()
-        if clean is None:
-            out.append(ln)
-            continue
-        if not clean:
-            continue
-        
-        # Ищем префикс ТОЛЬКО до знака "%|", чтобы не поймать 
-        # двоеточие в таймере [00:00<?, ?it/s]
-        prefix = ""
-        _pct_idx = clean.find("%|")
-        if _pct_idx > 0:
-            _before_pct = clean[:_pct_idx]
-            if ":" in _before_pct:
-                prefix = _before_pct.split(":")[0].strip()
-        if prefix in last_idx:
-            out[last_idx[prefix]] = clean
-        else:
-            last_idx[prefix] = len(out)
-            out.append(clean)
-    return "\n".join(out)
+    out_lines = []
+    for line in text.split('\n'):
+        # 1) \r внутри строки (стандартный tqdm без ANSI) — берём последний сегмент
+        if '\r' in line:
+            parts = [p for p in line.split('\r') if p.strip()]
+            line = parts[-1] if parts else ''
+        # 2) Убираем цветовые ANSI SGR-коды (\x1b[...m), чтобы красные ошибки
+        # (onnxruntime, torch и др.) не стирались, а затем режем курсорные CSI (A/G/K).
+        if '\x1b[' in line:
+            line = re.sub(r'\x1b\[[0-9;]*m', '', line)
+        if '\x1b[' in line:
+            segs = re.split(r'\x1b\[[0-9;?]*[A-Za-z]', line)
+            line = segs[-1] if segs else ''
+        out_lines.append(line)
+
+    # 3) Убираем промежуточные кадры одного tqdm-бара (оставляем финальный 100%)
+    # или серии одинаковых шаблонов (когда кастомный tqdm без \r).
+    tqdm_pat = re.compile(r'^.{0,40}\d+%\|[█▏▎▍▌▋▊▉\s]+\|\s*\d+/\d+')
+    filtered = []
+    for line in out_lines:
+        if tqdm_pat.match(line):
+            if filtered and tqdm_pat.match(filtered[-1]):
+                filtered[-1] = line
+                continue
+        filtered.append(line)
+    return '\n'.join(filtered)
 
 def _looks_like_py_path(s):
     """True, если первое слово похоже на путь к .py-файлу (а не inline-код).
@@ -219,7 +197,7 @@ def _file_not_found_msg(path_str):
 
 
 def _walk_hint(script):
-    """Подсказка при kill по тишине, если в исходнике скрипта есть os.walk."""
+    """Подсказка при kill по тишине/таймауту, если в скрипте есть рекурсивный обход (os.walk/rglob/glob)."""
     try:
         if script and os.path.isfile(script):
             with open(script, encoding="utf-8", errors="replace") as f:
@@ -228,13 +206,20 @@ def _walk_hint(script):
             src = script or ""
     except Exception:
         return ""
-    if "os.walk" not in src:
+    has_walk = (
+        "os.walk" in src
+        or ".rglob(" in src
+        or "recursive=True" in src
+        or bool(re.search(r"\.glob\s*\(\s*['\"][^'\"]*\*\*", src))
+    )
+    if not has_walk:
         return ""
     return (
-        "\n\n💡 Похоже, скрипт обходит большое дерево через os.walk —\n"
-        "   это медленно и легко вешает движок по тишине.\n"
-        "   Есть быстрые готовые команды:\n"
-        '   {"помощь": {"команда": "анализ_папки"}}\n'
+        "\n\n💡 Похоже, скрипт рекурсивно обходит большое дерево (os.walk / rglob) —\n"
+        "   это медленно и легко упирается в таймаут/тишину.\n"
+        "   Используй быстрые встроенные команды вместо Python-обхода:\n"
+        '   {"анализ_папки": {"путь": "D:/"}}       — сводка по размерам и типам\n'
+        '   {"найти_файл": {"корень": "D:/", "имя": "*.whl"}} — быстрый поиск файлов\n'
         '   {"помощь": {"команда": "дерево"}}'
     )
 
@@ -539,7 +524,16 @@ def run_python(args):
         except Exception:
             pass
 
-    t.join(timeout=2)
+    t.join(timeout=5)
+    try:
+        if proc.stdout:
+            _rest = proc.stdout.read()
+            if _rest:
+                for _rl in _rest.splitlines():
+                    output_lines.append(_rl)
+            proc.stdout.close()
+    except Exception:
+        pass
     _t_elapsed = time.perf_counter() - _t_start
     _exit_code = proc.returncode
     if tmp_file:
@@ -555,6 +549,7 @@ def run_python(args):
     output = re.sub(r"\n{3,}", "\n\n", output)
 
     # Признак «скрипт упал сам» (не наш kill): при нём в_файл не создаём,
+    output = output.replace("\x00", "")
     # вывод пойдёт в консоль как у обычного питона.
     _looks_err = (
         (not (_interrupted[0] or killed_silence[0] or killed_timeout[0]))
@@ -599,6 +594,17 @@ def run_python(args):
             "```"
         )
 
+    _mod_hint = ""
+    _mm = re.search(r"(?:ModuleNotFoundError|ImportError):\s*No module named ['\"]([^'\"]+)['\"]", output)
+    if _mm:
+        try:
+            from _executor import _format_missing_module
+            _fmt = _format_missing_module("питон", ModuleNotFoundError(name=_mm.group(1)))
+            if _fmt:
+                _mod_hint = "\n\n" + _fmt
+        except Exception:
+            pass
+
     _saved_info = None
     if _out_file and not _looks_err:
         try:
@@ -630,7 +636,7 @@ def run_python(args):
                      f"   {{\"питон\": {{\"скрипт\": \"...\", \"таймаут\": {timeout * 4}, "
                      f"\"тишина\": {max(60, silence_timeout * 4)}}}}}")
             return (f"⏱ Таймаут ({timeout} сек). Вывод сохранён{_tail}"
-                    f"{_hint}{_time_suffix}")
+                    f"{_hint}{_walk_hint(script)}{_time_suffix}")
         _small_hint = ""
         if _saved_info[2] < 1024:
             _small_hint = (
@@ -652,17 +658,21 @@ def run_python(args):
         _hint = (f"\n\n💡 Увеличь «таймаут», если скрипт не успевает:\n"
                  f"   {{\"питон\": {{\"скрипт\": \"...\", \"таймаут\": {timeout * 4}, "
                  f"\"тишина\": {max(60, silence_timeout * 4)}}}}}")
-        return f"⏱ Таймаут ({timeout} сек).\n{output}{_hint}{_time_suffix}"
+        return f"⏱ Таймаут ({timeout} сек).\n{output}{_hint}{_walk_hint(script)}{_time_suffix}"
+    if _exit_code is not None and _exit_code != 0 and "Traceback (most recent call last)" not in output:
+        _code_note = f"\n⚠️ Скрипт завершился с ошибкой (код {_exit_code})."
+        output = (output + _code_note) if output else _code_note.lstrip()
+
     if not output:
         _empty_note = ""
         if _out_file and _looks_err:
             _empty_note = f"\n\n(в '{_out_file}' не сохранял — скрипт упал)"
         return "Скрипт выполнен без вывода." + _time_suffix + _empty_note
     if _out_file and _looks_err:
-        return (truncate_output(output) + _syn_hint + _assert_hint
+        return (truncate_output(output) + _syn_hint + _assert_hint + _mod_hint
                 + _time_suffix
                 + f"\n\n(в '{_out_file}' не сохранял — скрипт упал)")
-    return truncate_output(output) + _syn_hint + _assert_hint + _time_suffix
+    return truncate_output(output) + _syn_hint + _assert_hint + _mod_hint + _time_suffix
 
 
 # ============================================================
